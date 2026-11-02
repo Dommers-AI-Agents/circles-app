@@ -98,6 +98,8 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
   await deleteAll('notificationsFrom', db.collection(COLLECTIONS.NOTIFICATIONS).where('data.followerId', '==', uid));
   await deleteAll('connections', db.collection(COLLECTIONS.CONNECTIONS).where('userId', '==', uid));
   await deleteAll('connections', db.collection(COLLECTIONS.CONNECTIONS).where('connectedUserId', '==', uid));
+  await deleteAll('followRequests', db.collection(COLLECTIONS.FOLLOW_REQUESTS).where('requesterId', '==', uid));
+  await deleteAll('followRequests', db.collection(COLLECTIONS.FOLLOW_REQUESTS).where('targetId', '==', uid));
   await deleteAll('blocks', db.collection(COLLECTIONS.BLOCKS).where('blockerId', '==', uid));
   await deleteAll('blocks', db.collection(COLLECTIONS.BLOCKS).where('blockedUserId', '==', uid));
   await deleteAll('passkeys', db.collection(COLLECTIONS.WEBAUTHN_CREDENTIALS).where('userId', '==', uid));

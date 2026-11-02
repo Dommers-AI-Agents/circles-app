@@ -20,7 +20,11 @@ const {
   unfollowUser,
   getUserFollowers,
   getUserFollowing,
-  recalculateFollowerCounts
+  recalculateFollowerCounts,
+  setProfilePrivacy,
+  getFollowRequests,
+  acceptFollowRequest,
+  declineFollowRequest
 } = require('../controllers/users/followController');
 const {
   registerDeviceToken,
@@ -84,6 +88,16 @@ router.route('/me')
   // Settings → Delete account (App Store 5.1.1(v)); the app always called
   // this but the route was missing
   .delete(deleteMyAccount);
+
+// Private profile + follow requests (2026-11-02)
+router.route('/me/profile-privacy')
+  .put(setProfilePrivacy);
+router.route('/me/follow-requests')
+  .get(getFollowRequests);
+router.route('/me/follow-requests/:requesterId/accept')
+  .post(acceptFollowRequest);
+router.route('/me/follow-requests/:requesterId/decline')
+  .post(declineFollowRequest);
 
 router.route('/me/friends')
   .get(getFriends);

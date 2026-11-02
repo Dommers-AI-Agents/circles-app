@@ -7,8 +7,10 @@
 // allows them (the per-item gates, unchanged) and the actor's grid has a
 // checked column the viewer qualifies for. The viewer qualifies for
 // `innerCircle` when on one of the actor's lists (and still connected),
-// for `myNetwork` when an accepted connection, for `public` always — so a
-// closer relationship never sees less than a farther one. An actor always
+// for `myNetwork` when an accepted connection, and for `public` — shown as
+// "Followers" — when they follow the actor or are connected: activity only
+// ever reaches people who follow you, whatever your profile setting (Wes,
+// 2026-11-02). A closer relationship never sees less than a farther one. An actor always
 // sees their own rows; a venue actor (`place_<id>`) is not a person and is
 // never gated here.
 //
@@ -120,6 +122,13 @@ const validateActivityPrivacy = (body) => {
 const allowedAudiences = (settings, category) =>
   ({ ...(DEFAULT_ROW[category] ? DEFAULT_ROW[category]() : allTrue()), ...((settings && settings[category]) || {}) });
 
+/** Follows the actor, or is connected (connected always means following). */
+const followsOrConnected = (viewerCtx, actorId) => {
+  const actor = normalizeUserId(actorId);
+  return !!((viewerCtx.following && viewerCtx.following.has(actor))
+    || (viewerCtx.connections && viewerCtx.connections.has(actor)));
+};
+
 const isVenueActor = (actorId) => typeof actorId === 'string' && actorId.startsWith('place_');
 
 /**
@@ -128,10 +137,11 @@ const isVenueActor = (actorId) => typeof actorId === 'string' && actorId.startsW
  * with connections (viewerContext.js), so `innerCircle` implies `myNetwork`.
  */
 const qualifyingAudiences = (viewerCtx, actorId) => {
-  if (!viewerCtx) return ['public'];
+  if (!viewerCtx) return [];
   if (viewerCtx.viewerId && isSameUser(actorId, viewerCtx.viewerId)) return null;
   const actor = normalizeUserId(actorId);
-  const out = ['public'];
+  const out = [];
+  if (followsOrConnected(viewerCtx, actor)) out.push('public');
   if (viewerCtx.connections && viewerCtx.connections.has(actor)) out.push('myNetwork');
   if (viewerCtx.innerCircleGrantors && viewerCtx.innerCircleGrantors.has(actor)) out.push('innerCircle');
   return out;
@@ -148,9 +158,12 @@ const canViewActivity = (activity, viewerId, viewerCtx, settingsByActor) => {
   if (isVenueActor(activity.actorId)) return true;
   const category = categoryOf(activity);
   if (!category) return true;
-  // A check-in its owner marked "Everyone" is the one thing that widens
-  // past the grid: the grid is what applies when nothing was chosen.
-  if (activity.type === 'check_in' && (activity.metadata || {}).checkInAudience === 'public') return true;
+  // A check-in its owner marked "Followers" is the one thing that widens
+  // past the grid (the grid is what applies when nothing was chosen) — to
+  // followers and connections, never strangers.
+  if (activity.type === 'check_in' && (activity.metadata || {}).checkInAudience === 'public') {
+    return !!viewerCtx && followsOrConnected(viewerCtx, activity.actorId);
+  }
   const allowed = allowedAudiences(settingsByActor && settingsByActor.get(String(activity.actorId)), category);
   const qualifying = qualifyingAudiences(viewerCtx, activity.actorId);
   if (qualifying === null) return true;
@@ -206,11 +219,14 @@ const passesItemGates = (activity, viewerId, viewerCtx, circlesById) => {
   // circle vanished from everyone's feed although he posted them (2026-10-30).
   if (activity.type === 'check_in') return true;
 
-  // A shared workout or posted run: its own audience, never wider than connections
+  // A shared workout or posted run: its own audience — followers (and
+  // connections), all connections, or an Inner Circle (list)
   if (activity.type === 'workout_shared' || activity.type === 'run_shared') {
     const actor = normalizeUserId(activity.actorId);
+    const audience = activity.type === 'workout_shared' ? meta.workoutAudience : meta.runAudience;
+    if (audience === 'followers') return followsOrConnected(viewerCtx, actor);
     if (!(viewerCtx.connections && viewerCtx.connections.has(actor))) return false;
-    if ((activity.type === 'workout_shared' ? meta.workoutAudience : meta.runAudience) === 'connections') return true;
+    if (audience === 'connections') return true;
     if (meta.audienceListId) {
       const lists = viewerCtx.innerCircleLists && viewerCtx.innerCircleLists.get(actor);
       return !!(lists && lists.has(meta.audienceListId));

@@ -53,6 +53,12 @@ const canSee = (photo, viewerId) => {
   if (typeof photo === 'object' && photo.private === true) {
     return !!viewerId && isSameUser(photo.uploadedBy, viewerId);
   }
+  // A person's own upload from a private profile stays off the venue's page
+  // (Wes, 2026-11-02); their followers see it on the profile
+  if (typeof photo === 'object' && photo.source === 'user_upload' && photo.uploadedBy
+      && !isSameUser(photo.uploadedBy, viewerId) && require('./profilePrivacy').isPrivateProfile(photo.uploadedBy)) {
+    return false;
+  }
   return true;
 };
 

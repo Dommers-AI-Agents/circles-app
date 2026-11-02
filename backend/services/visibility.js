@@ -9,7 +9,9 @@
 //
 // The ladder, from most open to most closed:
 //
-//   public       anyone, including people who only follow you
+//   public       anyone who may see the owner's profile: everyone when the
+//                profile is public (the default), only followers and
+//                connections when it is private (services/profilePrivacy.js)
 //   followers    people who follow you (moments only — circles have no such tier)
 //   myNetwork    accepted connections. The UI calls this "Connections".
 //   innerCircle  the accepted connections you put on your Inner Circle list
@@ -97,6 +99,7 @@ const toMomentPrivacy = (value) => {
 // the same normalisation placeReadService has always used. Comparing raw
 // strings here would silently fail the owner check for those accounts.
 const { normalizeUserId, isSameUser } = require('./idService');
+const { isPrivateProfile } = require('./profilePrivacy');
 
 const NO_RELATIONSHIPS = {
   connections: new Set(),
@@ -130,8 +133,11 @@ const canViewAtTier = (ownerId, privacy, viewerId, ctx, audienceListId = null) =
   const rel = ctx || NO_RELATIONSHIPS;
 
   switch (normalizePrivacy(privacy)) {
+    // A public profile shows its public tier to anyone; a private profile
+    // only to the people who could see its followers tier.
     case PRIVACY.PUBLIC:
-      return true;
+      if (!isPrivateProfile(ownerId)) return true;
+      return rel.following.has(normalizeUserId(ownerId)) || rel.connections.has(normalizeUserId(ownerId));
 
     // Someone you are connected to is closer than someone who merely follows
     // you, so connections clear the followers bar too. The old moment feed

@@ -319,6 +319,7 @@ exports.getPlaceSavers = async (req, res, next) => {
     const saverViewerCtx = makeViewerContext({
       viewerId: userId,
       connections: connectedIds,
+      following: await require('../../services/viewerContext').followingOf(userId),
       innerCircleLists: await getInnerCircleGrantorLists(userId)
     });
     const isCircleVisible = (circle, saverId) =>

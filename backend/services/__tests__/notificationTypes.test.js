@@ -19,6 +19,7 @@ const OLD_TYPE_MAP = {
   check_in: 'checkIns', daily_summary: 'dailySummary', discovery_prompt: 'discoveryPrompts',
   weekend_recommendations: 'weekendRecommendations', social_activity: 'socialActivity', social_notification: 'socialActivity',
   place_like: 'socialActivity', place_comment: 'socialActivity', new_follower: 'newFollowers',
+  follow_request: 'newFollowers', follow_request_accepted: 'newFollowers',
   engagement_reminder: 'reengagement', milestone: 'milestones', did_you_know: 'tips',
   nextbar_round: 'socialActivity', nextbar_result: 'socialActivity', postcard_order: 'socialActivity', fridgemail: 'socialActivity',
   event_invite: 'socialActivity', event_joined: 'socialActivity', event_photos: 'socialActivity',
@@ -39,7 +40,9 @@ const OLD_BADGE_WORTHY = ['new_message', 'connection_request', 'connection_accep
   'activity_reaction', 'activity_comment', 'check_in', 'new_suggestion', 'moment_tag', 'circle_invite', 'store_claim',
   'store_claim_approved', 'premium_signup', 'did_you_know', 'check_in_response',
   // Order ahead (2026-10-20)
-  'order_new', 'order_update'];
+  'order_new', 'order_update',
+  // Private profiles (2026-11-02)
+  'follow_request', 'follow_request_accepted'];
 
 test('categories match the old switch', () => {
   const derived = Object.fromEntries(Object.keys(TYPES).map((t) => [t, categoryFor(t)]).filter(([, c]) => c));
@@ -70,7 +73,7 @@ test('the rows a person can catch up on in Notifications (Wes, 2026-10-01)', () 
   expect(recorded).toEqual([
     'care_accepted', 'care_alert_response', 'care_comment', 'care_invite', 'care_silence', 'care_watcher_accepted', 'care_watcher_declined',
     'care_watcher_invite', 'care_watcher_joined', 'care_watcher_removed', 'care_watcher_request',
-    'check_in_response', 'club_bulletin', 'club_event', 'club_invite', 'club_joined', 'club_reply', 'dog_comment', 'dog_pet', 'event_invite', 'event_joined', 'favcoin_claim_settled', 'fridgemail', 'milestone', 'nextbar_result',
+    'check_in_response', 'club_bulletin', 'club_event', 'club_invite', 'club_joined', 'club_reply', 'dog_comment', 'dog_pet', 'event_invite', 'event_joined', 'favcoin_claim_settled', 'follow_request', 'follow_request_accepted', 'fridgemail', 'milestone', 'nextbar_result',
     'nextbar_round', 'order_new', 'order_update', 'postcard_order', 'run_live_finished', 'run_live_invite', 'store_alert'
   ]);
   // Reminders, digests and the questions themselves stay push-only

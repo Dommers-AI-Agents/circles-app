@@ -57,6 +57,37 @@ describe('canViewAtTier', () => {
     }
   });
 
+  describe('a private profile (2026-11-02)', () => {
+    const profilePrivacy = require('../profilePrivacy');
+    afterEach(() => profilePrivacy._setForTests([]));
+
+    test('its public tier reaches followers and connections only', () => {
+      profilePrivacy._setForTests(['owner']);
+      expect(canViewAtTier('owner', 'public', 'stranger', strangerCtx())).toBe(false);
+      expect(canViewAtTier('owner', 'public', 'follower', ctx('follower'))).toBe(true);
+      expect(canViewAtTier('owner', 'public', 'connection', ctx('connection'))).toBe(true);
+      expect(canViewAtTier('owner', 'public', 'owner', strangerCtx())).toBe(true);
+      // No viewer at all (a share link in a browser) gets nothing
+      expect(canViewAtTier('owner', 'public', null, null)).toBe(false);
+      // Narrower tiers are unchanged
+      expect(canViewAtTier('owner', 'myNetwork', 'follower', ctx('follower'))).toBe(false);
+    });
+
+    test('a circle on it locks for strangers but its guest list still gets in', () => {
+      profilePrivacy._setForTests(['owner']);
+      const circle = { owner: 'owner', privacy: 'public', sharedWith: ['guest'] };
+      expect(canViewCircle(circle, 'stranger', strangerCtx())).toBe(false);
+      expect(canViewCircle(circle, 'guest', strangerCtx())).toBe(true);
+      expect(canViewCircle(circle, 'follower', ctx('follower'))).toBe(true);
+    });
+
+    test('until the list has loaded every profile counts as private', () => {
+      profilePrivacy._setForTests(null);
+      expect(canViewAtTier('owner', 'public', 'stranger', strangerCtx())).toBe(false);
+      expect(canViewAtTier('owner', 'public', 'follower', ctx('follower'))).toBe(true);
+    });
+  });
+
   test('public reaches everyone, private reaches no one', () => {
     expect(canViewAtTier('owner', 'public', 'stranger', strangerCtx())).toBe(true);
     expect(canViewAtTier('owner', 'private', 'connection', ctx('connection'))).toBe(false);

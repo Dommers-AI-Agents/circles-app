@@ -72,6 +72,9 @@ async function block(blockerId, blockedUserId, { db = getFirestore() } = {}) {
   } catch (countError) {
     console.warn('Block follower-count resync failed:', countError.message);
   }
+  // A follow request either way goes too
+  await require('./followRequestService').clearBetween(blockerId, blockedUserId)
+    .catch((e) => console.warn('Block follow-request cleanup failed:', e.message));
 
   return { alreadyBlocked: false, block: createdBlock };
 }

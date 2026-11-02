@@ -358,7 +358,7 @@ async function listWatching(uid) {
  * (connections, or the Inner Circle / one named list), like a workout.
  */
 async function postToActivity(uid, { runId, summary = {}, audience, audienceListId, mapImageUrl } = {}) {
-  const aud = audience === 'innerCircle' ? 'innerCircle' : 'connections';
+  const aud = ['innerCircle', 'followers'].includes(audience) ? audience : 'connections';
   let ref, data;
   if (runId) {
     ({ ref, data } = await load(runId));

@@ -39,6 +39,9 @@ const TYPES = {
   social_activity:         { category: 'SOCIAL_ACTIVITY',         pref: 'socialActivity',         badge: false },
   social_notification:     { category: null,                      pref: 'socialActivity',         badge: false },
   new_follower:            { category: null,                      pref: 'newFollowers',           badge: true },
+  // Private profiles (2026-11-02): someone asks to follow you; your yes
+  follow_request:          { category: null,                      pref: 'newFollowers',           badge: true, record: true },
+  follow_request_accepted: { category: null,                      pref: 'newFollowers',           badge: true, record: true },
   activity_reaction:       { category: null,                      pref: null,                     badge: true },
   activity_comment:        { category: null,                      pref: null,                     badge: true },
   moment_tag:              { category: null,                      pref: null,                     badge: true },

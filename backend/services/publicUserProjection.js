@@ -39,6 +39,7 @@ const PUBLIC_USER_FIELDS = [
   'placesCount', 'circlesCount',
   'isVerified', 'username', 'isFakeProfile',
   'isBusiness', 'storefront',
+  'profilePrivate',   // private profile: others ask to follow (2026-11-02)
 ];
 
 /**

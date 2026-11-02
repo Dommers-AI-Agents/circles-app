@@ -58,6 +58,15 @@ const makeViewerContext = ({ viewerId, connections, following, innerCircleGranto
   };
 };
 
+/** Who `userId` follows (the user doc, read once per request), for callers
+ *  that assemble a context from their own connection sets. A public circle on
+ *  a private profile needs it (services/profilePrivacy.js). */
+const followingOf = async (userId) => {
+  if (!userId) return [];
+  const doc = await getUserDocOnce(userId);
+  return doc.exists ? (doc.data().following || []) : [];
+};
+
 /** The full three-read build, for callers starting from nothing. Inside a
  *  GET request each read is shared with every other caller (utils/requestMemo). */
 const buildViewerContext = async (viewerId) => {
@@ -79,4 +88,4 @@ const buildViewerContext = async (viewerId) => {
   });
 };
 
-module.exports = { makeViewerContext, buildViewerContext };
+module.exports = { makeViewerContext, buildViewerContext, followingOf };

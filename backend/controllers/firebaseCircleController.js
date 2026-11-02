@@ -20,7 +20,7 @@ const { sortCirclesByUserOrder } = require('../utils/circleOrder');
 const subscriptionLimitService = require('../services/subscriptionLimitService');
 const { attachOwnerDetails } = require('../services/ownerResolver');
 const { CIRCLE_PRIVACY_LEVELS, resolveIncomingPrivacy } = require('../services/visibility');
-const { canViewCircleFor } = require('../services/circleAccess');
+const { canViewCircleFor, canOpenPublicCircle } = require('../services/circleAccess');
 const { projectPublicUser } = require('../services/publicUserProjection');
 const { publicCircleFields } = require('../services/publicProjection');
 const { validateGuestList } = require('../services/innerCircleService');
@@ -184,6 +184,13 @@ exports.getSharedCircles = async (req, res, next) => {
     let uniqueCircles = allCircles.filter((circle, index, self) => 
       index === self.findIndex(c => c.id === circle.id)
     );
+    // A private profile's public circles only for its followers and
+    // connections (Wes, 2026-11-02); trashed circles never
+    {
+      const { canViewCircle } = require('../services/visibility');
+      const viewerCtx = await require('../services/viewerContext').buildViewerContext(currentUserId);
+      uniqueCircles = uniqueCircles.filter(circle => !circle.deletedAt && canViewCircle(circle, currentUserId, viewerCtx));
+    }
     
     // Get connections to check for new activities
     const [connectionsSnapshot1, connectionsSnapshot2] = await getAcceptedConnectionSnapshots(currentUserId, { first: 'userId' });
@@ -350,6 +357,11 @@ exports.getCirclePublic = async (req, res, next) => {
     }
     if (circle.deletedAt) {
       return res.status(404).json({ success: false, message: 'Circle not found' });
+    }
+    // A private profile's public circle opens only for its followers and
+    // connections, who come with a token (Wes, 2026-11-02)
+    if (!(await canOpenPublicCircle(circle, req.user && req.user.uid))) {
+      return res.status(403).json({ success: false, code: 'private_profile', message: 'This profile is private' });
     }
 
     // Public fields only. The raw doc carried sharedWith (invitees' ids or

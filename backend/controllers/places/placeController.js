@@ -282,6 +282,13 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
         message: 'This circle is not public'
       });
     }
+    // A private profile's public circle opens only for its followers and
+    // connections, who come with a token (Wes, 2026-11-02)
+    const viewerId = (req.user && req.user.uid) || null;
+    if (!(await require('../../services/circleAccess').canOpenPublicCircle(circle, viewerId))) {
+      return res.status(403).json({ success: false, code: 'private_profile', message: 'This profile is private' });
+    }
+    const viewerCtx = viewerId ? await require('../../services/viewerContext').buildViewerContext(viewerId) : null;
     
     // Get all places for this circle using the same query method as authenticated endpoint
     console.log('🔍 getPlacesByCircleIdPublic - Querying places by circleId:', circleId);
@@ -297,15 +304,16 @@ exports.getPlacesByCircleIdPublic = async (req, res, next) => {
     });
     
     // Filter out soft-deleted places, and anything the place's own privacy
-    // narrows below the circle. This is an unauthenticated share, so there is
+    // narrows below the circle. Usually an unauthenticated share, so there is
     // no viewer to exempt and no relationships to check: with no context every
-    // tier above public denies, which is exactly right here. Checking only for
+    // tier above public denies, which is exactly right here. A signed-in
+    // viewer is judged by their own relationships. Checking only for
     // `private` used to serve an Inner Circle place inside a public circle to
     // the open web.
     const allPlaces = serializeQuerySnapshot(placesSnapshot);
     const places = allPlaces.filter(place => {
       const isDeleted = place.deletedAt !== null && place.deletedAt !== undefined;
-      return !isDeleted && isPlaceVisibleToViewer(place, null, null);
+      return !isDeleted && isPlaceVisibleToViewer(place, viewerId, viewerCtx);
     });
 
     console.log(`🔍 Found ${places.length} active places for public circle`);
@@ -1715,6 +1723,7 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     const batchViewerCtx = makeViewerContext({
       viewerId: currentUserId,
       connections: connectedUserIds,
+      following: await require('../../services/viewerContext').followingOf(currentUserId),
       innerCircleLists: await getInnerCircleGrantorLists(currentUserId)
     });
 

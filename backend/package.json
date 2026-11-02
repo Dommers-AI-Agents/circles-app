@@ -60,5 +60,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "jest": {
+    "setupFiles": [
+      "./jest.setup.js"
+    ]
+  }
 }

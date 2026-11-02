@@ -11,10 +11,13 @@ const mockConnections = new Set();
 // Which of each grantor's lists the viewer is on; a grantor with no entry
 // here is on "some list" without a name, as before lists existed.
 const mockLists = new Map();
+// Who the viewer follows (the user doc's following array)
+const mockFollowing = [];
 jest.mock('../../utils/networkAccess', () => ({
   getInnerCircleGrantorIds: jest.fn(async () => mockGrantors),
   getInnerCircleGrantorLists: jest.fn(async () => new Map([...mockGrantors].map((id) => [id, mockLists.get(id) || new Set()]))),
-  getConnectedUserIds: jest.fn(async () => mockConnections)
+  getConnectedUserIds: jest.fn(async () => mockConnections),
+  getUserDocOnce: jest.fn(async () => ({ exists: true, data: () => ({ following: mockFollowing }) }))
 }));
 
 const feed = require('../workoutFeedService');
@@ -37,6 +40,7 @@ beforeEach(() => {
   mockGrantors.clear();
   mockConnections.clear();
   mockLists.clear();
+  mockFollowing.length = 0;
 });
 
 test('share validates, trims and replaces the same workout', async () => {
@@ -112,6 +116,22 @@ test('connections-audience posts reach every connection; Inner Circle posts only
   expect(seen).toEqual(['Open']);
   mockGrantors.add('brit');
   expect((await feed.feed('viewer')).map((p) => p.summary.name).sort()).toEqual(['Close', 'Open']);
+});
+
+test('followers-audience posts reach followers and connections, never strangers (2026-11-02)', async () => {
+  const post = await feed.share({ userId: 'sal', summary: summary({ name: 'Legs', startedAt: '2026-09-18T11:00:00Z' }), audience: 'followers' });
+  expect(post.audience).toBe('followers');
+  expect(await feed.feed('viewer')).toEqual([]);
+  await expect(feed.getPost(post.postId, 'viewer')).rejects.toMatchObject({ code: 'not_found' });
+  mockFollowing.push('sal');
+  expect((await feed.feed('viewer')).map((p) => p.summary.name)).toEqual(['Legs']);
+  expect((await feed.getPost(post.postId, 'viewer')).postId).toBe(post.postId);
+  // A follower who isn't connected still never sees a connections-only post
+  await feed.share({ userId: 'sal', summary: summary({ name: 'Arms', startedAt: '2026-09-19T11:00:00Z' }), audience: 'connections' });
+  expect((await feed.feed('viewer')).map((p) => p.summary.name)).toEqual(['Legs']);
+  // A connection who never tapped Follow still gets the followers post
+  mockFollowing.length = 0; mockConnections.add('sal');
+  expect((await feed.feed('viewer')).map((p) => p.summary.name).sort()).toEqual(['Arms', 'Legs']);
 });
 
 test('getPost: the author, their audience, and nobody else', async () => {

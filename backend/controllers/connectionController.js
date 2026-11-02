@@ -1064,6 +1064,9 @@ const removeConnection = async (req, res) => {
       // connections, so access is gone either way — this keeps the owner's
       // list screen honest rather than showing someone who no longer counts.
       await revokeMutualGrants(connection.userId, connection.connectedUserId);
+      // Disconnect stops the follow both ways (Wes, 2026-11-02)
+      await require('../services/followLinks').removeFollowsBetween(connection.userId, connection.connectedUserId)
+        .catch((e) => console.error('⚠️ Unfollow on disconnect failed:', e.message));
       console.log('✅ Connection removed and user arrays updated');
     } catch (updateError) {
       console.error('❌ Error updating arrays during connection removal:', updateError);

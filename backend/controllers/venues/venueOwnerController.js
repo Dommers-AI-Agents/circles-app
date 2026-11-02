@@ -320,6 +320,7 @@ exports.getVenueSavers = async (req, res) => {
     const ownerViewerCtx = makeViewerContext({
       viewerId: ownerId,
       connections: connectedIds,
+      following: await require('../../services/viewerContext').followingOf(ownerId),
       innerCircleLists: await getInnerCircleGrantorLists(ownerId)
     });
     const isCircleVisibleToOwner = (circle, saverId) =>

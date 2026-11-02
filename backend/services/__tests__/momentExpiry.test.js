@@ -80,8 +80,9 @@ describe('feed rows', () => {
     const settingsByActor = new Map([['owner', grid]]);
     for (const viewer of ['owner', 'someone']) {
       for (const skipItemGates of [false, true]) {
+        // Activity reaches followers only (2026-11-02), so 'someone' follows
         const seen = filterActivitiesForViewer({
-          activities, viewerId: viewer, viewerCtx: makeViewerContext({ viewerId: viewer }),
+          activities, viewerId: viewer, viewerCtx: makeViewerContext({ viewerId: viewer, following: ['owner'] }),
           circlesById: null, settingsByActor, skipItemGates
         }).map(a => a.id);
         expect(seen).toEqual(['live', 'plain']);

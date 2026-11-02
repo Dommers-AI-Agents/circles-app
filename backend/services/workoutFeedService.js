@@ -1,8 +1,9 @@
 // backend/services/workoutFeedService.js
 //
 // Shared workouts. The client posts a finished workout's summary (custom
-// exercise names live only on the phone) to one audience: all connections,
-// or the Inner Circle (optionally one named list). Every share also lands in
+// exercise names live only on the phone) to one audience: followers (and
+// connections; 2026-11-02), all connections, or the Inner Circle (optionally
+// one named list). Every share also lands in
 // the activity feed as a `workout_shared` row gated to that same audience,
 // and the row opens the post (GET /widgets/workouts/posts/:id) where a
 // viewer can copy it as a routine. Readers are always intersected with the
@@ -15,6 +16,7 @@ const { ServiceError } = require('../utils/serviceError');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { getConnectedUserIds, getInnerCircleGrantorLists } = require('../utils/networkAccess');
 const { listIdFor } = require('./innerCircleLists');
+const { followingOf } = require('./viewerContext');
 const { queryInChunks } = require('../utils/firestoreChunks');
 
 class WorkoutFeedError extends ServiceError {}
@@ -24,7 +26,7 @@ const LINE_MAX = 60;
 const MAX_EXERCISES = 30;
 const MAX_CARDIO = 10;
 const MAX_ROUTINE = 30;
-const AUDIENCES = ['connections', 'innerCircle'];
+const AUDIENCES = ['followers', 'connections', 'innerCircle'];
 const MAX_POSTS = 60;
 const FEED_DAYS = 45;
 // Workout history the author lets their Inner Circle browse: one doc per
@@ -92,8 +94,9 @@ class WorkoutFeedService {
 
   /**
    * One post per finished workout; re-sharing the same workout replaces it
-   * (and doesn't add a second feed row). `audience` is 'connections' or
-   * 'innerCircle' (the default, as before audiences existed); for the Inner
+   * (and doesn't add a second feed row). `audience` is 'followers',
+   * 'connections' or 'innerCircle' (the default, as before audiences
+   * existed); for the Inner
    * Circle, `audienceListId` names one list, none means any of them.
    */
   async share({ userId, summary, audience = 'innerCircle', audienceListId = null, onFirstShare = null, now = new Date() }) {
@@ -126,14 +129,19 @@ class WorkoutFeedService {
   }
 
   /**
-   * Whether `viewerId` may see a post: the author always; otherwise only a
-   * current connection, and for an Inner Circle post only someone the author
-   * put on (that list of) their Inner Circle.
+   * Whether `viewerId` may see a post: the author always; a Followers post
+   * anyone who follows the author or is connected; otherwise only a current
+   * connection, and for an Inner Circle post only someone the author put on
+   * (that list of) their Inner Circle.
    */
   async canView(post, viewerId) {
     if (String(post.userId) === String(viewerId)) return true;
     // Shared only by link: opened through the link, never through the feed
     if (post.audience === 'link') return false;
+    if (post.audience === 'followers') {
+      const [connections, following] = await Promise.all([getConnectedUserIds(viewerId), followingOf(viewerId)]);
+      return connections.has(post.userId) || following.includes(post.userId);
+    }
     // Both reads at once: in sequence they made a friend's tap ~1.2 s
     const needsLists = (post.audience || 'innerCircle') !== 'connections';
     const [connections, grantors] = await Promise.all([
@@ -276,15 +284,19 @@ class WorkoutFeedService {
   }
 
   /**
-   * Posts from the viewer's connections that they may see — shared with all
-   * connections, or with an Inner Circle the viewer is on — from this month
-   * and last, newest first.
+   * Posts the viewer may see — shared with followers (by someone they follow
+   * or are connected to), with all connections, or with an Inner Circle the
+   * viewer is on — from this month and last, newest first.
    */
   async feed(viewerId, now = new Date()) {
-    const [lists, connections] = await Promise.all([getInnerCircleGrantorLists(viewerId), getConnectedUserIds(viewerId)]);
-    const authors = [...connections];
+    const [lists, connections, following] = await Promise.all([
+      getInnerCircleGrantorLists(viewerId), getConnectedUserIds(viewerId), followingOf(viewerId)
+    ]);
+    const authors = [...new Set([...connections, ...following.map(String)])];
     const allowed = (row) => {
       if (row.audience === 'link') return false;
+      if (row.audience === 'followers') return true;
+      if (!connections.has(row.userId)) return false;
       if (row.audience === 'connections') return true;
       const granted = lists.get(row.userId);
       // A post that named a list is for that list only.

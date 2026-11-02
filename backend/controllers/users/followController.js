@@ -95,6 +95,31 @@ exports.followUser = async (req, res, next) => {
       });
     }
     
+    // A private profile takes the owner's yes (Wes, 2026-11-02). A connection
+    // already sees everything a follower does, so they follow straight away.
+    if (targetUser.profilePrivate === true
+        && !(await require('../../utils/networkAccess').areConnected(currentUserId, targetUserId))) {
+      const result = await require('../../services/followRequestService')
+        .request(currentUserId, targetUserId, currentUser.displayName);
+      return res.json({
+        success: true,
+        requested: true,
+        alreadyRequested: result.alreadyRequested,
+        message: 'Follow request sent',
+        user: {
+          _id: targetUserId,
+          email: '',
+          displayName: targetUser.displayName,
+          profilePicture: targetUser.profilePicture,
+          followersCount: targetUser.followersCount || 0,
+          followingCount: targetUser.followingCount || 0,
+          profilePrivate: true,
+          isFollowing: false,
+          followRequested: true
+        }
+      });
+    }
+
     // Initialize counts if they don't exist
     if (typeof currentUser.followingCount !== 'number') {
       console.log('⚠️ Initializing missing followingCount for user:', currentUserId);
@@ -387,6 +412,26 @@ exports.unfollowUser = async (req, res, next) => {
       targetInArray: currentUser.following?.includes(targetUserId) || false
     });
     
+    // Not following yet but asked to (a private profile): Unfollow takes the
+    // request back.
+    if (!(currentUser.following || []).includes(targetUserId)) {
+      const followRequests = require('../../services/followRequestService');
+      if (await followRequests.isPending(currentUserId, targetUserId)) {
+        await followRequests.cancel(currentUserId, targetUserId);
+        return res.json({ success: true, requestCancelled: true, message: 'Follow request cancelled' });
+      }
+    }
+
+    // Connected always means following (Wes, 2026-11-02): the way out of a
+    // connection is Disconnect, which stops the follow too.
+    if (await require('../../utils/networkAccess').areConnected(currentUserId, targetUserId)) {
+      return res.status(409).json({
+        success: false,
+        code: 'connected',
+        message: `You're connected with ${targetUser.displayName || 'this person'}. Disconnect to stop following.`
+      });
+    }
+
     // Check if following
     if (!currentUser.following || !currentUser.following.includes(targetUserId)) {
       console.log('⚠️ User not following target:', {
@@ -911,5 +956,69 @@ exports.recalculateFollowerCounts = async (req, res, next) => {
   } catch (error) {
     console.error('Error recalculating follower counts:', error);
     next(error);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Private profiles and follow requests (Wes, 2026-11-02)
+
+const { sendServiceError } = require('../../utils/serviceError');
+
+// @desc    Make my profile private or public
+// @route   PUT /api/users/me/profile-privacy   { private: true|false }
+// @access  Private
+exports.setProfilePrivacy = async (req, res) => {
+  try {
+    if (typeof req.body.private !== 'boolean') {
+      return res.status(400).json({ success: false, message: '"private" must be true or false' });
+    }
+    const userId = normalizeUserId(req.user.uid);
+    const isPrivate = req.body.private;
+    await db.collection(COLLECTIONS.USERS).doc(userId).update({
+      profilePrivate: isPrivate,
+      updatedAt: new Date().toISOString()
+    });
+    require('../../services/profilePrivacy').noteProfilePrivacy(userId, isPrivate);
+    // Going public lets in everyone who was waiting
+    const accepted = isPrivate ? 0 : await require('../../services/followRequestService').acceptAll(userId);
+    res.json({ success: true, profilePrivate: isPrivate, acceptedRequests: accepted });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Error setting profile privacy', fallbackMessage: 'Could not change your profile privacy' });
+  }
+};
+
+// @desc    People asking to follow me
+// @route   GET /api/users/me/follow-requests
+// @access  Private
+exports.getFollowRequests = async (req, res) => {
+  try {
+    const requests = await require('../../services/followRequestService').listIncoming(req.user.uid);
+    res.json({ success: true, count: requests.length, requests });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Error listing follow requests', fallbackMessage: 'Could not load follow requests' });
+  }
+};
+
+// @desc    Let someone follow me
+// @route   POST /api/users/me/follow-requests/:requesterId/accept
+// @access  Private
+exports.acceptFollowRequest = async (req, res) => {
+  try {
+    const accepted = await require('../../services/followRequestService').accept(req.user.uid, req.params.requesterId);
+    res.json({ success: true, accepted });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Error accepting follow request', fallbackMessage: 'Could not accept the request' });
+  }
+};
+
+// @desc    Turn down a follow request (they aren't told)
+// @route   POST /api/users/me/follow-requests/:requesterId/decline
+// @access  Private
+exports.declineFollowRequest = async (req, res) => {
+  try {
+    await require('../../services/followRequestService').decline(req.user.uid, req.params.requesterId);
+    res.json({ success: true });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Error declining follow request', fallbackMessage: 'Could not decline the request' });
   }
 };

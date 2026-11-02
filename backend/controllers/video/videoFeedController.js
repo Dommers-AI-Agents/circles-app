@@ -35,13 +35,15 @@ exports.getPlaceVideos = async (req, res) => {
 };
 
 /**
- * Which moment tiers of `ownerId`'s may `viewerId` see? null = blocked either
- * way (show nothing). An anonymous viewer (no id) gets public only.
+ * Which moment tiers of `ownerId`'s may `viewerId` see? null = nothing (blocked
+ * either way, or a private profile the viewer doesn't follow). An anonymous
+ * viewer gets public only, and only from a public profile.
  * Shared by both per-user shelves: getUserVideos used to skip this entirely
  * and served every tier to anyone (security audit 2026-10-01).
  */
 async function momentTiersVisibleTo(viewerId, ownerId) {
-  if (!viewerId) return ['public'];
+  const { isPrivateProfile } = require('../../services/profilePrivacy');
+  if (!viewerId) return isPrivateProfile(ownerId) ? null : ['public'];
   // User viewing their own content - show all. MOMENT_PRIVACY_LEVELS rather
   // than a hand-written list, so a new tier can't go missing here and hide
   // the owner's own moments from them.
@@ -64,6 +66,7 @@ async function momentTiersVisibleTo(viewerId, ownerId) {
     db.collection(COLLECTIONS.USERS).doc(viewerId).get()
   ]);
 
+
   // A block in either direction empties the shelf entirely
   const { isBlockedEitherWay } = require('../../services/moderationService');
   if (currentUserDoc.exists && isBlockedEitherWay(currentUserDoc.data(), ownerId)) return null;
@@ -71,9 +74,12 @@ async function momentTiersVisibleTo(viewerId, ownerId) {
   const isConnected = !connection1.empty || !connection2.empty;
   const isFollowing = (currentUserDoc.exists ? (currentUserDoc.data().following || []) : []).includes(ownerId);
 
-  const tiers = ['public'];
+  // A private profile's public moments need a follow too; a connection
+  // clears the followers bar without one (services/visibility.canViewAtTier)
+  const tiers = [];
+  if (!isPrivateProfile(ownerId) || isConnected || isFollowing) tiers.push('public');
   if (isConnected) tiers.push('network');
-  if (isFollowing) tiers.push('followers');
+  if (isFollowing || isConnected) tiers.push('followers');
   // Single-owner query, so one membership test decides the whole shelf.
   if (isConnected) {
     const grantors = await getInnerCircleGrantorIds(viewerId);
@@ -81,7 +87,7 @@ async function momentTiersVisibleTo(viewerId, ownerId) {
       tiers.push('innerCircle');
     }
   }
-  return tiers;
+  return tiers.length ? tiers : null;
 }
 
 // Get user's videos
@@ -337,7 +343,9 @@ exports.getVideoDetails = async (req, res) => {
       }
 
       const visibility = videoData.visibility || 'private';
-      let allowed = visibility === 'public';
+      // Public on a public profile needs no relationship; everything else
+      // (a private profile's public moments included) goes by the rule
+      let allowed = visibility === 'public' && !require('../../services/profilePrivacy').isPrivateProfile(owner);
       // A relationship-gated moment needs a known viewer. Without one (no auth)
       // only public moments are visible — the context below isn't even built.
       if (!allowed && userId) {
@@ -472,15 +480,7 @@ exports.getReelsFeed = async (req, res) => {
     
     // Combine for user content discovery
     const allUserIds = new Set([...connectionIds, ...followingIds]);
-    // Following only a few people: the most active mappers' public moments
-    // too, so the tab always has something (Wes, 2026-11-01). canView still
-    // treats them as strangers.
-    try {
-      await require('../../services/communityFeedActors')
-        .addCommunityIfSparse(allUserIds, { viewerId: userId, networkSize: allUserIds.size - 1 });
-    } catch (error) {
-      console.warn('[moments] community actors unavailable:', error.message);
-    }
+    // Only people you follow or are connected to (Wes, 2026-11-02)
     
     // A viewer may see a moment by its visibility + their relationship to the
     // owner. This query already fetches the viewer's whole graph, so the tier

@@ -839,6 +839,18 @@ exports.getUserUploads = async (req, res, next) => {
     
     console.log(`🔍 [GlobalPlace API] Getting uploads for user: ${userId}`);
     console.log(`📊 [GlobalPlace API] Limit: ${limit}, Offset: ${offset}`);
+
+    // Someone else's uploads: never their private photos, and nothing at all
+    // from a private profile the viewer doesn't follow (Wes, 2026-11-02)
+    const { isSameUser } = require('../services/idService');
+    const isOwnUploads = isSameUser(userId, req.user.uid);
+    if (!isOwnUploads && require('../services/profilePrivacy').isPrivateProfile(userId)) {
+      const ctx = await require('../services/viewerContext').buildViewerContext(req.user.uid);
+      const owner = require('../services/idService').normalizeUserId(userId);
+      if (!ctx.following.has(owner) && !ctx.connections.has(owner)) {
+        return res.status(200).json({ success: true, data: [], total: 0, has_more: false });
+      }
+    }
     
     // Query all global places to find user's photos
     // We'll filter in memory to avoid complex index requirements
@@ -859,6 +871,7 @@ exports.getUserUploads = async (req, res, next) => {
       // Filter photos uploaded by this user
       const userPhotos = placePhotos.filter(photo =>
         photo && photo.uploadedBy === userId && !photo.removedAt
+        && (isOwnUploads || photo.private !== true)
       );
       
       // Add place context to each photo

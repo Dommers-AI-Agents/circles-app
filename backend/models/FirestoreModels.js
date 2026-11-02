@@ -12,6 +12,7 @@ const COLLECTIONS = {
   PLACES: 'places',
   FRIEND_REQUESTS: 'friendRequests',
   CONNECTIONS: 'connections',
+  FOLLOW_REQUESTS: 'followRequests',   // asks to follow a private profile (services/followRequestService)
   CIRCLE_SHARES: 'circleShares',
   CONVERSATIONS: 'conversations',
   MESSAGES: 'messages',
@@ -1078,8 +1079,9 @@ const createCheckIn = (checkInData, userId, userData) => {
     // Audience tier. null = the historic behaviour (connections see it if it's
     // on the feed). 'innerCircle' narrows it to the owner's Inner Circle list
     // however the feed flag is set, so it can't be widened by accident.
-    // 'public' (Wes, 2026-09-25: "some like being public") widens THIS
-    // check-in to followers and anyone else, past the owner's activity grid.
+    // 'public' (Wes, 2026-09-25: "some like being public"; shown as
+    // "Followers" since 2026-11-02) widens THIS check-in to the owner's
+    // followers and connections, past the owner's activity grid.
     audience: checkInData.isPrivate === true
       ? null
       : (['innerCircle', 'public'].includes(checkInData.audience) ? checkInData.audience : null),

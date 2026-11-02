@@ -104,7 +104,7 @@ const cosine = (a, b) => {
 // read just these fields, so only the compact indexes stay resident.
 const INDEX_FIELDS = {
   users: ['displayName', 'profilePicture', 'isVerified', 'following', 'followers', 'dismissedSuggestions', 'geohash', 'zipcode', 'location', ...HIDDEN_ACCOUNT_FIELDS],
-  circles: ['privacy', 'owner', 'placesCount'],
+  circles: ['privacy', 'owner', 'placesCount', 'deletedAt'],
   places: ['deletedAt', 'addedBy', 'globalPlaceId', 'privacy', 'circleId', 'name', 'category', 'geohash', 'neighborhood'],
   connections: ['status', 'userId', 'connectedUserId']
 };
@@ -147,7 +147,8 @@ const buildIndexes = async ({ usersSnap: preloadedUsers = null } = {}) => {
   const counts = new Map(); // ownerId -> { placesCount, circlesCount }
   const addCircle = (doc) => {
     const c = doc.data();
-    if (c.privacy === 'public') publicCircles.add(doc.id);
+    // A private profile's circles never feed a stranger's suggestion (2026-11-02)
+    if (c.privacy === 'public' && !c.deletedAt && !require('./profilePrivacy').isPrivateProfile(c.owner)) publicCircles.add(doc.id);
     if (!c.owner) return;
     const cur = counts.get(c.owner) || { placesCount: 0, circlesCount: 0 };
     cur.placesCount += (c.placesCount || 0);
@@ -192,9 +193,10 @@ const buildIndexes = async ({ usersSnap: preloadedUsers = null } = {}) => {
     if (p.deletedAt) return;
     if (!p.addedBy || !p.globalPlaceId) return;
 
-    // Only publicly-visible saves. A place is owner-only when its own privacy
-    // is 'private'; otherwise it inherits its circle's visibility.
-    if (p.privacy === 'private') return;
+    // Only publicly-visible saves: a place that inherits its circle or is
+    // itself public. One narrowed to Connections, Inner Circle or Private
+    // never names a venue to a stranger.
+    if (p.privacy && !['public', 'followCircle', 'follow_circle'].includes(p.privacy)) return;
     if (!p.circleId || !publicCircles.has(p.circleId)) return;
 
     if (!savers.has(p.globalPlaceId)) savers.set(p.globalPlaceId, new Set());

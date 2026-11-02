@@ -8,7 +8,6 @@ const { maskEmail } = require('../../utils/text');
 const { COLLECTIONS, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
 const { normalizeUserId, isSameUser } = require('../../services/idService');
 const { buildConnectionMap } = require('../../services/connectionMap');
-const { getInnerCircleGrantorIds } = require('../../utils/networkAccess');
 const { normalizeActivityPrivacy } = require('../../services/activityPrivacy');
 const { excludedUserIds } = require('../../services/moderationService');
 const {
@@ -520,45 +519,20 @@ exports.getUserPublicCircles = async (req, res, next) => {
   try {
     const targetUserId = req.params.id;
     const currentUserId = req.user.uid;
-    
-    // Check if users are connected
-    const connectionSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', currentUserId)
-      .where('connectedUserId', '==', targetUserId)
-      .where('status', '==', 'accepted')
-      .limit(1)
-      .get();
-    
-    const reverseConnectionSnapshot = await db.collection(COLLECTIONS.CONNECTIONS)
-      .where('userId', '==', targetUserId)
-      .where('connectedUserId', '==', currentUserId)
-      .where('status', '==', 'accepted')
-      .limit(1)
-      .get();
-    
-    const isConnected = !connectionSnapshot.empty || !reverseConnectionSnapshot.empty;
-    
-    // Build query based on connection status
-    let circlesQuery = db.collection(COLLECTIONS.CIRCLES)
-      .where('owner', '==', targetUserId);
-    
-    // If not connected, only show public circles
-    if (!isConnected && currentUserId !== targetUserId) {
-      circlesQuery = circlesQuery.where('privacy', '==', 'public');
-    } else if (isConnected) {
-      // If connected, show public and myNetwork circles — plus innerCircle
-      // ones, but only if this person put the viewer on their list.
-      const tiers = ['public', 'myNetwork'];
-      const grantors = await getInnerCircleGrantorIds(currentUserId);
-      if (grantors.has(normalizeUserId(targetUserId)) || grantors.has(String(targetUserId))) {
-        tiers.push('innerCircle');
-      }
-      circlesQuery = circlesQuery.where('privacy', 'in', tiers);
-    }
-    // If viewing own circles, show all
-    
-    const circlesSnapshot = await circlesQuery.get();
-    const circles = serializeQuerySnapshot(circlesSnapshot);
+
+    // Every circle of theirs this viewer may open, by the one rule
+    // (services/visibility.canViewCircle): public ones unless the profile is
+    // private and the viewer doesn't follow, Connections and Inner Circle by
+    // relationship, any circle shared with the viewer by name. Trashed
+    // circles never show.
+    const { buildViewerContext } = require('../../services/viewerContext');
+    const { canViewCircle } = require('../../services/visibility');
+    const [circlesSnapshot, viewerCtx] = await Promise.all([
+      db.collection(COLLECTIONS.CIRCLES).where('owner', '==', targetUserId).get(),
+      buildViewerContext(currentUserId)
+    ]);
+    const circles = serializeQuerySnapshot(circlesSnapshot)
+      .filter(circle => !circle.deletedAt && canViewCircle(circle, currentUserId, viewerCtx));
     
     res.status(200).json({
       success: true,

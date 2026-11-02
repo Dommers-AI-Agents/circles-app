@@ -129,7 +129,8 @@ describe('who qualifies for which column', () => {
     expect(ap.qualifyingAudiences(ctxFor(INSIDER), ACTOR)).toEqual(['public', 'myNetwork', 'innerCircle']);
     expect(ap.qualifyingAudiences(ctxFor(FRIEND), ACTOR)).toEqual(['public', 'myNetwork']);
     expect(ap.qualifyingAudiences(ctxFor(FOLLOWER), ACTOR)).toEqual(['public']);
-    expect(ap.qualifyingAudiences(ctxFor(STRANGER), ACTOR)).toEqual(['public']);
+    // Activity reaches followers only (Wes, 2026-11-02): a stranger qualifies for nothing
+    expect(ap.qualifyingAudiences(ctxFor(STRANGER), ACTOR)).toEqual([]);
   });
 
   test('an inner-circle member passes on myNetwork OR innerCircle — never less than an ordinary connection', () => {

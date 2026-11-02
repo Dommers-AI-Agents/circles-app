@@ -805,6 +805,9 @@ const getUserCircles = async (req, res) => {
     // Does this person follow the viewer? Read from the target's own following
     // array — it powers the profile's "Follow Back" button.
     userData.followsYou = (userData.following || []).includes(currentUserId);
+    // Asked to follow this private profile and still waiting
+    userData.followRequested = !userData.isFollowing && userData.profilePrivate === true
+      && await require('../services/followRequestService').isPending(currentUserId, targetUserId);
 
     // Get circles based on relationship type. Never empty — Firestore's `in`
     // operator throws on an empty array, and everyone can see public circles.
@@ -876,7 +879,7 @@ const getUserCircles = async (req, res) => {
     // Everyone else sees this person's PUBLIC card — the whole user doc
     // (email, phone, device tokens) used to ride along here and in data.user.
     const { projectPublicUser } = require('../services/publicUserProjection');
-    const publicUser = projectPublicUser(userData, ['isFollowing', 'followsYou'], { viewerId: currentUserId });
+    const publicUser = projectPublicUser(userData, ['isFollowing', 'followsYou', 'followRequested'], { viewerId: currentUserId });
 
     // Every viewable circle's places in chunked circleId-in reads (was one
     // query per circle), grouped by circle, newest first
@@ -889,7 +892,15 @@ const getUserCircles = async (req, res) => {
     }
     const newestFirst = (a, b) => new Date(b.data().createdAt || 0) - new Date(a.data().createdAt || 0);
 
-    const circles = await Promise.all(sortedDocs.map(async doc => {
+    // A private profile's Public circles the viewer may not open (they don't
+    // follow) are held back here and come back locked below.
+    // Anything else the viewer can't open (an Inner Circle circle on a list
+    // they're not on) is simply left out.
+    const openDocs = sortedDocs.filter(doc => canViewCircle(doc.data(), currentUserId, viewerCtx));
+    const hiddenPublicDocs = sortedDocs.filter(doc => !openDocs.includes(doc)
+      && require('../services/visibility').normalizePrivacy(doc.data().privacy) === 'public');
+
+    const circles = await Promise.all(openDocs.map(async doc => {
       const circle = serializeDoc(doc);
       circle.ownerDetails = publicUser;
       
@@ -937,25 +948,28 @@ const getUserCircles = async (req, res) => {
     // relationship (either way) gets nothing extra.
     const isOwner = normalizeUserId(currentUserId) === normalizeUserId(targetUserId);
     const { isBlockedEitherWay } = require('../services/moderationService');
-    if (req.query.includeLocked === '1' && !isConnected && !isOwner
+    // A private profile's Public circles show the same way to anyone who
+    // doesn't follow them, offering Follow (Wes, 2026-11-02).
+    if (req.query.includeLocked === '1' && !isOwner
         && !isBlockedEitherWay(req.user, targetUserId) && !isBlockedEitherWay(userData, currentUserId)) {
       const { lockedCircleStub, countConnectionPlaces } = require('../services/circleAccess');
-      const lockedQuery = await db.collection(COLLECTIONS.CIRCLES)
+      const lockedQuery = isConnected ? { docs: [] } : await db.collection(COLLECTIONS.CIRCLES)
         .where('owner', '==', targetUserId)
         .where('privacy', '==', 'myNetwork')
         .get();
       const shown = new Set(circles.map(c => c._id));
       // A circle shared with this viewer by name already came back unlocked
       // from the query above, or opens via sharedWith; never lock it here.
-      const lockedDocs = lockedQuery.docs.filter(doc => !shown.has(doc.id)
-        && !canViewCircle(doc.data(), currentUserId, viewerCtx));
+      const lockedDocs = [...hiddenPublicDocs, ...lockedQuery.docs.filter(doc => !shown.has(doc.id)
+        && !canViewCircle(doc.data(), currentUserId, viewerCtx))];
       if (lockedDocs.length) {
         const stubs = await Promise.all(lockedDocs.map(async doc =>
-          lockedCircleStub(serializeDoc(doc), await countConnectionPlaces(doc.id))));
+          lockedCircleStub(serializeDoc(doc), await countConnectionPlaces(doc.id),
+            hiddenPublicDocs.includes(doc) ? 'follow' : 'connect')));
         // Keep the owner's own arrangement across open and locked circles
         const byId = new Map([...circles, ...stubs].map(c => [c._id, c]));
         const ordered = sortCirclesByUserOrder(
-          [...sortedDocs, ...lockedDocs].map(doc => ({ id: doc.id, ...doc.data() })),
+          [...openDocs, ...lockedDocs].map(doc => ({ id: doc.id, ...doc.data() })),
           userData?.circleOrder
         ).map(c => byId.get(c.id));
         circles.splice(0, circles.length, ...ordered);

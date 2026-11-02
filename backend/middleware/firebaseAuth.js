@@ -207,6 +207,11 @@ exports.protect = async (req, res, next) => {
 };
 
 // Grant access to specific roles (if needed in the future)
+// Signed in when the caller sent a token, anonymous otherwise — for pages a
+// share link opens, where a follower of a private profile still gets in.
+exports.optionalProtect = (req, res, next) =>
+  (req.headers.authorization ? exports.protect(req, res, next) : next());
+
 exports.authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {

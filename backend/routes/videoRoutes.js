@@ -65,8 +65,7 @@ router.get('/metadata', protect, getVideoMetadata);
 // anonymous viewer may (public moments) unless a token comes along — it used
 // to hand private and network moments, video URLs included, to anyone
 // (security audit 2026-10-01).
-const optionalProtect = (req, res, next) =>
-  (req.headers.authorization ? protect(req, res, next) : next());
+const { optionalProtect } = require('../middleware/firebaseAuth');
 
 // Get videos
 router.get('/place/:placeId', protect, getPlaceVideos);

@@ -91,7 +91,7 @@ const isModerationHidden = (video) =>
 /**
  * May this moment be shown to someone we know nothing about — a share link
  * opened in a browser, a link-preview crawler, the no-login details route?
- * Only public, live, un-moderated moments (audit 2026-10-01: these surfaces
+ * Only public, live, un-moderated moments from public profiles (audit 2026-10-01: these surfaces
  * served the place name/address and thumbnail of private moments).
  */
 const isPubliclyViewableMoment = (video) => {
@@ -99,7 +99,9 @@ const isPubliclyViewableMoment = (video) => {
   if (video.deletedAt !== null && video.deletedAt !== undefined) return false;
   if (isModerationHidden(video)) return false;
   if (video.uploadStatus && video.uploadStatus !== 'ready') return false;
-  return normalizePrivacy(video.visibility) === PRIVACY.PUBLIC;
+  if (normalizePrivacy(video.visibility) !== PRIVACY.PUBLIC) return false;
+  // A private profile's moments are for its followers (Wes, 2026-11-02)
+  return !require('./profilePrivacy').isPrivateProfile(video.userId || video.addedBy);
 };
 
 // ---------------------------------------------------------------------------

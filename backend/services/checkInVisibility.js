@@ -25,7 +25,7 @@ const mapGet = (map, id) => (map && (map.get(id) || map.get(normalizeUserId(id))
  * @param {object} checkIn  the stored check-in (userId, notifiedUsers,
  *                          notifiedGroups, showInActivityFeed, isPrivate)
  * @param {string} viewerId
- * @param {object} ctx      { connectionIds: Set<string>,
+ * @param {object} ctx      { connectionIds: Set<string>, following: Set<string>,
  *                            innerCircleGrantors: Set<string>,
  *                            innerCircleLists: Map<string, Set<string>>,
  *                            isInAnyGroup: async (viewerId, groupIds) => bool }
@@ -34,10 +34,15 @@ const isCheckInVisibleTo = async (checkIn, viewerId, ctx) => {
   if (checkIn.userId === viewerId) return true;
   if (isPrivateCheckIn(checkIn)) return false;
   if ((checkIn.notifiedUsers || []).includes(viewerId)) return true;
-  // Marked "Everyone" when it was posted: followers and anyone else, not
-  // only connections. The feed switch still has to be on — off with nobody
+  // Marked "Followers" (stored 'public'): the owner's followers and
+  // connections — activity only ever reaches people who follow you (Wes,
+  // 2026-11-02). The feed switch still has to be on — off with nobody
   // notified is a personal record whatever the audience says.
-  if (checkIn.audience === 'public') return checkIn.showInActivityFeed !== false;
+  if (checkIn.audience === 'public') {
+    const connections = ctx.connections || ctx.connectionIds;
+    return checkIn.showInActivityFeed !== false
+      && (setHas(ctx.following, checkIn.userId) || setHas(connections, checkIn.userId));
+  }
   if (checkIn.audience === 'innerCircle') {
     if (!checkIn.audienceListId) {
       return setHas(ctx.innerCircleGrantors, checkIn.userId);

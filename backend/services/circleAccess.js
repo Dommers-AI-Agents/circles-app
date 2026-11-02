@@ -10,14 +10,15 @@
 // missed when a tier is added.
 //
 // Cheaper than services/viewerContext.js on purpose: it resolves only the
-// relationship the circle's own tier actually needs, so a public circle costs
-// no reads at all and only an Inner Circle one costs two.
+// relationship the circle's own tier actually needs, so a public circle on a
+// public profile costs no reads at all and only an Inner Circle one costs two.
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { normalizePrivacy, PRIVACY } = require('./visibility');
 const { isSameUser } = require('./idService');
 const { listsFrom } = require('./innerCircleLists');
+const { isPrivateProfile } = require('./profilePrivacy');
 
 const db = getFirestore();
 
@@ -25,6 +26,12 @@ const listIncludes = (list, userId) => (list || []).some(id => isSameUser(id, us
 
 /** Accepted connection in either direction (shared helper, utils/networkAccess). */
 const areConnected = (a, b) => require('../utils/networkAccess').areConnected(a, b);
+
+/** Does `viewerId` follow `ownerId`? (one user-doc read, shared per request) */
+const isFollowing = async (viewerId, ownerId) => {
+  const doc = await require('../utils/networkAccess').getUserDocOnce(viewerId);
+  return listIncludes(doc.exists ? doc.data().following : [], ownerId);
+};
 
 /**
  * @param {object} circle   the circle doc (serialized or raw)
@@ -38,7 +45,12 @@ const canViewCircleFor = async (circle, viewerId) => {
   if (listIncludes(circle.sharedWith, viewerId)) return true;
 
   const tier = normalizePrivacy(circle.privacy);
-  if (tier === PRIVACY.PUBLIC) return true;
+  // Public: anyone, unless the owner's profile is private — then followers
+  // and connections only (services/profilePrivacy.js).
+  if (tier === PRIVACY.PUBLIC) {
+    if (!isPrivateProfile(circle.owner)) return true;
+    return (await isFollowing(viewerId, circle.owner)) || areConnected(viewerId, circle.owner);
+  }
   // private, followCircle (meaningless on a circle) and anything we don't
   // recognise all stop here.
   if (tier !== PRIVACY.CONNECTIONS && tier !== PRIVACY.INNER_CIRCLE) return false;
@@ -54,6 +66,17 @@ const canViewCircleFor = async (circle, viewerId) => {
   if (!listId) return listIncludes(ownerDoc.data().innerCircle, viewerId);
   const named = listsFrom(ownerDoc.data()).find(list => list.id === listId);
   return !!named && listIncludes(named.userIds, viewerId);
+};
+
+/**
+ * For the pages a share link opens (no sign-in needed): a public circle opens
+ * for anyone when its owner's profile is public; on a private profile only
+ * for a signed-in follower or connection.
+ */
+const canOpenPublicCircle = async (circle, viewerId) => {
+  if (!circle || !isPrivateProfile(circle.owner)) return true;
+  if (!viewerId) return false;
+  return canViewCircleFor(circle, viewerId);
 };
 
 /**
@@ -82,15 +105,20 @@ const countConnectionPlaces = async (circleId) => {
  * count only — never places, guests, editors or the description. The detail
  * endpoint still refuses it.
  *
+ * A private profile's Public circles are locked the same way for anyone who
+ * doesn't follow them (Wes, 2026-11-02): `lockedReason` 'follow' instead of
+ * 'connect', so the app offers Follow.
+ *
  * @param {object} circle  the serialized circle (`_id`, ISO dates)
  * @param {number} placesCount
+ * @param {'connect'|'follow'} reason
  */
-const lockedCircleStub = (circle, placesCount) => ({
+const lockedCircleStub = (circle, placesCount, reason = 'connect') => ({
   _id: circle._id,
   name: circle.name,
   coverImage: circle.coverImage || null,
   owner: circle.owner,
-  privacy: PRIVACY.CONNECTIONS,
+  privacy: reason === 'follow' ? PRIVACY.PUBLIC : PRIVACY.CONNECTIONS,
   category: circle.category,
   customCategoryId: circle.customCategoryId || null,
   createdAt: circle.createdAt,
@@ -98,7 +126,8 @@ const lockedCircleStub = (circle, placesCount) => ({
   placesCount,
   places: [],
   placesWithDetails: [],
-  locked: true
+  locked: true,
+  lockedReason: reason
 });
 
-module.exports = { canViewCircleFor, areConnected, lockedCircleStub, countConnectionPlaces };
+module.exports = { canViewCircleFor, canOpenPublicCircle, areConnected, lockedCircleStub, countConnectionPlaces };

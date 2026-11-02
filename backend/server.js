@@ -163,6 +163,9 @@ app.use('/api', (req, res, next) => {
 // One memo per GET: connections, Inner Circle lists and the viewer's user doc
 // are read once however many helpers ask (utils/requestMemo).
 app.use('/api', require('./utils/requestMemo').requestMemoMiddleware);
+// Every privacy decision needs the private-profile list; the first requests
+// after a start wait for it (services/profilePrivacy.js)
+app.use(require('./services/profilePrivacy').profilePrivacyReady);
 
 // Vendor webhooks for printed postcards. These MUST be mounted above the
 // JSON parser below: both Stripe and Lob sign the raw request body, and a
@@ -360,7 +363,7 @@ app.use('/s', require('./routes/stickerPublicRoutes'));
 
 // Special route for circle-specific places
 app.get('/api/circles/:circleId/places', protect, getPlacesByCircleId);
-app.get('/api/circles/:circleId/places/public', getPlacesByCircleIdPublic); // Public access endpoint
+app.get('/api/circles/:circleId/places/public', require('./middleware/firebaseAuth').optionalProtect, getPlacesByCircleIdPublic); // Public access endpoint
 app.put('/api/circles/:id/places/reorder', protect, reorderPlacesInCircle);
 
 // 404 handler

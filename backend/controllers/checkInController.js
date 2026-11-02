@@ -35,7 +35,7 @@ const visibleCheckIns = async (docs, userId) => {
     const data = doc.data();
     if (!(await isCheckInVisibleTo(data, userId, ctx))) continue;
     const qualifying = qualifyingAudiences(ctx, data.userId);
-    // Marked "Everyone" by its owner: the grid is for check-ins made without a choice.
+    // Marked "Followers" by its owner: the grid is for check-ins made without a choice.
     if (qualifying !== null && data.audience !== 'public') {
       const allowed = allowedAudiences(settings.get(String(data.userId)), 'checkIns');
       if (!qualifying.some(audience => allowed[audience])) continue;

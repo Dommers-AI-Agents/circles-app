@@ -41,7 +41,7 @@ router.route('/share/validate')
   .post(validateShareToken);
 
 router.route('/:id/public')
-  .get(getCirclePublic);
+  .get(require('../middleware/firebaseAuth').optionalProtect, getCirclePublic);
 
 // Apply auth middleware to all remaining routes
 router.use(protect);
