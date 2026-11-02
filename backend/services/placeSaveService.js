@@ -378,10 +378,8 @@ async function savePlace(user, body) {
 
     // Validate photos - reject Google Places API URLs
     if (placeData.photos && placeData.photos.length > 0) {
-      const invalidPhotos = placeData.photos.filter(photo => 
-        photo.includes('maps.googleapis.com') || 
-        photo.includes('photoreference=')
-      );
+      const { isGooglePhotoLink } = require('./placePhoto');
+      const invalidPhotos = placeData.photos.filter(isGooglePhotoLink);
       
       if (invalidPhotos.length > 0) {
         console.error('❌ Rejected place creation with Google Places API URLs:', invalidPhotos);

@@ -771,132 +771,24 @@ async function resolvedVenueFix(globalPlaceId, user, updateData) {
   return { apply };
 }
 
-// @desc    Migrate Google API photo URLs to Firebase Storage
-// @route   POST /api/places/migrate-photos
-// @access  Private (admin only)
-exports.migrateGooglePhotosToFirebase = async (req, res, next) => {
+// @desc    Re-host (or drop, when Google no longer serves them) the raw Google
+//          photo links left on old saves — services/googlePhotoRehost.js
+// @route   POST /api/places/migrate-photos  { placeId?, dryRun? }
+// @access  Private (super-users only, gated in the route)
+exports.migrateGooglePhotosToFirebase = async (req, res) => {
   try {
-    const userId = req.user.uid;
-    const { placeId, dryRun = false } = req.body;
-    
-    console.log('🔄 Starting photo migration:', { userId, placeId, dryRun });
-    
-    // Import storage service
-    const { downloadAndUploadMultipleImages } = require('../../services/storage');
-    
-    // Query for places with Google API URLs
-    let query = db.collection(COLLECTIONS.PLACES);
-    
-    if (placeId) {
-      // Migrate specific place
-      query = query.where(admin.firestore.FieldPath.documentId(), '==', placeId);
-    }
-    
-    const placesSnapshot = await query.get();
-    
-    const placesToMigrate = [];
-    const migrationResults = [];
-    
-    // Find places with Google API URLs
-    placesSnapshot.forEach(doc => {
-      const place = serializeDoc(doc);
-      
-      if (place.photos && place.photos.length > 0) {
-        const googleUrls = place.photos.filter(photo => 
-          photo.includes('maps.googleapis.com') || 
-          photo.includes('photoreference=')
-        );
-        
-        if (googleUrls.length > 0) {
-          placesToMigrate.push({
-            id: doc.id,
-            name: place.name,
-            photos: place.photos,
-            googleUrls: googleUrls
-          });
-        }
-      }
-    });
-    
-    console.log(`📊 Found ${placesToMigrate.length} places with Google API URLs`);
-    
-    if (dryRun) {
-      return res.status(200).json({
-        success: true,
-        message: 'Dry run complete',
-        placesToMigrate: placesToMigrate.map(p => ({
-          id: p.id,
-          name: p.name,
-          googleUrlCount: p.googleUrls.length
-        }))
-      });
-    }
-    
-    // Process each place
-    for (const place of placesToMigrate) {
-      try {
-        console.log(`Processing place: ${place.name} (${place.id})`);
-        
-        // Download and upload Google photos
-        const { uploadedUrls, errors } = await downloadAndUploadMultipleImages(place.googleUrls);
-        
-        if (uploadedUrls.length > 0) {
-          // Filter out Google Places API URLs and add Firebase URLs
-          const nonGoogleUrls = place.photos.filter(photo => 
-            !photo.includes('maps.googleapis.com') && 
-            !photo.includes('photoreference=')
-          );
-          
-          const newPhotos = [...nonGoogleUrls, ...uploadedUrls];
-          
-          // Update the place in Firestore
-          await db.collection(COLLECTIONS.PLACES).doc(place.id).update({
-            photos: newPhotos,
-            updatedAt: new Date().toISOString()
-          });
-          
-          migrationResults.push({
-            placeId: place.id,
-            placeName: place.name,
-            status: 'success',
-            migratedCount: uploadedUrls.length,
-            failedCount: errors.length
-          });
-          
-          console.log(`✅ Migrated ${uploadedUrls.length} photos for ${place.name}`);
-        } else {
-          migrationResults.push({
-            placeId: place.id,
-            placeName: place.name,
-            status: 'failed',
-            error: 'No photos could be migrated',
-            errors: errors
-          });
-          
-          console.error(`❌ Failed to migrate photos for ${place.name}`);
-        }
-      } catch (error) {
-        console.error(`Error migrating place ${place.id}:`, error);
-        migrationResults.push({
-          placeId: place.id,
-          placeName: place.name,
-          status: 'error',
-          error: error.message
-        });
-      }
-    }
-    
-    const successCount = migrationResults.filter(r => r.status === 'success').length;
-    const failedCount = migrationResults.filter(r => r.status !== 'success').length;
-    
+    const { placeId = null, dryRun = false } = req.body || {};
+    const { rehostGooglePhotos } = require('../../services/googlePhotoRehost');
+    const results = await rehostGooglePhotos({ placeId, dryRun: dryRun === true });
+    const rows = results.map(({ before, ...row }) => row);
     res.status(200).json({
       success: true,
-      message: `Migration complete: ${successCount} succeeded, ${failedCount} failed`,
-      results: migrationResults
+      message: dryRun === true
+        ? `Dry run: ${rows.length} saves hold Google photo links`
+        : `Cleaned ${rows.length} saves: ${rows.reduce((n, r) => n + r.rehosted, 0)} re-hosted, ${rows.reduce((n, r) => n + r.dropped, 0)} dropped`,
+      results: rows
     });
-    
   } catch (error) {
-    console.error('Error in photo migration:', error);
-    next(error);
+    sendServiceError(res, error, { log: '❌ migrateGooglePhotosToFirebase failed', fallbackMessage: 'Photo clean-up failed' });
   }
 };

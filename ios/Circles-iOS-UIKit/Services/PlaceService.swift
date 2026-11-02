@@ -1702,26 +1702,6 @@ class PlaceService {
             }
         )
     }
-    
-    // MARK: - Photo Migration
-    
-    /// Migrates Google Photos API URLs to Firebase Storage
-    func migrateGooglePhotosToFirebase(completion: @escaping (Result<Bool, Error>) -> Void) {
-        api.request(
-            endpoint: "places/migrate-photos",
-            method: .post,
-            requiresAuth: true
-        ) { (result: Result<APIResponse<Bool>, APIError>) in
-            switch result {
-            case .success:
-                Logger.info("PlaceService: Photo migration completed successfully")
-                completion(.success(true))
-            case .failure(let error):
-                Logger.error("PlaceService: Photo migration failed: \(error.localizedDescription)")
-                completion(.failure(error))
-            }
-        }
-    }
 }
 
 // MARK: - Response Types

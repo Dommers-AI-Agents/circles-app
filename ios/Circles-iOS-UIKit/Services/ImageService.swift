@@ -318,18 +318,11 @@ class ImageService {
             }
             
             if let httpResponse = response as? HTTPURLResponse {
-                if httpResponse.statusCode == 400 || httpResponse.statusCode == 403 {
-                    Logger.error("ImageService: Google API URL expired or invalid (HTTP \(httpResponse.statusCode))")
-                    Logger.info("ImageService: Attempting automatic photo migration...")
-                    
-                    // Try to automatically migrate photos for this place
-                    self?.attemptPhotoMigration(for: urlString) { migratedImage in
-                        DispatchQueue.main.async {
-                            completion(migratedImage)
-                        }
-                    }
-                    return
-                } else if httpResponse.statusCode != 200 {
+                // An expired link stays dead: old saves held raw Google photo
+                // links whose references expired, and asking the server to
+                // migrate every place on each broken image never brought one
+                // back (the server cleans them up itself, 2026-11-02).
+                if httpResponse.statusCode != 200 {
                     Logger.error("ImageService: Google API returned HTTP \(httpResponse.statusCode)")
                     DispatchQueue.main.async {
                         completion(nil)
@@ -430,72 +423,4 @@ class ImageService {
         Logger.info("ImageService: Cleared activity feed image cache entries")
     }
     
-    // MARK: - Photo Migration
-    
-    // A feed full of expired Google photos must not fire one GLOBAL migration
-    // per image — one at a time is plenty (it migrates everything anyway).
-    private var isMigrationInFlight = false
-
-    /// Attempts to automatically migrate Google API photos to Firebase Storage
-    private func attemptPhotoMigration(for originalUrl: String, completion: @escaping (UIImage?) -> Void) {
-        inFlightLock.lock()
-        if isMigrationInFlight {
-            inFlightLock.unlock()
-            Logger.debug("ImageService: Photo migration already running — skipping duplicate trigger")
-            completion(nil)
-            return
-        }
-        isMigrationInFlight = true
-        inFlightLock.unlock()
-
-        Logger.info("ImageService: Starting automatic photo migration for URL: \(originalUrl)")
-
-        // Extract place ID from the URL if possible
-        // For now, trigger global migration and retry the image
-        PlaceService.shared.migrateGooglePhotosToFirebase { [weak self] result in
-            self?.inFlightLock.lock()
-            self?.isMigrationInFlight = false
-            self?.inFlightLock.unlock()
-            switch result {
-            case .success:
-                Logger.info("ImageService: Photo migration completed successfully")
-                
-                // Wait a moment for migration to complete, then retry the original URL
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                    // Try to download from the original URL again in case it's been updated
-                    self?.downloadImageWithoutMigration(from: originalUrl, completion: completion)
-                }
-                
-            case .failure(let error):
-                Logger.error("ImageService: Photo migration failed: \(error.localizedDescription)")
-                completion(nil)
-            }
-        }
-    }
-    
-    /// Downloads image without triggering migration (used after migration attempt)
-    private func downloadImageWithoutMigration(from urlString: String, completion: @escaping (UIImage?) -> Void) {
-        guard let url = URL(string: urlString) else {
-            completion(nil)
-            return
-        }
-        
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            guard let data = data,
-                  let image = self.decodedImage(from: data),
-                  error == nil else {
-                Logger.info("ImageService: Migration retry failed, image still not available")
-                DispatchQueue.main.async { completion(nil) }
-                return
-            }
-
-            Logger.info("ImageService: Successfully loaded image after migration")
-
-            // Cache the image
-            let cacheKey = NSString(string: urlString)
-            self.cache.setObject(image, forKey: cacheKey, cost: self.cost(of: image))
-            
-            DispatchQueue.main.async { completion(image) }
-        }.resume()
-    }
 }

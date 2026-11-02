@@ -16,6 +16,12 @@ const urlOf = (photo) => {
   return (photo && typeof photo.url === 'string') ? photo.url : null;
 };
 
+/** A raw Google Places photo link (bills per render and carries our API key), in either shape. */
+const isGooglePhotoLink = (photo) => {
+  const url = urlOf(photo);
+  return !!url && (url.includes('maps.googleapis.com') || url.includes('photoreference='));
+};
+
 /** First usable URL in a photos array of either shape, or null. */
 const firstPhotoUrl = (photos) => {
   for (const photo of Array.isArray(photos) ? photos : []) {
@@ -57,4 +63,4 @@ const resolvePlacePhoto = async ({ placeId = null, save = null, globalPlaceId = 
   }
 };
 
-module.exports = { firstPhotoUrl, venuePhotoUrl, resolvePlacePhoto };
+module.exports = { firstPhotoUrl, venuePhotoUrl, resolvePlacePhoto, urlOf, isGooglePhotoLink };
