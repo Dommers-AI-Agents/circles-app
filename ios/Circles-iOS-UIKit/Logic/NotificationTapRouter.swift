@@ -130,7 +130,10 @@ enum NotificationTapRouter {
         case "event_invite":
             if let token = string("eventToken", in: userInfo) { return .eventInvite(token: token) }
             return .homeWidget(id: "events")
-        case "event_joined", "event_photos", "event_challenge", "event_rollcall", "event_rollcall_ping":
+        // event_rsvp / event_message / event_reminder: replies, the coordinator's
+        // message and the day-before reminder (email invites, 2026-11-02)
+        case "event_joined", "event_photos", "event_challenge", "event_rollcall", "event_rollcall_ping",
+             "event_rsvp", "event_message", "event_reminder":
             if let id = string("eventId", in: userInfo) { return .eventOpen(id: id) }
             return .homeWidget(id: "events")
         case "run_live_invite", "run_live_split", "run_live_finished", "run_cheer", "run_watcher_joined":

@@ -31,7 +31,7 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "event_invite", "eventToken": "tok"]) == .eventInvite(token: "tok"))
         #expect(route(["type": "event_photos", "eventId": "e1"]) == .eventOpen(id: "e1"))
         // 2026-10-06: challenges and roll call open the event too
-        for type in ["event_challenge", "event_rollcall", "event_rollcall_ping"] {
+        for type in ["event_challenge", "event_rollcall", "event_rollcall_ping", "event_rsvp", "event_message", "event_reminder"] {
             #expect(route(["type": type, "eventId": "e1"]) == .eventOpen(id: "e1"))
         }
         // FavRun: invites, miles, finish, cheers all open the run

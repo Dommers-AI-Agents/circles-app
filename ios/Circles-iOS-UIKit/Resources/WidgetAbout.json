@@ -1,9 +1,12 @@
 {
  "events": {
   "name": "Events",
-  "tagline": "Party bus, trip or night out: photos and videos only your group sees.",
+  "tagline": "Parties, trips and nights out: invite anyone by email, see who's coming, and share one album.",
   "features": [
-   "Start an event and drop one link in the group text, or invite friends in the app",
+   "Set the date, time, place and details, and drop one link in the group text, or invite friends in the app",
+   "Invite anyone by email, no app needed: they tap Going, Maybe or Can't go, say how many adults and kids, and leave you a note",
+   "See every reply and head count in one guest list, get a notification as people answer, resend an invite, and message your guests",
+   "Add to calendar, directions, and a reminder the day before for everyone coming",
    "A shared album of photos and videos only the people who joined can see, from the camera or your photo library",
    "Video clips up to 15 seconds free (5 per event), or up to a minute with Premium",
    "Download every photo and video of the night to your Photos in one tap, zoom in on any photo, and save or share a single clip",
