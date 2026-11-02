@@ -726,6 +726,10 @@ class PlaceDetailViewController: BaseViewController {
         // An order in progress comes before everything else on the page
         contentView.addSubview(orderBannerView)
         orderBannerView.onTap = { [weak self] order in self?.openMyOrder(order) }
+        orderBannerView.onTicketTap = { [weak self] ticket in
+            guard let self else { return }
+            RewardTicketBar.present(ticket, from: self)
+        }
         contentView.addSubview(checkInStripView)
         // The ⓘ leads the row, before Check In, instead of squeezed between
         // the buttons (Wes, 2026-11-02)
@@ -3599,10 +3603,6 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         WalletCardPresenter.present(venueId: venue.venueId, from: self)
     }
 
-    func placeVenueView(_ view: PlaceVenueRewardsView, didTapTicket ticket: RewardVoucher) {
-        RewardTicketBar.present(ticket, from: self)
-    }
-
     func placeVenueViewDidTapStats(_ view: PlaceVenueRewardsView, venue: PlaceVenue) {
         let dashboardVC = VenueDashboardViewController(venueId: venue.venueId, venueName: venue.venueName)
         navigationController?.pushViewController(dashboardVC, animated: true)
@@ -3860,7 +3860,12 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
         // team has Manage Store). Same menu as the store card's button.
         orderButton.isHidden = data.isOwner == true || orderingMenu(from: data) == nil
         // The customer's open order, above everything else on the page
-        orderBannerView.configure(orders: data.isOwner == true ? [] : (data.myOrders ?? [data.myOrder].compactMap { $0 }))
+        // The customer's open reward ticket and open orders, first thing on the page
+        let ticket = data.isOwner == true ? nil : data.venue.flatMap {
+            RewardsService.shared.activeTicket(venueId: $0.venueId, venueName: $0.venueName)
+        }
+        orderBannerView.configure(orders: data.isOwner == true ? [] : (data.myOrders ?? [data.myOrder].compactMap { $0 }),
+                                  ticket: ticket)
         orderBannerGap?.constant = orderBannerView.isHidden ? 0 : Constants.Spacing.small
         venueRewardsView.configure(with: data)
         // The card shows for enrolled venues AND for the venue-less

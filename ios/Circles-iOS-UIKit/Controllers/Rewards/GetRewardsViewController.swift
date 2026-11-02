@@ -140,12 +140,17 @@ final class GetRewardsViewController: BaseViewController {
         if navigationController?.viewControllers.first === self {
             navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .close, target: self, action: #selector(closeTapped))
         }
-        // See-through bar over the photo, for this page only
+        // See-through bar over the photo; once the page scrolls, a solid
+        // bar, so nothing slides under the clock (Wes, 2026-11-02)
         let clear = UINavigationBarAppearance()
         clear.configureWithTransparentBackground()
-        navigationItem.standardAppearance = clear
+        let solid = UINavigationBarAppearance()
+        solid.configureWithDefaultBackground()
+        navigationItem.standardAppearance = solid
+        navigationItem.compactAppearance = solid
         navigationItem.scrollEdgeAppearance = clear
-        navigationItem.compactAppearance = clear
+        navigationItem.compactScrollEdgeAppearance = clear
+        setContentScrollView(scrollView, for: .top)
 
         layout()
         render()
@@ -255,23 +260,10 @@ final class GetRewardsViewController: BaseViewController {
 
     /// How to earn: one card, one button
     private func earnSection() -> UIView {
-        let icon = UIImageView(image: UIImage(systemName: "qrcode"))
-        icon.tintColor = Constants.Colors.primary
-        icon.contentMode = .scaleAspectFit
-        icon.setContentHuggingPriority(.required, for: .horizontal)
-        icon.widthAnchor.constraint(equalToConstant: 30).isActive = true
-        let title = Self.label(size: Constants.FontSize.large, weight: .semibold)
-        title.text = "Earn at the register"
-        let body = Self.label(size: Constants.FontSize.medium, weight: .regular)
+        let body = Self.label(size: Constants.FontSize.large, weight: .regular)
         body.text = "After you buy something, scan the FavCircles QR code by the register. Ask staff if you can't find it. You can earn once a day."
-        let text = UIStackView(arrangedSubviews: [title, body])
-        text.axis = .vertical
-        text.spacing = Constants.Spacing.tiny
-        let top = UIStackView(arrangedSubviews: [icon, text])
-        top.spacing = Constants.Spacing.small
-        top.alignment = .top
-        let card = Self.card([top, scanButton])
-        return card
+        return Self.sectionCard(title: "Earn at the register", symbol: "qrcode", tint: Constants.Colors.primary,
+                                rows: [body, scanButton], dividers: false)
     }
 
     /// Whether this page is for the store at `placeId` (venue or save id)
@@ -393,7 +385,6 @@ final class GetRewardsViewController: BaseViewController {
             return
         }
         statsSlot.isHidden = false
-        statsSlot.addArrangedSubview(Self.sectionHeader("You at \(details.venueName)"))
         let tiles = UIStackView(arrangedSubviews: [
             Self.statTile(value: history.visits, label: history.visits == 1 ? "Visit" : "Visits", symbol: "figure.walk"),
             Self.statTile(value: history.earned, label: "Points earned", symbol: "star.fill"),
@@ -401,20 +392,19 @@ final class GetRewardsViewController: BaseViewController {
         ])
         tiles.distribution = .fillEqually
         tiles.spacing = Constants.Spacing.xsmall
-        statsSlot.addArrangedSubview(tiles)
         let line = Self.label(size: Constants.FontSize.medium, weight: .regular, color: Constants.Colors.secondaryLabel)
         line.text = StoreRewardsCopy.lastVisitLine(history)
-        statsSlot.addArrangedSubview(line)
+        statsSlot.addArrangedSubview(Self.sectionCard(title: "You at \(details.venueName)", symbol: "person.fill",
+                                                      tint: Constants.Colors.primary, rows: [tiles, line], dividers: false))
     }
 
     private func renderOffers() {
         offersStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         offersStack.isHidden = details.offers.isEmpty
         guard !details.offers.isEmpty else { return }
-        offersStack.addArrangedSubview(Self.sectionHeader("What your points get you here"))
-        for offer in details.offers.sorted(by: { $0.pointsCost < $1.pointsCost }) {
-            offersStack.addArrangedSubview(offerRow(offer))
-        }
+        let rows = details.offers.sorted(by: { $0.pointsCost < $1.pointsCost }).map(offerRow)
+        offersStack.addArrangedSubview(Self.sectionCard(title: "What your points get you", symbol: "gift.fill",
+                                                        tint: Constants.Colors.success, rows: rows))
     }
 
     /// The customer's latest moves here: visits, rewards, points back
@@ -423,14 +413,8 @@ final class GetRewardsViewController: BaseViewController {
         let rows = history?.recent ?? []
         historyStack.isHidden = rows.isEmpty
         guard !rows.isEmpty else { return }
-        historyStack.addArrangedSubview(Self.sectionHeader("Your recent activity"))
-        historyStack.setCustomSpacing(Constants.Spacing.small, after: historyStack.arrangedSubviews[0])
-        let list = Self.vertical(spacing: 0)
-        for (index, row) in rows.enumerated() {
-            if index > 0 { list.addArrangedSubview(Self.separator()) }
-            list.addArrangedSubview(historyRow(row))
-        }
-        historyStack.addArrangedSubview(Self.card([list], margins: UIEdgeInsets(top: 4, left: 14, bottom: 4, right: 14)))
+        historyStack.addArrangedSubview(Self.sectionCard(title: "Your recent activity", symbol: "clock.fill",
+                                                         tint: Constants.Colors.info, rows: rows.map(historyRow)))
     }
 
     private func historyRow(_ row: VenueRewardHistory.Row) -> UIView {
@@ -471,14 +455,14 @@ final class GetRewardsViewController: BaseViewController {
         walletSlot.arrangedSubviews.forEach { $0.removeFromSuperview() }
         walletSlot.isHidden = !(WalletCardPresenter.isAvailable && venueId != nil)
         guard let venueId, WalletCardPresenter.isAvailable else { return }
-        walletSlot.addArrangedSubview(Self.sectionHeader("Keep it in Apple Wallet"))
-        let caption = Self.label(size: Constants.FontSize.medium, weight: .regular, color: Constants.Colors.secondaryLabel)
+        let caption = Self.label(size: Constants.FontSize.large, weight: .regular)
         caption.text = "Your points at \(details.venueName) on your lock screen when you're nearby. Tap the card to come back here and redeem."
-        walletSlot.addArrangedSubview(caption)
-        walletSlot.addArrangedSubview(WalletCardPresenter.makeButton { [weak self] in
+        let button = WalletCardPresenter.makeButton { [weak self] in
             guard let self else { return }
             WalletCardPresenter.present(venueId: venueId, from: self)
-        })
+        }
+        walletSlot.addArrangedSubview(Self.sectionCard(title: "Keep it in Apple Wallet", symbol: "wallet.pass.fill",
+                                                       tint: Constants.Colors.gray, rows: [caption, button], dividers: false))
     }
 
     // MARK: - Redeem
@@ -499,9 +483,8 @@ final class GetRewardsViewController: BaseViewController {
         let posts = Array(details.announcements.prefix(3))
         announcementsStack.isHidden = posts.isEmpty
         guard !posts.isEmpty else { return }
-        announcementsStack.addArrangedSubview(Self.sectionHeader("What's on at \(details.venueName)"))
-        for post in posts {
-            let title = Self.label(size: Constants.FontSize.large, weight: .medium)
+        let rows: [UIView] = posts.map { post in
+            let title = Self.label(size: Constants.FontSize.large, weight: .semibold)
             title.text = post.title
             let message = Self.label(size: Constants.FontSize.medium, weight: .regular)
             message.text = post.message
@@ -509,18 +492,21 @@ final class GetRewardsViewController: BaseViewController {
             row.axis = .vertical
             row.spacing = Constants.Spacing.tiny
             row.isLayoutMarginsRelativeArrangement = true
-            row.layoutMargins = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-            row.backgroundColor = Constants.Colors.secondaryBackground
-            row.layer.cornerRadius = 10
-            announcementsStack.addArrangedSubview(row)
+            row.layoutMargins = UIEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
+            return row
         }
+        announcementsStack.addArrangedSubview(Self.sectionCard(title: "What's on at \(details.venueName)", symbol: "megaphone.fill",
+                                                               tint: Constants.Colors.brightOrange, rows: rows))
     }
 
     private func offerRow(_ offer: RewardsAvailability.Offer) -> UIView {
         let title = Self.label(size: Constants.FontSize.large, weight: .medium)
         title.text = offer.title
-        let cost = Self.label(size: Constants.FontSize.medium, weight: .semibold,
-                              color: offer.pointsCost <= details.venueBalance ? Constants.Colors.primary : Constants.Colors.secondaryLabel)
+        let affordable = offer.pointsCost <= details.venueBalance
+        let cost = PaddedPillLabel()
+        cost.font = .systemFont(ofSize: Constants.FontSize.medium, weight: .bold)
+        cost.textColor = affordable ? Constants.Colors.success : Constants.Colors.secondaryLabel
+        cost.backgroundColor = (affordable ? Constants.Colors.success : Constants.Colors.gray).withAlphaComponent(0.15)
         cost.text = "\(offer.pointsCost) pts"
         cost.setContentHuggingPriority(.required, for: .horizontal)
         cost.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -529,6 +515,7 @@ final class GetRewardsViewController: BaseViewController {
         // Enough points: Redeem right in the row
         if offer.pointsCost <= details.venueBalance, let match = self.offer(titled: offer.title, cost: offer.pointsCost) {
             let redeem = UIButton.smallActionButton(title: "Redeem", style: .primary)
+            redeem.contentEdgeInsets = UIEdgeInsets(top: 7, left: 14, bottom: 7, right: 14)
             redeem.setContentHuggingPriority(.required, for: .horizontal)
             redeem.setContentCompressionResistancePriority(.required, for: .horizontal)
             redeem.addAction(UIAction { [weak self] _ in self?.redeem(match) }, for: .touchUpInside)
@@ -536,11 +523,9 @@ final class GetRewardsViewController: BaseViewController {
         }
         let row = UIStackView(arrangedSubviews: parts)
         row.spacing = Constants.Spacing.small
-        row.alignment = parts.count > 2 ? .center : .firstBaseline
+        row.alignment = .center
         row.isLayoutMarginsRelativeArrangement = true
-        row.layoutMargins = UIEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-        row.backgroundColor = Constants.Colors.secondaryBackground
-        row.layer.cornerRadius = 10
+        row.layoutMargins = UIEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
         return row
     }
 
@@ -588,10 +573,45 @@ final class GetRewardsViewController: BaseViewController {
         return label
     }
 
-    private static func sectionHeader(_ title: String) -> UILabel {
-        let label = label(size: Constants.FontSize.xlarge, weight: .bold)
-        label.text = title
-        return label
+    /// A section of the page: its own card, a colored icon and title on
+    /// top, the rows below, divided. Each section reads as its own block
+    /// (Wes, 2026-11-02: the rewards and "What's on" blended together).
+    private static func sectionCard(title: String, symbol: String, tint: UIColor, rows: [UIView], dividers: Bool = true) -> UIView {
+        let chip = UIView()
+        chip.backgroundColor = tint.withAlphaComponent(0.18)
+        chip.layer.cornerRadius = 10
+        let icon = UIImageView(image: UIImage(systemName: symbol))
+        icon.tintColor = tint
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        chip.addSubview(icon)
+        chip.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            chip.widthAnchor.constraint(equalToConstant: 34),
+            chip.heightAnchor.constraint(equalToConstant: 34),
+            icon.centerXAnchor.constraint(equalTo: chip.centerXAnchor),
+            icon.centerYAnchor.constraint(equalTo: chip.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 18),
+            icon.heightAnchor.constraint(equalToConstant: 18)
+        ])
+        let titleLabel = label(size: Constants.FontSize.xlarge, weight: .bold)
+        titleLabel.text = title
+        titleLabel.accessibilityTraits = .header
+        let header = UIStackView(arrangedSubviews: [chip, titleLabel])
+        header.spacing = Constants.Spacing.small
+        header.alignment = .center
+
+        let body = vertical(spacing: dividers ? 0 : Constants.Spacing.small)
+        for (index, row) in rows.enumerated() {
+            if dividers && index > 0 { body.addArrangedSubview(separator()) }
+            body.addArrangedSubview(row)
+        }
+        let card = card([header, body], margins: UIEdgeInsets(top: 14, left: 16, bottom: dividers ? 6 : 16, right: 16))
+        card.spacing = Constants.Spacing.small
+        card.layer.cornerRadius = 18
+        card.layer.borderWidth = 1
+        card.layer.borderColor = tint.withAlphaComponent(0.35).cgColor
+        return card
     }
 
     private static func vertical(spacing: CGFloat) -> UIStackView {
@@ -634,6 +654,7 @@ final class GetRewardsViewController: BaseViewController {
         caption.text = text
         caption.textAlignment = .center
         let tile = card([icon, number, caption], margins: UIEdgeInsets(top: 12, left: 6, bottom: 12, right: 6))
+        tile.backgroundColor = Constants.Colors.tertiaryBackground
         tile.spacing = 2
         tile.alignment = .fill
         tile.isAccessibilityElement = true

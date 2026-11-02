@@ -5,9 +5,12 @@ import UIKit
 /// small print down the page). One filled, tappable card per open order
 /// (two orders never hide each other): the store, the status with the
 /// ready time, and a chevron into the status screen.
+/// A redeemed reward waiting to be handed over goes first, the same way
+/// (Wes, 2026-11-02: "at the top of the place page like Order Status").
 final class PlaceOrderBannerView: UIStackView {
 
     var onTap: ((StoreOrder) -> Void)?
+    var onTicketTap: ((RewardVoucher) -> Void)?
 
     /// Outside a stack view a hidden view keeps its height, so collapse it
     private lazy var collapsed = heightAnchor.constraint(equalToConstant: 0)
@@ -23,17 +26,23 @@ final class PlaceOrderBannerView: UIStackView {
 
     required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Shows every open order, or hides itself when there is none
-    func configure(orders: [StoreOrder]) {
+    /// Shows the open reward ticket and every open order, or hides itself
+    /// when there's neither
+    func configure(orders: [StoreOrder], ticket: RewardVoucher? = nil) {
         arrangedSubviews.forEach { $0.removeFromSuperview() }
         let open = orders.filter { $0.isOpen }
-        guard !open.isEmpty else {
+        guard !open.isEmpty || ticket != nil else {
             isHidden = true
             collapsed.isActive = true
             return
         }
         collapsed.isActive = false
         isHidden = false
+        if let ticket {
+            let bar = RewardTicketBar(ticket: ticket)
+            bar.onTap = { [weak self] ticket in self?.onTicketTap?(ticket) }
+            addArrangedSubview(bar)
+        }
         for order in open {
             let card = PlaceOrderCard()
             card.configure(order: order)
