@@ -81,7 +81,7 @@ const normalizeAudience = (raw: string): (typeof ACTIVITY_AUDIENCES)[number] | n
 };
 
 const TIER_LABEL: Record<string, string> = {
-  public: "Public — anyone, including your followers",
+  public: "Public — anyone who can see your profile (everyone, or only followers and connections when the profile is private)",
   myNetwork: "Connections — people who accepted your request",
   innerCircle: "Inner Circle — only the people on your list",
   private: "Private — only you",
@@ -246,6 +246,7 @@ Conventions:
 - Deletions are two-tier: delete_* moves items to a recoverable trash; permanently_delete_* is irreversible. Always get explicit user confirmation before any delete, and name the exact item being deleted.
 - Never fabricate places or attribute recommendations to people who didn't make them.
 - Privacy exists at BOTH levels. A circle has a tier, and so does every place: \`followCircle\` (the default, meaning it inherits its circle) or its own \`public\`/\`myNetwork\`/\`innerCircle\`/\`private\`, which narrows what the circle allows. Every place this server returns carries \`privacy\` and \`privacyMeaning\` — read them rather than concluding from a place's other fields that per-place privacy does not exist. Use get_privacy_overview for an audit and set_privacy to change either level.
+- Profiles are public (default: anyone can open them and see public items) or private (only followers and connections see them, and following needs the owner's approval in Settings → Privacy → Follow Requests). Activity updates reach only followers and connections either way.
 - On top of item privacy there is one account-level "who can see my activity" grid: for each activity category (check-ins, photos at a place, moments, saved places, likes & comments, new circles) which audiences (public/followers, connections, Inner Circle) may see the activity. It only narrows; a place's own privacy still applies. get_privacy_overview shows it; set_activity_privacy changes cells (e.g. "hide my check-ins from everyone but my Inner Circle").
 
 Importing places: users can bring their saved-place history from Mapstr, Google Maps (Takeout), or Swarm/Foursquare (personal data export) by sharing the export file with you. YOU parse the file (any format), normalize it, and use prepare_place_import → user confirmation → execute_place_import. Never invent coordinates — only pass lat/lng found in the file; rows without them import unmapped, which is correct. Aggregate repeat Swarm check-ins into one place with visitCount.
@@ -2512,7 +2513,7 @@ export function registerPrivacyTools(server: McpServer, backend: Backend): void 
     {
       title: "Change who can see your activity",
       description:
-        "Check or uncheck cells of the account-level activity grid: for an activity category (checkIns, photos, moments, savedPlaces, likesComments, circles) whether an audience (public = anyone incl. followers, connections, innerCircle) may see it. Only narrows: a place's own privacy still applies. Example: to hide check-ins and photos from everyone but the Inner Circle, set public=false and connections=false for those two categories. Confirm the exact cells with the user first.",
+        "Check or uncheck cells of the account-level activity grid: for an activity category (checkIns, photos, moments, savedPlaces, likesComments, circles) whether an audience (public = the user's followers and connections — activity never reaches people who don't follow them; connections; innerCircle) may see it. Only narrows: a place's own privacy still applies. Example: to hide check-ins and photos from everyone but the Inner Circle, set public=false and connections=false for those two categories. Confirm the exact cells with the user first.",
       inputSchema: {
         changes: z
           .array(
