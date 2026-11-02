@@ -493,6 +493,20 @@ exports.getVenueByPlace = async (req, res) => {
     // reaches the store's codes and tools through "Print Store QR Codes".
     const isOwner = isVenueTeamMember(venue, userId);
 
+    // Get Rewards asks for the caller's own history here (?history=1);
+    // the place page doesn't, so it pays nothing for it. Never fails the page.
+    // It also gets the store's cover photo for its header. Started now so it
+    // runs alongside the lookups below.
+    const extrasPromise = req.query.history === '1' && !isOwner
+      ? Promise.all([
+        require('../../services/rewardHistoryService').forUserAtVenue(userId, venue.venueId).catch((historyError) => {
+          console.error('⚠️ Reward history lookup failed (page continues):', historyError.message);
+          return undefined;
+        }),
+        require('../../services/storeCoverPhoto').coverUrlFor(venue).catch(() => null)
+      ])
+      : Promise.resolve([undefined, undefined]);
+
     // Claim state only matters while the venue is unowned
     let claim = { canClaim: false, myClaimStatus: null };
     if (!venue.ownerUserId) {
@@ -526,20 +540,8 @@ exports.getVenueByPlace = async (req, res) => {
       console.error('⚠️ Open-order lookup failed (place page continues):', orderError.message);
     }
 
-    // Get Rewards asks for the caller's own history here (?history=1);
-    // the place page doesn't, so it pays nothing for it. Never fails the page.
-    // It also gets the store's cover photo for its header.
-    let myHistory;
-    let coverPhotoUrl;
-    if (req.query.history === '1' && !isOwner) {
-      [myHistory, coverPhotoUrl] = await Promise.all([
-        require('../../services/rewardHistoryService').forUserAtVenue(userId, venue.venueId).catch((historyError) => {
-          console.error('⚠️ Reward history lookup failed (page continues):', historyError.message);
-          return undefined;
-        }),
-        require('../../services/storeCoverPhoto').coverUrlFor(venue).catch(() => null)
-      ]);
-    }
+    // Started up top, alongside everything else
+    const [myHistory, coverPhotoUrl] = await extrasPromise;
 
     res.json({
       success: true,

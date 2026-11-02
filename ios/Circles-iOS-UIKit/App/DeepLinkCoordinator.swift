@@ -98,6 +98,8 @@ final class DeepLinkCoordinator: SceneCoordinator {
             Logger.debug("📱 SceneDelegate: Unrecognized deep link: \(url.absoluteString)")
             return
         }
+        // A store's rewards waits for the interface itself, and loads meanwhile
+        if case .storeRewards = destination { return route(destination) }
         // Scheme links can arrive before the interface is fully up — give it a beat
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.route(destination)
@@ -327,42 +329,61 @@ final class DeepLinkCoordinator: SceneCoordinator {
     /// Took three taps on Wes's phone: on a cold launch the link landed
     /// before the tabs were up and lost its "rewards" part, and the place page
     /// opening Get Rewards when its data arrived raced its own push (Rewards
-    /// showed, then the page jumped back). Now: wait for the tabs, fetch the
-    /// place and its rewards, then put the place page AND Get Rewards on the
-    /// stack in one move.
-    func navigateToStoreRewards(placeId: String, attempts: Int = 16) {
+    /// showed, then the page jumped back). Now the store and its rewards load
+    /// side by side the moment the link arrives (the wait was ~5 s as three
+    /// trips in a row behind the launch), and once the tabs are up the place
+    /// page AND Get Rewards go on the stack in one move.
+    func navigateToStoreRewards(placeId: String) {
         guard AuthService.shared.isLoggedIn else {
             UserDefaults.standard.set("rewards:\(placeId)", forKey: "pendingDeepLink")
             return
         }
-        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
-            guard attempts > 0 else {
-                UserDefaults.standard.set("rewards:\(placeId)", forKey: "pendingDeepLink")
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.navigateToStoreRewards(placeId: placeId, attempts: attempts - 1)
-            }
-            return
-        }
         // A second tap while the page is already up just refreshes it
-        if let nav = tabBarController.selectedViewController as? UINavigationController,
+        if let tabBarController = window?.rootViewController as? CirclesTabBarController,
+           let nav = tabBarController.selectedViewController as? UINavigationController,
            let open = nav.topViewController as? GetRewardsViewController, open.showsStore(placeId: placeId),
            tabBarController.presentedViewController == nil {
             open.loadData()
             return
         }
-        PlaceService.shared.fetchPlaceById(id: placeId) { result in
-            guard case .success(let place) = result else {
-                DispatchQueue.main.async { [weak self] in self?.navigateToPlace(placeId: placeId) }
+        var place: Place?
+        var data: PlaceVenueData?
+        let group = DispatchGroup()
+        group.enter()
+        PlaceService.shared.fetchPlacePreferringGlobal(id: placeId) { result in
+            DispatchQueue.main.async {
+                place = try? result.get()
+                group.leave()
+            }
+        }
+        group.enter()
+        RewardsService.shared.getVenueByPlace(placeId: placeId, includeHistory: true) { result in
+            DispatchQueue.main.async {
+                data = try? result.get()
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let place else {
+                self?.navigateToPlace(placeId: placeId)
                 return
             }
-            RewardsService.shared.getVenueByPlace(placeId: place.globalPlaceId ?? placeId, googlePlaceId: place.googlePlaceId,
-                                                  includeHistory: true) { venueResult in
-                DispatchQueue.main.async {
-                    self.showStoreRewards(place: place, data: try? venueResult.get(), in: tabBarController)
-                }
-            }
+            self?.showStoreRewardsWhenReady(place: place, data: data, attempts: 20)
+        }
+    }
+
+    /// Cold launch: the tabs may still be coming up when the data is in
+    private func showStoreRewardsWhenReady(place: Place, data: PlaceVenueData?, attempts: Int) {
+        if let tabBarController = window?.rootViewController as? CirclesTabBarController {
+            showStoreRewards(place: place, data: data, in: tabBarController)
+            return
+        }
+        guard attempts > 0 else {
+            UserDefaults.standard.set("rewards:\(place.globalPlaceId ?? place.id)", forKey: "pendingDeepLink")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.showStoreRewardsWhenReady(place: place, data: data, attempts: attempts - 1)
         }
     }
 

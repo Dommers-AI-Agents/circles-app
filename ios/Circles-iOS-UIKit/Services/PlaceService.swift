@@ -232,6 +232,16 @@ class PlaceService {
         }
     }
     
+    /// For ids that are usually a store's venue id (a Wallet card's link):
+    /// the venue lookup first, the save lookup only if that misses, so the
+    /// common case is one trip instead of a 404 and then a second one
+    func fetchPlacePreferringGlobal(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
+        fetchGlobalPlaceAsLegacy(id: id) { [weak self] result in
+            if case .success = result { return completion(result) }
+            self?.fetchPlaceById(id: id, completion: completion) ?? completion(result)
+        }
+    }
+
     /// Fetch a Global Place and convert it to a legacy Place object for compatibility
     private func fetchGlobalPlaceAsLegacy(id: String, completion: @escaping (Result<Place, Error>) -> Void) {
         GlobalPlaceService.shared.getGlobalPlace(id: id) { result in
