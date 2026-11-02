@@ -176,6 +176,13 @@ final class ProfileRelationshipController {
     func followTapped() {
         guard let delegate = delegate, let user = delegate.user else { return }
 
+        // A private profile (Wes, 2026-11-02): Follow asks, Requested takes
+        // the ask back. Neither changes the counts until they say yes.
+        if !delegate.isFollowing && (user.profilePrivate == true || user.followRequested == true) {
+            toggleFollowRequest(user)
+            return
+        }
+
         // Disable button to prevent rapid toggles
         delegate.followButton.isEnabled = false
         delegate.followButton.alpha = 0.6
@@ -235,6 +242,42 @@ final class ProfileRelationshipController {
                     // Re-enable button immediately on error
                     delegate.followButton.isEnabled = true
                     delegate.followButton.alpha = 1.0
+                }
+            }
+        }
+    }
+
+    /// Ask to follow a private profile, or take a waiting ask back.
+    private func toggleFollowRequest(_ user: User) {
+        guard let delegate = delegate else { return }
+        let cancelling = user.followRequested == true
+        delegate.followButton.isEnabled = false
+        delegate.user = user.copy(followRequested: !cancelling)
+        delegate.updateButtonVisibility()
+
+        APIService.shared.request(
+            endpoint: cancelling ? "users/\(user.id)/unfollow" : "users/\(user.id)/follow",
+            method: .post,
+            requiresAuth: true
+        ) { [weak self] (result: Result<FollowResponse, APIError>) in
+            DispatchQueue.main.async {
+                guard let self = self, let delegate = self.delegate else { return }
+                delegate.followButton.isEnabled = true
+                switch result {
+                case .success(let response):
+                    // Connected people follow straight away, no ask needed
+                    if !cancelling && response.requested != true {
+                        delegate.isFollowing = true
+                        delegate.user = delegate.user?.copy(isFollowing: true, followRequested: false)
+                        delegate.updateLocalFollowingCount(increment: true)
+                        AuthService.shared.recordFollowChange(userId: user.id, isFollowing: true)
+                        PiggyBankDepositView.play(credit: response.piggyBank)
+                    }
+                    delegate.updateButtonVisibility()
+                case .failure(let error):
+                    delegate.user = user
+                    delegate.updateButtonVisibility()
+                    delegate.showAlert(title: "Oops", message: FriendlyError.message(for: error))
                 }
             }
         }

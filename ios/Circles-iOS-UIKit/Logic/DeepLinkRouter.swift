@@ -24,6 +24,8 @@ enum DeepLinkDestination: Equatable {
     case importFlow
     case allPlacesMap(focusCategory: String?)
     case notificationSettings
+    /// Settings → Follow Requests (private profiles)
+    case followRequests
     case network
     case addPlace
     /// The Check In picker (`/app/open?path=check-in`)
@@ -168,6 +170,7 @@ struct DeepLinkRouter {
     func openPathDestination(_ path: String) -> DeepLinkDestination? {
         switch path {
         case "settings/notifications": return .notificationSettings
+        case "settings/follow-requests": return .followRequests
         case "network", "network/find-friends": return .network
         case "add-place": return .addPlace
         case "check-in": return .checkIn
@@ -217,6 +220,8 @@ struct DeepLinkRouter {
             return .network
         case "settings" where url.path == "/notifications":
             return .notificationSettings
+        case "settings" where url.path == "/follow-requests":
+            return .followRequests
         case "circle":
             if let token = query(url, "share") { return .circle(id: hostPathId, shareToken: token) }
             if !hostPathId.isEmpty { return .circle(id: hostPathId, shareToken: nil) }

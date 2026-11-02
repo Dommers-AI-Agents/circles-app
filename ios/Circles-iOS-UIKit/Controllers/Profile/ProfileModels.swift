@@ -20,6 +20,10 @@ struct FollowResponse: Codable {
     let message: String
     let user: User?
     let piggyBank: PiggyBankCredit?
+    /// A private profile: the follow is a request waiting for their yes
+    var requested: Bool? = nil
+    /// Unfollow on a pending request took the request back
+    var requestCancelled: Bool? = nil
 }
 
 // MARK: - FollowListType

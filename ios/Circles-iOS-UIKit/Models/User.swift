@@ -142,6 +142,12 @@ struct User: Codable, Identifiable {
 
     // Flag to identify fake profiles for onboarding
     let isFakeProfile: Bool?
+
+    /// A private profile (Wes, 2026-11-02): only followers and connections
+    /// see its circles, and following takes the owner's yes.
+    let profilePrivate: Bool?
+    /// The viewer asked to follow this private profile and is still waiting.
+    let followRequested: Bool?
     
     // Notification preferences
     let notificationPreferences: NotificationPreferences?
@@ -191,13 +197,14 @@ struct User: Codable, Identifiable {
         case referralCode, referredBy, referralCount, referralRewards
         case isVerified, username, discoveryType, distance, mutualConnectionsCount, mutualConnectionNames, matchType
         case followsYou, suggestionReason
+        case profilePrivate, followRequested
         case isBusiness, storefront
         case lastKnownLocation, assumedLocation
         case activityPrivacy
     }
     
     // Convenience initializer for creating User objects directly
-    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, zipcode: String? = nil, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil, isVerified: Bool? = nil, username: String? = nil, discoveryType: String? = nil, distance: Double? = nil, mutualConnectionsCount: Int? = nil, mutualConnectionNames: [String]? = nil, matchType: String? = nil, followsYou: Bool? = nil, suggestionReason: String? = nil, isBusiness: Bool? = nil, storefront: UserStorefront? = nil, activityPrivacy: ActivityPrivacy? = nil) {
+    public init(id: String, email: String? = nil, displayName: String, firstName: String? = nil, lastName: String? = nil, phoneNumber: String? = nil, profilePicture: String?, bio: String?, location: String?, zipcode: String? = nil, friends: [String]?, friendRequests: [String]?, circleOrder: [String]? = nil, preferences: UserPreferences? = nil, createdAt: Date? = nil, connectionStatus: String? = nil, connectionDirection: String? = nil, connectionId: String? = nil, followers: [String]? = nil, following: [String]? = nil, followersCount: Int? = nil, followingCount: Int? = nil, connectionsCount: Int? = nil, placesCount: Int? = nil, circlesCount: Int? = nil, pinnedPlaces: [String]? = nil, isFollowing: Bool? = nil, isFakeProfile: Bool? = nil, notificationPreferences: NotificationPreferences? = nil, subscriptionStatus: String? = nil, subscriptionExpiryDate: Date? = nil, trialStartDate: Date? = nil, trialEndDate: Date? = nil, referralCode: String? = nil, referredBy: String? = nil, referralCount: Int = 0, referralRewards: [ReferralReward]? = nil, isVerified: Bool? = nil, username: String? = nil, discoveryType: String? = nil, distance: Double? = nil, mutualConnectionsCount: Int? = nil, mutualConnectionNames: [String]? = nil, matchType: String? = nil, followsYou: Bool? = nil, suggestionReason: String? = nil, isBusiness: Bool? = nil, storefront: UserStorefront? = nil, activityPrivacy: ActivityPrivacy? = nil, profilePrivate: Bool? = nil, followRequested: Bool? = nil) {
         self.id = id
         self.email = email
         self.displayName = displayName
@@ -247,6 +254,8 @@ struct User: Codable, Identifiable {
         self.isBusiness = isBusiness
         self.storefront = storefront
         self.activityPrivacy = activityPrivacy
+        self.profilePrivate = profilePrivate
+        self.followRequested = followRequested
     }
     
     // Custom decoder for JSON decoding
@@ -319,6 +328,8 @@ struct User: Codable, Identifiable {
         // Follow status (for other user profiles)
         isFollowing = try container.decodeIfPresent(Bool.self, forKey: .isFollowing)
         followsYou = try container.decodeIfPresent(Bool.self, forKey: .followsYou)
+        profilePrivate = try container.decodeIfPresent(Bool.self, forKey: .profilePrivate)
+        followRequested = try container.decodeIfPresent(Bool.self, forKey: .followRequested)
         suggestionReason = try container.decodeIfPresent(String.self, forKey: .suggestionReason)
         isBusiness = try container.decodeIfPresent(Bool.self, forKey: .isBusiness)
         storefront = try container.decodeIfPresent(UserStorefront.self, forKey: .storefront)

@@ -80,6 +80,10 @@ class SettingsViewController: BaseTableViewController {
     }
     
     private enum PrivacyRow: Int, CaseIterable {
+        // Public (default) or private profile (Wes, 2026-11-02): a switch
+        case privateProfile
+        // People asking to follow a private profile
+        case followRequests
         // Replaced "Profile Visibility", an action sheet whose three choices
         // did nothing. This one opens the account-level activity grid.
         case activityVisibility
@@ -89,6 +93,8 @@ class SettingsViewController: BaseTableViewController {
         
         var title: String {
             switch self {
+            case .privateProfile: return "Private Profile"
+            case .followRequests: return "Follow Requests"
             case .activityVisibility: return ActivityPrivacy.Copy.screenTitle
             case .innerCircle: return "Inner Circles"
             }
@@ -202,6 +208,49 @@ class SettingsViewController: BaseTableViewController {
         // can change on the screens this one pushes.
         if isViewLoaded {
             tableView.reloadSections(IndexSet(integer: Section.privacy.rawValue), with: .none)
+        }
+        // The Follow Requests count
+        FollowRequestService.shared.fetchRequests { [weak self] _ in
+            guard let self = self, self.isViewLoaded else { return }
+            self.tableView.reloadSections(IndexSet(integer: Section.privacy.rawValue), with: .none)
+        }
+    }
+
+    /// Private Profile switch. Going public lets in everyone who was waiting,
+    /// so that direction asks first when anyone is.
+    @objc private func privateProfileToggled(_ toggle: UISwitch) {
+        let makePrivate = toggle.isOn
+        let apply = { [weak self] in
+            toggle.isEnabled = false
+            FollowRequestService.shared.setProfilePrivate(makePrivate) { result in
+                toggle.isEnabled = true
+                guard let self = self else { return }
+                switch result {
+                case .success(let accepted):
+                    if accepted > 0 {
+                        self.showSuccess(accepted == 1 ? "1 person who asked now follows you." : "\(accepted) people who asked now follow you.")
+                    }
+                case .failure(let error):
+                    toggle.setOn(!makePrivate, animated: true)
+                    AlertPresenter.showError(error, from: self)
+                }
+                self.tableView.reloadSections(IndexSet(integer: Section.privacy.rawValue), with: .none)
+            }
+        }
+        let waiting = FollowRequestService.shared.pendingCount
+        if !makePrivate && waiting > 0 {
+            AlertPresenter.showConfirmation(
+                title: "Make your profile public?",
+                message: waiting == 1
+                    ? "The 1 person waiting will start following you."
+                    : "The \(waiting) people waiting will start following you.",
+                confirmTitle: "Make Public",
+                from: self,
+                onConfirm: apply,
+                onCancel: { toggle.setOn(true, animated: true) }
+            )
+        } else {
+            apply()
         }
     }
     
@@ -766,16 +815,30 @@ extension SettingsViewController {
                 var config = cell.defaultContentConfiguration()
                 config.text = row.title
                 config.secondaryTextProperties.color = .secondaryLabel
+                cell.accessoryView = nil
+                cell.accessoryType = .disclosureIndicator
+                cell.selectionStyle = .default
                 switch row {
+                case .privateProfile:
+                    config.secondaryText = "Only followers see your circles and places. You approve who follows you."
+                    config.secondaryTextProperties.numberOfLines = 0
+                    let toggle = UISwitch()
+                    toggle.isOn = AuthService.shared.currentUser?.profilePrivate == true
+                    toggle.onTintColor = Constants.Colors.primary
+                    toggle.addTarget(self, action: #selector(privateProfileToggled(_:)), for: .valueChanged)
+                    cell.accessoryView = toggle
+                    cell.selectionStyle = .none
+                case .followRequests:
+                    let count = FollowRequestService.shared.pendingCount
+                    config.secondaryText = count == 0 ? "None" : "\(count) waiting"
                 case .activityVisibility:
                     let grid = AuthService.shared.currentUser?.activityPrivacy
-                    config.secondaryText = (grid?.isDefault ?? true) ? "Everyone" : "Custom"
+                    config.secondaryText = (grid?.isDefault ?? true) ? "Followers" : "Custom"
                 case .innerCircle:
                     let count = InnerCircleManager.shared.memberCount
                     config.secondaryText = count == 0 ? "No one yet" : "\(count)"
                 }
                 cell.contentConfiguration = config
-                cell.accessoryType = .disclosureIndicator
             }
             
         case .notifications:
@@ -931,6 +994,10 @@ extension SettingsViewController {
         case .privacy:
             if let row = PrivacyRow(rawValue: indexPath.row) {
                 switch row {
+                case .privateProfile:
+                    break // the switch does it
+                case .followRequests:
+                    navigationController?.pushViewController(FollowRequestsViewController(), animated: true)
                 case .activityVisibility:
                     navigationController?.pushViewController(ActivityPrivacyViewController(), animated: true)
                 case .innerCircle:

@@ -25,7 +25,8 @@ struct ActivityPrivacyGridTests {
     }
 
     @Test func audiencesBorrowTheLadderCopy() {
-        #expect(ActivityAudience.public.title == PrivacyTier.public.title)
+        // Activity only ever reaches followers (2026-11-02): the open column says so
+        #expect(ActivityAudience.public.title == "Followers")
         #expect(ActivityAudience.myNetwork.title == "Connections")
         #expect(ActivityAudience.innerCircle.systemIconName == PrivacyTier.innerCircle.systemIconName)
     }
@@ -58,7 +59,7 @@ struct ActivityPrivacyGridTests {
         }
         for category in [ActivityPrivacyCategory.savedPlaces, .likesComments, .circles] {
             #expect(grid.allows(category, .public))
-            #expect(grid.summary(for: category, innerCircleIsEmpty: false) == "Everyone")
+            #expect(grid.summary(for: category, innerCircleIsEmpty: false) == "Followers")
         }
         #expect(grid.isDefault)
         #expect(!ActivityPrivacy.allAllowed.isDefault)
@@ -190,7 +191,7 @@ struct ActivityPrivacyGridTests {
 
     @Test func summaryNamesTheWidestAudienceThatIsChecked() {
         let all = ActivityPrivacy.allAllowed
-        #expect(all.summary(for: .checkIns, innerCircleIsEmpty: false) == "Everyone")
+        #expect(all.summary(for: .checkIns, innerCircleIsEmpty: false) == "Followers")
 
         let connections = all.toggled(category: .checkIns, audience: .public)
         #expect(connections.summary(for: .checkIns, innerCircleIsEmpty: false) == "Connections")
@@ -204,7 +205,7 @@ struct ActivityPrivacyGridTests {
         #expect(!nobody.checkIns.allowsAnyone)
 
         // Other rows keep their own line.
-        #expect(nobody.summary(for: .photos, innerCircleIsEmpty: false) == "Everyone")
+        #expect(nobody.summary(for: .photos, innerCircleIsEmpty: false) == "Followers")
     }
 
     /// Was "Only you" — since 2026-09-25 an empty Inner Circle falls back to

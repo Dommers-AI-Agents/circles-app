@@ -61,6 +61,8 @@ enum PendingLink: Equatable {
     case connect(fromUserId: String)
     case video(id: String)
     case notificationSettings
+    /// Settings → Follow Requests (a `follow_request` push on a cold start)
+    case followRequests
     /// "check-in:<placeId>": the "you're near <saved place>" banner tapped on a cold start,
     /// or a "Check in at <place>" Home Screen quick action.
     case checkIn(placeId: String)
@@ -75,7 +77,8 @@ enum PendingLink: Equatable {
 /// the stash/clear and the navigation. Same rules the inline parse had:
 /// single tokens first, then `split(":")` (empty segments dropped) needing
 /// at least two parts, `shareToken` needing three, `settings` only for
-/// `settings:notifications`; anything else is nil (no navigation).
+/// `settings:notifications` and `settings:follow-requests`; anything else is
+/// nil (no navigation).
 enum PendingLinkParser {
     static func parse(_ link: String) -> PendingLink? {
         switch link {
@@ -127,7 +130,12 @@ enum PendingLinkParser {
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary
         case "check-in": return .checkIn(placeId: payload)
-        case "settings": return payload == "notifications" ? .notificationSettings : nil
+        case "settings":
+            switch payload {
+            case "notifications": return .notificationSettings
+            case "follow-requests": return .followRequests
+            default: return nil
+            }
         case "milestone":
             let number = { (i: Int) -> Int? in components.count > i ? Int(components[i]).flatMap { $0 > 0 ? $0 : nil } : nil }
             return .milestone(PushMilestone(kind: payload, value: number(2), position: number(3)))

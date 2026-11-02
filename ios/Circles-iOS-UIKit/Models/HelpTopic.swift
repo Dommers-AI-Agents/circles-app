@@ -98,7 +98,7 @@ class HelpContentProvider {
                 **Key Concepts:**
                 • **Circles** - Curated collections of your favorite places
                 • **Places** - Restaurants, shops, services, and locations you love
-                • **Followers** - People who see your public places; one-way
+                • **Followers** - People who get your updates; one-way
                 • **Connections** - People who accepted your request; both agreed
                 • **Inner Circle** - The connections you pick by name
                 • **Moments** - Photos and videos from places you visit
@@ -189,9 +189,9 @@ class HelpContentProvider {
                 Each circle has its own privacy setting:
                 
                 **Public** 🌐
-                • Anyone can view this circle
-                • Appears in search results
-                • Great for sharing broadly
+                • Anyone who can see your profile can view it
+                • With a private profile, only your followers and connections
+                • Your followers get updates about it in their feed
                 
                 **Connections** 👥
                 • Only people who accepted your connection request
@@ -511,7 +511,7 @@ class HelpContentProvider {
                 
                 **Connection vs Following:**
                 • **Connections** - Mutual; you each see the other's Connections-only content
-                • **Following** - One-way; they see your public content only
+                • **Following** - One-way; they get your updates and see your public content
                 • **Inner Circle** - The connections you pick by name, in Settings › Privacy
                 
                 **Managing connections:**
@@ -530,12 +530,17 @@ class HelpContentProvider {
                 title: "Following Users",
                 subtitle: "Discover public content",
                 content: """
-                Follow users to see their public circles and moments:
+                Follow users to get their updates:
                 
                 **To follow someone:**
                 1. Visit their profile
                 2. Tap "Follow" button
-                3. Their public content appears in your feed
+                3. Their updates appear in your feed
+                
+                **Private profiles:**
+                • Tapping Follow sends a request; the button says "Requested"
+                • You'll see their circles once they accept
+                • Tap "Requested" to take the request back
                 
                 **What you'll see:**
                 • Public circles they create
@@ -543,11 +548,11 @@ class HelpContentProvider {
                 • Places they add to public circles
                 
                 **Managing follows:**
-                • Unfollow from their profile
-                • Mute users temporarily
+                • Unfollow from the ••• menu on their profile
+                • Connected? Disconnect instead — it ends the follow too
                 • Your following list is visible on your profile
                 
-                **Note:** Following is different from connecting - it's one-way and only shows public content.
+                **Note:** Only people who follow you get your updates. Following is different from connecting: connections get everything followers do, plus messages and your Connections circles.
                 """,
                 category: .social,
                 relatedTopics: ["connect-users", "activity-feed"],
@@ -749,9 +754,9 @@ class HelpContentProvider {
                 • Notes follow circle privacy
                 
                 **Visibility Settings:**
-                • Hide from search
-                • Approve followers
-                • Private profile option
+                • Settings → Privacy → Private Profile: only followers see your circles and places, and you approve who follows you
+                • Settings → Privacy → Follow Requests: accept or decline
+                • Your updates only ever reach people who follow you
                 
                 **Data Control:**
                 • Export your data

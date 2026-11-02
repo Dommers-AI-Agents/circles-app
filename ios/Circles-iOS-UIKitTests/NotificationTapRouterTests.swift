@@ -133,6 +133,9 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "new_follower", "fromUserId": "u"]) == .userProfile(id: "u"))
         #expect(route(["type": "user_followed", "actorId": "u"]) == .userProfile(id: "u"))
         #expect(route(["type": "new_follower"]) == nil)
+        // Private profiles (2026-11-02): the ask opens the requests list, the yes opens who said it
+        #expect(route(["type": "follow_request", "fromUserId": "u"]) == .deepLink(URL(string: "circles://settings/follow-requests")!))
+        #expect(route(["type": "follow_request_accepted", "fromUserId": "u"]) == .userProfile(id: "u"))
         #expect(route(["type": "moment_tag", "momentId": "m"]) == .video(id: "m"))
         #expect(route(["type": "video_liked", "placeId": "p"]) == .place(id: "p", showComments: nil))
         #expect(route(["type": "store_claim"]) == .meTab)

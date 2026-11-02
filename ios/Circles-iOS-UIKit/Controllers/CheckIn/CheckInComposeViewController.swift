@@ -110,9 +110,9 @@ final class CheckInComposeViewController: BaseViewController {
     }()
 
     /// Who this check-in is for. Connections is the historic default; a named
-    /// Inner Circle list narrows it; Everyone widens it to followers and
-    /// anyone else, past the account's activity grid (Wes, 2026-09-25:
-    /// "some like being public"). Just me is a private record: no feed, no
+    /// Inner Circle list narrows it; Followers widens it to all your followers,
+    /// past the account's activity grid (Wes, 2026-09-25: "some like being
+    /// public"; never past followers since 2026-11-02). Just me is a private record: no feed, no
     /// notifications, no comment. This replaced the separate feed switch and
     /// "Just me" button (Wes, 2026-09-28) — one question, one answer.
     /// Opens on the user's saved default (CheckInAudienceChoice), which they
@@ -240,7 +240,7 @@ final class CheckInComposeViewController: BaseViewController {
         return text == notePlaceholder ? "" : text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Everyone, connections, one per named list, then Just me. A menu
+    /// Followers, connections, one per named list, then Just me. A menu
     /// rather than a switch because there is no longer a single Inner
     /// Circle to be "only".
     private func refreshAudienceMenu() {
@@ -253,8 +253,9 @@ final class CheckInComposeViewController: BaseViewController {
         if InnerCircleManager.shared.hasLoaded, let id = selectedListId, !lists.contains(where: { $0.id == id }) {
             selectedAudience = .connections
         }
-        let everyone = UIAction(title: "Everyone",
-                                subtitle: "Connections, followers and anyone who finds the place",
+        // Activity reaches only people who follow you (Wes, 2026-11-02)
+        let everyone = UIAction(title: "Followers",
+                                subtitle: "Your followers and connections",
                                 state: selectedAudience == .everyone ? .on : .off) { [weak self] _ in
             self?.selectedAudience = .everyone
             self?.refreshAudienceMenu()
@@ -283,7 +284,7 @@ final class CheckInComposeViewController: BaseViewController {
         let title: String
         switch selectedAudience {
         case .justMe: title = "Just me"
-        case .everyone: title = "Everyone"
+        case .everyone: title = "Followers"
         case .connections: title = "My connections"
         case .list(let id): title = lists.first { $0.id == id }?.name ?? "My connections"
         }

@@ -122,7 +122,9 @@ class CircleService {
         APIService.shared.request(
             endpoint: "circles/\(id)/public",
             method: .get,
-            requiresAuth: false,
+            // Signed in, the token rides along: a private profile's circle
+            // opens for its followers (2026-11-02)
+            requiresAuth: AuthService.shared.isLoggedIn,
             completion: { [weak self] (result: Result<CircleResponse, APIError>) in
             guard let self = self else { return }
             

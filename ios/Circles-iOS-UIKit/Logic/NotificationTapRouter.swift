@@ -216,8 +216,12 @@ enum NotificationTapRouter {
         case "favcoin_claim_settled":
             return .piggyBank
 
-        case "new_follower", "user_followed":
+        case "new_follower", "user_followed", "follow_request_accepted":
             return actorId(userInfo).map { .userProfile(id: $0) }
+
+        // Someone asked to follow your private profile: the requests list
+        case "follow_request":
+            return URL(string: "circles://settings/follow-requests").map { .deepLink($0) }
 
         case "video_uploaded", "video_liked", "moment_uploaded", "moment_liked", "moment_tag":
             if let videoId = videoId(userInfo) { return .video(id: videoId) }

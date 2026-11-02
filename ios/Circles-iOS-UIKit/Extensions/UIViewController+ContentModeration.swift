@@ -60,8 +60,16 @@ extension UIViewController {
             self?.presentUserReportReasonSheet(userId: userId, userName: name)
         }))
 
+        // Connected always means following (Wes, 2026-11-02): the way out of
+        // a connection is Disconnect, which ends the follow too
+        let me = AuthService.shared.getUserId() ?? ""
+        let connection = NetworkManager.shared.connections.first { $0.otherUserId(currentUserId: me) == userId }
         let isFollowing = (AuthService.shared.currentUser?.following ?? []).contains(userId)
-        if isFollowing {
+        if let connection = connection {
+            actions.append(("Disconnect from \(name)", .default, { [weak self] in
+                self?.confirmDisconnect(connectionId: connection.id, name: name)
+            }))
+        } else if isFollowing {
             actions.append(("Stop Following \(name)", .default, { [weak self] in
                 self?.moderationUnfollow(ownerId: userId, ownerName: name)
             }))
@@ -171,6 +179,24 @@ extension UIViewController {
                     if response.autoHidden == true { onContentHidden?() }
                 case .failure(let error):
                     self.showError(error.serverMessage ?? "Couldn't submit the report. Please try again.")
+                }
+            }
+        }
+    }
+
+    private func confirmDisconnect(connectionId: String, name: String) {
+        AlertPresenter.showConfirmation(
+            title: "Disconnect from \(name)?",
+            message: "You'll stop following each other and lose access to each other's Connections circles and messages.",
+            confirmTitle: "Disconnect",
+            isDestructive: true,
+            from: self
+        ) { [weak self] in
+            NetworkManager.shared.removeConnection(connectionId: connectionId) { error in
+                if let error = error {
+                    self?.showError(FriendlyError.message(for: error))
+                } else {
+                    self?.showSuccess("You're no longer connected with \(name).")
                 }
             }
         }

@@ -59,7 +59,8 @@ enum ActivityPrivacyCategory: String, CaseIterable, Codable {
 /// One column of the grid. Raw values are the backend's audience keys; copy and
 /// icons come from the same ladder every other privacy control uses.
 enum ActivityAudience: String, CaseIterable, Codable {
-    /// Anyone, including followers.
+    /// Your followers (and connections). Activity never reaches people who
+    /// don't follow you (Wes, 2026-11-02); stored as `public`.
     case `public`
     /// Accepted connections.
     case myNetwork
@@ -74,9 +75,9 @@ enum ActivityAudience: String, CaseIterable, Codable {
         }
     }
 
-    var title: String { tier.title }
-    var subtitle: String { tier.subtitle }
-    var systemIconName: String { tier.systemIconName }
+    var title: String { self == .public ? PrivacyOption.followers.title : tier.title }
+    var subtitle: String { self == .public ? PrivacyOption.followers.subtitle : tier.subtitle }
+    var systemIconName: String { self == .public ? PrivacyOption.followers.systemIconName : tier.systemIconName }
 }
 
 // MARK: - One row's boxes
@@ -293,7 +294,7 @@ struct ActivityPrivacy: Codable, Equatable {
     ///   people are added (the server applies the same rule), and says so.
     func summary(for category: ActivityPrivacyCategory, innerCircleIsEmpty: Bool) -> String {
         let row = self[category]
-        if row.allows(.public) { return "Everyone" }
+        if row.allows(.public) { return "Followers" }
         if row.allows(.myNetwork) { return "Connections" }
         if row.allows(.innerCircle) { return innerCircleIsEmpty ? "Inner Circle · Connections until you add someone" : "Inner Circle" }
         return "Only you"
@@ -316,7 +317,7 @@ extension ActivityPrivacy {
     enum Copy {
         static let screenTitle = "Who can see my activity"
         static let headerTitle = "Activity"
-        static let footer = "A place's own privacy still narrows this; it never widens it. A check-in you mark Everyone is the one exception. Unchecking all three means only you."
+        static let footer = "A place's own privacy still narrows this; it never widens it. A check-in you mark Followers is the one exception. Unchecking all three means only you."
         static let emptyInnerCircleTitle = "Your Inner Circle is empty"
         static let emptyInnerCircleDetail = "Until you add people, an Inner Circle box reaches your connections instead. Tap to build your lists."
         static let impliedInnerCircleHint = "Included with Connections"

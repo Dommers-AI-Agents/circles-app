@@ -112,7 +112,9 @@ class PlaceService {
         api.request(
             endpoint: "circles/\(circleId)/places/public",
             method: .get,
-            requiresAuth: false,
+            // Signed in, the token rides along: a private profile's circle
+            // opens for its followers (2026-11-02)
+            requiresAuth: AuthService.shared.isLoggedIn,
             completion: apiCompletion
         )
     }

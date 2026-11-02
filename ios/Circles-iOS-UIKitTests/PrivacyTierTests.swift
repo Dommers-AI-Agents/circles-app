@@ -35,11 +35,11 @@ struct PrivacyTierTests {
         #expect(allSubtitlesFilled)
     }
 
-    /// The single highest-value line of copy in the feature: it is the only
-    /// place, at the moment of choosing, that says a follower sees more than a
-    /// connection does.
-    @Test func publicSubtitleNamesFollowers() {
-        #expect(PrivacyTier.public.subtitle.lowercased().contains("follower"))
+    /// The single highest-value line of copy in the feature: at the moment of
+    /// choosing, Public reaches whoever can see your profile — everyone on a
+    /// public profile, followers and connections on a private one (2026-11-02).
+    @Test func publicSubtitleNamesTheProfile() {
+        #expect(PrivacyTier.public.subtitle.lowercased().contains("profile"))
     }
 
     // MARK: - Option sets

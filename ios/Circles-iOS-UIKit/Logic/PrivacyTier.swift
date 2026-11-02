@@ -13,7 +13,8 @@ import Foundation
 /// a place's "same as circle" is an inherit pointer, not a level, and moments'
 /// "followers" audience has no circle equivalent. Both live in `PrivacyOption`.
 enum PrivacyTier: String, CaseIterable, Comparable {
-    /// Anyone, including people who only follow you.
+    /// Anyone who can see your profile: everyone when it's public, your
+    /// followers and connections when it's private (Wes, 2026-11-02).
     case `public` = "public"
     /// Accepted connections. Stored as `myNetwork` for circles and places, and
     /// as `network` for moments — a historic split the backend normalises on
@@ -47,12 +48,12 @@ enum PrivacyTier: String, CaseIterable, Comparable {
         }
     }
 
-    /// The line under the title. "including your followers" is doing real work:
-    /// it is the only place the app explains, at the moment of choosing, that a
-    /// follower is a wider audience than a connection.
+    /// The line under the title. Public reaches whoever can see your profile
+    /// (only followers and connections when the profile is private); updates
+    /// about it go to followers either way.
     var subtitle: String {
         switch self {
-        case .public: return "Anyone, including your followers"
+        case .public: return "Anyone who can see your profile"
         case .connections: return "People who accepted your request"
         case .innerCircle: return "Only the people on your list"
         case .private: return "Only you"

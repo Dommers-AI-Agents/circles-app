@@ -864,6 +864,13 @@ const declineConnection = async (req, res) => {
       });
     }
 
+    // An accepted connection is a disconnect, not a declined request: the
+    // full teardown (arrays, Inner Circle lists, follows both ways). The
+    // people list's Disconnect calls this route.
+    if (connection.status === 'accepted') {
+      return removeConnection(req, res);
+    }
+
     // Delete the connection request
     await connectionDoc.ref.delete();
 

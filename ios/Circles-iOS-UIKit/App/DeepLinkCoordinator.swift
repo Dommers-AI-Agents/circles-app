@@ -144,6 +144,8 @@ final class DeepLinkCoordinator: SceneCoordinator {
             navigateToAllPlacesMap(focusCategory: focusCategory)
         case .notificationSettings:
             navigateToNotificationSettings()
+        case .followRequests:
+            navigateToFollowRequests()
         case .network:
             selectTabOrStash(index: 1, pendingKey: "network")
         case .addPlace:
@@ -365,6 +367,7 @@ final class DeepLinkCoordinator: SceneCoordinator {
             case .connect(let fromUserId): self.host?.inviteLinks.handleConnectionInvite(from: fromUserId)
             case .video(let id): self.navigateToVideo(videoId: id)
             case .notificationSettings: self.navigateToNotificationSettings()
+            case .followRequests: self.navigateToFollowRequests()
             case .milestone(let milestone): self.showMilestone(milestone)
             case .checkIn(let id):
                 // Cold-start tap on the "you're near <place>" banner, or a
@@ -625,6 +628,21 @@ final class DeepLinkCoordinator: SceneCoordinator {
     }
 
     // MARK: - Notification Settings Navigation
+
+    /// Me → Settings → Follow Requests (a `follow_request` push)
+    private func navigateToFollowRequests() {
+        guard AuthService.shared.isLoggedIn,
+              let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            UserDefaults.standard.set("settings:follow-requests", forKey: "pendingDeepLink")
+            return
+        }
+        tabBarController.selectedIndex = 3
+        if let navController = tabBarController.viewControllers?[3] as? UINavigationController {
+            navController.popToRootViewController(animated: false)
+            navController.pushViewController(SettingsViewController(), animated: false)
+            navController.pushViewController(FollowRequestsViewController(), animated: true)
+        }
+    }
 
     private func navigateToNotificationSettings() {
         guard AuthService.shared.isLoggedIn,

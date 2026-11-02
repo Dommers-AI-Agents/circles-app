@@ -43,6 +43,9 @@ struct Circle: Codable, Identifiable {
     /// connected enough to open: shown greyed with a lock, tap offers Connect.
     /// Only name, cover and place count come with it.
     var locked: Bool?
+    /// Why it's locked: "connect" (a Connections circle) or "follow" (a
+    /// private profile's public circle; tap offers Follow). Nil = "connect".
+    var lockedReason: String?
     
     // Circle Groups support
     let groupId: String? // ID of the group this circle belongs to (nil if not grouped)
@@ -64,7 +67,7 @@ struct Circle: Codable, Identifiable {
         case location, tags, sharedWith, followers, activeShares, shareSettings
         case isSharedWithMe, sharedBy, myAccessLevel
         case likes, likesCount, commentsCount
-        case createdAt, updatedAt, isNew, hasNewPlaces, newPlacesCount, locked
+        case createdAt, updatedAt, isNew, hasNewPlaces, newPlacesCount, locked, lockedReason
         case groupId, orderInGroup
         case systemKind, isDefaultCircle
     }
@@ -118,6 +121,7 @@ struct Circle: Codable, Identifiable {
         hasNewPlaces = try container.decodeIfPresent(Bool.self, forKey: .hasNewPlaces)
         newPlacesCount = try container.decodeIfPresent(Int.self, forKey: .newPlacesCount)
         locked = try container.decodeIfPresent(Bool.self, forKey: .locked)
+        lockedReason = try container.decodeIfPresent(String.self, forKey: .lockedReason)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
         orderInGroup = try container.decodeIfPresent(Int.self, forKey: .orderInGroup)
         systemKind = try? container.decodeIfPresent(String.self, forKey: .systemKind)

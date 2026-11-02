@@ -1054,7 +1054,7 @@ extension AllUsersListViewController: AllUsersCellDelegate {
     private func confirmDisconnect(_ user: User) {
         AlertPresenter.showConfirmation(
             title: "Disconnect from \(user.displayName)?",
-            message: "You'll lose access to each other's network-only circles and can no longer message each other.",
+            message: "You'll stop following each other and lose access to each other's Connections circles and messages.",
             confirmTitle: "Disconnect",
             isDestructive: true,
             from: self,

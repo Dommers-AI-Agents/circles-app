@@ -2266,10 +2266,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             followButtonLeadingToMessageConstraint?.isActive = false
             followButtonLeadingToConnectConstraint?.isActive = true
         } else if isConnected {
-            // Connected users: Show message and follow buttons
+            // Connected users: Message only. Connected always means following
+            // (Wes, 2026-11-02), so there's no Unfollow here — Disconnect, in
+            // the ••• menu, ends both.
             messageButton.isHidden = false
             connectButton.isHidden = true
-            followButton.isHidden = false
+            followButton.isHidden = true
             
             // Activate follow button constraint to message button
             followButtonLeadingToConnectConstraint?.isActive = false
@@ -2295,9 +2297,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         // already follow you, say so — "Follow Back" carries the fact that
         // this person opted in first, which is the best reason to reciprocate.
         let followsMe = user.followsYou ?? false
-        let followTitle = isFollowing ? "Following" : (followsMe ? "Follow Back" : "Follow")
+        // A private profile you've asked to follow: "Requested" until they
+        // answer; tapping it takes the request back
+        let requested = !isFollowing && user.followRequested == true
+        let followTitle = isFollowing ? "Following" : (requested ? "Requested" : (followsMe ? "Follow Back" : "Follow"))
         followButton.setTitle(followTitle, for: .normal)
-        if isFollowing {
+        if isFollowing || requested {
             followButton.setStyle(.following)
         } else if followsMe {
             // Their move is already made — render ours as the primary action.

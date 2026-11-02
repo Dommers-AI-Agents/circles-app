@@ -44,6 +44,7 @@ struct DeepLinkRouterTests {
         #expect(router.openPathDestination("create-wallet") == .piggyBank)
         #expect(router.openPathDestination("rewards/piggy-bank") == .piggyBank)
         #expect(router.openPathDestination("settings/notifications") == .notificationSettings)
+        #expect(router.openPathDestination("settings/follow-requests") == .followRequests)
         #expect(router.openPathDestination("check-in") == .checkIn)
         // A texted workout opens in the Workouts widget, by universal link or scheme
         #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/workout/abcdefghijklmnopqrstuv")!) == .workout(token: "abcdefghijklmnopqrstuv"))
@@ -91,6 +92,7 @@ struct DeepLinkRouterTests {
         #expect(dest("circles://upgrade") == .upgradePaywall)
         #expect(dest("circles://network") == .network)
         #expect(dest("circles://settings/notifications") == .notificationSettings)
+        #expect(dest("circles://settings/follow-requests") == .followRequests)
         #expect(dest("circles://settings/other") == nil)
         #expect(dest("circles://circle/c1") == .circle(id: "c1", shareToken: nil))
         #expect(dest("circles://circle/c1?share=tok") == .circle(id: "c1", shareToken: "tok"))

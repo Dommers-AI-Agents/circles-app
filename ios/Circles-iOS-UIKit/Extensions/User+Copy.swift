@@ -55,7 +55,9 @@ extension User {
         suggestionReason: String? = nil,
         isBusiness: Bool? = nil,
         storefront: UserStorefront? = nil,
-        activityPrivacy: ActivityPrivacy? = nil
+        activityPrivacy: ActivityPrivacy? = nil,
+        profilePrivate: Bool? = nil,
+        followRequested: Bool? = nil
     ) -> User {
         return User(
             id: id ?? self.id,
@@ -106,7 +108,9 @@ extension User {
             suggestionReason: suggestionReason ?? self.suggestionReason,
             isBusiness: isBusiness ?? self.isBusiness,
             storefront: storefront ?? self.storefront,
-            activityPrivacy: activityPrivacy ?? self.activityPrivacy
+            activityPrivacy: activityPrivacy ?? self.activityPrivacy,
+            profilePrivate: profilePrivate ?? self.profilePrivate,
+            followRequested: followRequested ?? self.followRequested
         )
     }
     

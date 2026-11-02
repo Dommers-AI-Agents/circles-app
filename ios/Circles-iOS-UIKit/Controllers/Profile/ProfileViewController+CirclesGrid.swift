@@ -26,14 +26,35 @@ extension ProfileViewController: UICollectionViewDelegate {
     }
 
     /// Opens a circle from the grid or circle search. A locked one (a
-    /// Connections circle the viewer isn't connected for) explains itself and
-    /// offers the connection instead: that's the point of showing it.
+    /// Connections circle the viewer isn't connected for, or a private
+    /// profile's circle) explains itself and offers the connection or the
+    /// follow instead: that's the point of showing it.
     func openCircle(_ circle: Circle) {
         guard circle.locked == true else {
             navigationController?.pushViewController(CircleDetailViewController(circle: circle), animated: true)
             return
         }
         let name = user?.displayName ?? "They"
+        // A private profile's circle (Wes, 2026-11-02): offers Follow
+        if circle.lockedReason == "follow" {
+            if user?.followRequested == true {
+                AlertPresenter.showInfo(
+                    title: "\(name)'s profile is private",
+                    message: "Request sent. You'll see their circles once \(name) accepts.",
+                    from: self
+                )
+                return
+            }
+            AlertPresenter.showConfirmation(
+                title: "\(name)'s profile is private",
+                message: "Follow \(name) to see their circles. They'll get a request to approve.",
+                confirmTitle: "Follow",
+                cancelTitle: "Not now",
+                from: self,
+                onConfirm: { [weak self] in self?.relationshipController.followTapped() }
+            )
+            return
+        }
         let title = "\(circle.name) is for connections"
         if connectionStatus == .pending && user?.connectionDirection == "outgoing" {
             AlertPresenter.showInfo(
