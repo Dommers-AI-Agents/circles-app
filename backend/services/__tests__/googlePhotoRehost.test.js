@@ -12,6 +12,8 @@ const mockDb = {
 jest.mock('../../config/firebase', () => ({ getFirestore: () => mockDb }));
 const mockUpload = jest.fn();
 jest.mock('../storage', () => ({ downloadAndUploadImage: (...a) => mockUpload(...a) }));
+const mockFresh = jest.fn();
+jest.mock('../googlePlacePhoto', () => ({ fetchGooglePhotoUrls: (...a) => mockFresh(...a) }));
 
 const { rehostGooglePhotos } = require('../googlePhotoRehost');
 const { isGooglePhotoLink } = require('../placePhoto');
@@ -23,6 +25,8 @@ beforeEach(() => {
   Object.keys(docs).forEach((k) => delete docs[k]);
   updates.length = 0;
   mockUpload.mockReset();
+  mockFresh.mockReset();
+  mockFresh.mockResolvedValue([]);
 });
 
 describe('isGooglePhotoLink', () => {
@@ -36,7 +40,19 @@ describe('isGooglePhotoLink', () => {
 });
 
 describe('rehostGooglePhotos', () => {
-  test('re-hosts what Google serves, drops dead links, keeps every other photo in place', async () => {
+  test('replaces expired links with the place\'s current Google photos, in their places', async () => {
+    docs.p1 = { name: 'Fresh Monkee', googlePlaceId: 'g1', photos: [google('dead1'), storage('own'), google('dead2')] };
+    mockUpload.mockRejectedValue(new Error('400'));
+    mockFresh.mockResolvedValue([storage('fresh1'), storage('fresh2')]);
+
+    const [row] = await rehostGooglePhotos();
+
+    expect(mockFresh).toHaveBeenCalledWith(expect.objectContaining({ googlePlaceId: 'g1' }), 2);
+    expect(row).toMatchObject({ rehosted: 0, replaced: 2, dropped: 0 });
+    expect(updates[0].data.photos).toEqual([storage('fresh1'), storage('own'), storage('fresh2')]);
+  });
+
+  test('re-hosts what Google serves, drops dead links Google has nothing for, keeps every other photo in place', async () => {
     docs.p1 = { name: 'Fresh Monkee', photos: [google('live'), { url: storage('own'), uploadedBy: 'u' }, google('dead')] };
     docs.p2 = { name: 'Clean', photos: [storage('x')] };
     mockUpload.mockImplementation(async (url) => { if (url.includes('dead')) throw new Error('400'); return storage('rehosted'); });

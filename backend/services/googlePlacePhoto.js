@@ -15,16 +15,21 @@ const client = new Client({});
 const apiKey = () => require('../config/config').googleMapsApiKey || null;
 
 /** The first photo reference for a Google place, by id or by name near a spot. */
-async function photoReference({ googlePlaceId, name, location }) {
+async function photoReference(place) {
+  return (await photoReferences(place, 1))[0] || null;
+}
+
+/** Up to `limit` photo references for a Google place, by id or by name near a spot. */
+async function photoReferences({ googlePlaceId, name, location }, limit = 1) {
   const key = apiKey();
-  if (!key) return null;
+  if (!key) return [];
   if (googlePlaceId) {
     const details = await client.placeDetails({ params: { place_id: googlePlaceId, fields: ['photos'], key }, timeout: 8000 });
     const photos = details.data && details.data.result && details.data.result.photos;
-    return photos && photos.length ? photos[0].photo_reference : null;
+    return (photos || []).slice(0, limit).map((p) => p.photo_reference).filter(Boolean);
   }
   const coords = location && Array.isArray(location.coordinates) ? location.coordinates : null;
-  if (!name || !coords) return null;
+  if (!name || !coords) return [];
   const found = await client.findPlaceFromText({
     params: {
       input: name,
@@ -36,7 +41,7 @@ async function photoReference({ googlePlaceId, name, location }) {
     timeout: 8000
   });
   const candidate = found.data && found.data.candidates && found.data.candidates[0];
-  return candidate && candidate.photos && candidate.photos.length ? candidate.photos[0].photo_reference : null;
+  return ((candidate && candidate.photos) || []).slice(0, limit).map((p) => p.photo_reference).filter(Boolean);
 }
 
 /**
@@ -57,4 +62,25 @@ async function fetchGooglePhotoUrl({ googlePlaceId, name, location }) {
   }
 }
 
-module.exports = { fetchGooglePhotoUrl };
+/**
+ * Up to `count` of the place's current Google photos, stored in our storage
+ * (one Details call plus one Photo call each). Replaces photo links whose
+ * Google reference expired. [] when Google has none or the lookup failed.
+ */
+async function fetchGooglePhotoUrls(place, count) {
+  try {
+    const refs = await photoReferences(place, count);
+    const { downloadAndUploadImage } = require('./storage');
+    const urls = [];
+    for (const reference of refs) {
+      const url = await downloadAndUploadImage(`https://maps.googleapis.com/maps/api/place/photo?maxwidth=1200&photoreference=${reference}&key=${apiKey()}`).catch(() => null);
+      if (url) urls.push(url);
+    }
+    return urls;
+  } catch (error) {
+    console.error('⚠️ [google-photo] lookup failed:', error.message);
+    return [];
+  }
+}
+
+module.exports = { fetchGooglePhotoUrl, fetchGooglePhotoUrls };
