@@ -78,6 +78,8 @@ extension PlaceDetailViewFactory {
         button.tintColor = Constants.Colors.secondaryLabel
         button.accessibilityLabel = "What is a check-in?"
         button.setContentHuggingPriority(.required, for: .horizontal)
+        // Never squeezed narrower than its icon by the buttons beside it
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
         return button
     }
 

@@ -727,10 +727,11 @@ class PlaceDetailViewController: BaseViewController {
         contentView.addSubview(orderBannerView)
         orderBannerView.onTap = { [weak self] order in self?.openMyOrder(order) }
         contentView.addSubview(checkInStripView)
+        // The ⓘ leads the row, before Check In, instead of squeezed between
+        // the buttons (Wes, 2026-11-02)
+        checkInStripView.addArrangedSubview(checkInInfoButton)
         checkInStripView.addArrangedSubview(checkInHistoryLabel)
         checkInStripView.addArrangedSubview(checkInHereButton)
-        // The ⓘ sits right beside what it explains (Wes, 2026-10-21)
-        checkInStripView.addArrangedSubview(checkInInfoButton)
         checkInStripView.addArrangedSubview(getRewardsButton)
         checkInStripView.addArrangedSubview(orderButton)
         // A long history line gives way before any button does.
