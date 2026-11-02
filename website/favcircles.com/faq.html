@@ -123,6 +123,7 @@
             main.container { margin-top: 0; }
         }
     </style>
+    <style data-site-chrome>.nav-links a.active{text-decoration:underline;text-underline-offset:6px}</style>
 </head>
 <body>
     <header>
@@ -132,8 +133,10 @@
                 <li><a href="/">Home</a></li>
                 <li><a href="/widgets.html">Widgets</a></li>
                 <li><a href="/watch.html">Watch</a></li>
-                <li><a href="/faq.html">FAQ</a></li>
+                <li><a href="/faq.html" class="active" aria-current="page">FAQ</a></li>
                 <li><a href="/store-owners.html">Store&nbsp;Owners</a></li>
+                <li><a href="/rewards.html">Store&nbsp;Rewards</a></li>
+                <li><a href="/cactus.html">Cactus&nbsp;Blockchain</a></li>
                 <li><a href="/support.html">Support</a></li>
             </ul>
         </nav>
@@ -239,11 +242,35 @@
             </div>
         </section>
 
+        <section class="faq-group" id="store-rewards">
+            <h2>Store rewards 🎁</h2>
+            <details open>
+                <summary>How do I earn points at a store?</summary>
+                <p>After you buy something at a participating store, scan the FavCircles QR code by the register with your iPhone camera. Each store keeps its own points for you, and you can earn there once a day. Store pages in the app show how many points a visit earns and how close you are to the next reward.</p>
+            </details>
+            <details>
+                <summary>Do I need the app first?</summary>
+                <p>No. Scanning a store's code opens a FavCircles App Clip right away, with no download. Sign in with your email, the store is saved to your map and your points are waiting. Get the full app any time and everything is already there.</p>
+            </details>
+            <details>
+                <summary>How do I use a reward?</summary>
+                <p>Open the store in FavCircles and tap <strong>Redeem</strong> on a reward you have enough points for. You get a ticket that lasts 15 minutes: show it at the counter and staff tap <strong>Given</strong> on your phone. If the ticket runs out before you get your reward, your points come back automatically.</p>
+            </details>
+            <details>
+                <summary>Can I keep my points in Apple Wallet?</summary>
+                <p>Yes. Tap <strong>Add to Apple Wallet</strong> on a store's rewards page. The card shows your points, your next reward and how far away it is, updates by itself after every visit, and appears on your lock screen when you're near the store. Tap it to open that store's rewards in FavCircles.</p>
+            </details>
+            <details>
+                <summary>What's the Locals tab?</summary>
+                <p>The Locals tab on the home screen shows specials and news from stores near you and stores you follow, plus concerts, games, markets and library events happening nearby.</p>
+            </details>
+        </section>
+
         <section class="faq-group">
             <h2>For store owners 🏪</h2>
             <details>
                 <summary>I own a business on FavCircles — what can I do?</summary>
-                <p>Claim your store from its place page ("Is this your store?") and you get a free dashboard and a window QR that turns passers-by into followers. <strong>FavCircles Business</strong> adds the full toolkit: a loyalty program with your own points and rewards, announcements that reach your followers' feeds, offers, and detailed stats — all manageable from the app <em>or by asking your AI assistant</em>.</p>
+                <p>Claim your store from its place page ("Is this your store?") and you get a free dashboard and a window QR that turns passers-by into followers. <strong>FavCircles Business</strong> adds the full toolkit: a loyalty program with your own points and rewards (customers scan your register QR, and you see every reward used), Apple Wallet cards for your regulars, announcements that reach your followers' feeds, order ahead from a menu you photograph, and detailed stats — all manageable from the app <em>or by asking your AI assistant</em>.</p>
                 <p>More at <a href="/store-owners.html">FavCircles for Store Owners</a>, or <a href="/store-owner-tutorial.html">watch the tutorial</a>.</p>
             </details>
         </section>
@@ -274,6 +301,22 @@
         </section>
 
         <section class="faq-group">
+            <h2>Widgets, check-ins and friends</h2>
+            <details>
+                <summary>What's on the Widgets tab?</summary>
+                <p>Free mini-apps built into FavCircles: water and medication reminders, workouts and runs, events with invites and RSVPs, bill splitting, postcards, dog walks and more. Turn on the ones you want and put them in your order. <a href="/widgets.html">See every widget</a>.</p>
+            </details>
+            <details>
+                <summary>What's a check-in?</summary>
+                <p>A check-in says you're at a place right now. You choose who sees each one (everyone, certain people or nobody), and every check-in stays in your own history at that place, so you can see how often you go back.</p>
+            </details>
+            <details>
+                <summary>What's the difference between a public and a private profile?</summary>
+                <p>Anyone can follow a public profile. With a private profile, people ask to follow you and you approve them, and your updates only go to the people you approved. Change it any time in Settings.</p>
+            </details>
+        </section>
+
+        <section class="faq-group">
             <h2>Everything else</h2>
             <details>
                 <summary>What are FavCoins?</summary>
@@ -296,11 +339,21 @@
 
     <footer>
         <div class="container">
-            <p>&copy; 2026 FavCircles ·
-                <a href="/privacy.html">Privacy</a> ·
-                <a href="/terms.html">Terms</a> ·
-                <a href="/support.html">Support</a>
-            </p>
+            <p>&copy; 2026 FavCircles. All rights reserved.</p>
+            <p><a href="/widgets.html">Widgets</a> |
+               <a href="/watch.html">Watch</a> |
+               <a href="/faq.html">FAQ</a> |
+               <a href="/store-owners.html">Store Owners</a> |
+               <a href="/rewards.html">Store Rewards</a> |
+               <a href="/cactus.html">Cactus Blockchain</a> |
+               <a href="/connect-claude.html">Connect to Claude</a></p>
+            <p><a href="/switch-from-google-maps.html">Switch from Google Maps</a> |
+               <a href="/switch-from-mapstr.html">Switch from Mapstr</a> |
+               <a href="/switch-from-swarm.html">Switch from Swarm</a></p>
+            <p><a href="/support.html">Support</a> |
+               <a href="/privacy.html">Privacy Policy</a> |
+               <a href="/terms.html">Terms of Service</a> |
+               <a href="/delete-data.html">Delete Your Data</a></p>
         </div>
     </footer>
     <script>

@@ -11,6 +11,8 @@ const path = require('path');
 const os = require('os');
 
 const root = path.resolve(__dirname, '..');
+// The menu and footer every page shares (site-chrome.js)
+const { menuHTML, footerHTML, ACTIVE_STYLE } = require('./site-chrome');
 const data = JSON.parse(fs.readFileSync(path.join(root, 'widgets/widgets.json'), 'utf8'));
 const out = path.join(root, 'favcircles.com/widgets.html');
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -117,21 +119,13 @@ const html = `<!DOCTYPE html>
             .grid { grid-template-columns: 1fr; }
         }
     </style>
+    ${ACTIVE_STYLE}
 </head>
 <body>
     <header>
         <nav class="container">
             <a href="/" class="logo">FavCircles</a>
-            <ul class="nav-links">
-                <li><a href="/">Home</a></li>
-                <li><a href="/widgets.html" class="active">Widgets</a></li>
-                <li><a href="/watch.html">Watch</a></li>
-                <li><a href="/faq.html">FAQ</a></li>
-                <li><a href="/store-owners.html">Store&nbsp;Owners</a></li>
-                <li><a href="/rewards.html">Store&nbsp;Rewards</a></li>
-                <li><a href="/cactus.html">Cactus&nbsp;Blockchain</a></li>
-                <li><a href="/support.html">Support</a></li>
-            </ul>
+            ${menuHTML('/widgets.html')}
         </nav>
     </header>
 
@@ -146,20 +140,7 @@ ${groups}
         <p class="note">Open FavCircles → Home → Widgets. New widgets and features arrive with app updates. Updated ${esc(data.updated)}.</p>
     </main>
 
-    <footer>
-        <div class="container">
-            <p>&copy; 2026 FavCircles. All rights reserved.</p>
-            <p><a href="/widgets.html">Widgets</a> |
-               <a href="/store-owners.html">Store Owners</a> |
-               <a href="/rewards.html">Store Rewards</a> |
-               <a href="/cactus.html">Cactus Blockchain</a> |
-               <a href="/connect-claude.html">Connect to Claude</a></p>
-            <p><a href="/support.html">Support</a> |
-               <a href="/privacy.html">Privacy Policy</a> |
-               <a href="/terms.html">Terms of Service</a> |
-               <a href="/delete-data.html">Delete Your Data</a></p>
-        </div>
-    </footer>
+    ${footerHTML()}
     <script>
         (function () {
             var header = document.querySelector('header');

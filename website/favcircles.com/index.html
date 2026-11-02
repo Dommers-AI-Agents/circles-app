@@ -202,12 +202,15 @@
 
         .share-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4); }
 
+        /* Four cards: one row on a wide screen, two by two, then one column */
         .features {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: 1fr;
             gap: 1.5rem;
             margin: 2rem 0 3rem 0;
         }
+        @media (min-width: 640px) { .features { grid-template-columns: repeat(2, 1fr); } }
+        @media (min-width: 1100px) { .features { grid-template-columns: repeat(4, 1fr); } }
 
         .feature {
             text-align: center;
@@ -467,13 +470,14 @@
             .band { padding: 1.8rem 1.3rem; }
         }
     </style>
+    <style data-site-chrome>.nav-links a.active{text-decoration:underline;text-underline-offset:6px}</style>
 </head>
 <body>
     <header>
         <nav class="container">
             <a href="/" class="logo">FavCircles</a>
             <ul class="nav-links">
-                <li><a href="/">Home</a></li>
+                <li><a href="/" class="active" aria-current="page">Home</a></li>
                 <li><a href="/widgets.html">Widgets</a></li>
                 <li><a href="/watch.html">Watch</a></li>
                 <li><a href="/faq.html">FAQ</a></li>
@@ -508,12 +512,17 @@
             <div class="feature">
                 <div class="feature-icon">🏪</div>
                 <h3>Earn Store Rewards</h3>
-                <p>Participating local shops reward you for showing up, sharing, and bringing friends — points and codes you redeem right at the store. <a href="/rewards.html" style="color:white; font-weight:600;">See how →</a></p>
+                <p>Participating local shops reward you for showing up, sharing, and bringing friends — points you earn by scanning at the register and redeem right in the app, with your card in Apple Wallet. <a href="/rewards.html" style="color:white; font-weight:600;">See how →</a></p>
             </div>
             <div class="feature">
                 <div class="feature-icon">🌵</div>
                 <h3>Collect Cactus Crypto</h3>
                 <p>Your activity fills a piggy bank with FavCoins — a real cryptocurrency on the Cactus blockchain you can send to your own wallet. <a href="/cactus.html" style="color:white; font-weight:600;">Learn more →</a></p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🧩</div>
+                <h3>Free Widgets</h3>
+                <p>Mini-apps for your day, built in: events with invites and RSVPs, workouts and runs, water and medication reminders, bill splitting, postcards and more. <a href="/widgets.html" style="color:white; font-weight:600;">See them all →</a></p>
             </div>
         </div>
 
@@ -612,7 +621,7 @@
             <ul>
                 <li><strong>Claim your venue</strong> and manage how it appears</li>
                 <li><strong>Post specials and announcements</strong> that reach followers and nearby users</li>
-                <li><strong>Reward loyalty</strong> with redemption codes, points, and FavCoins</li>
+                <li><strong>Run a loyalty program</strong> customers join by scanning your register QR, with Apple Wallet cards and order ahead</li>
             </ul>
             <a class="cta" href="/store-owners.html">Learn about FavCircles for Store Owners →</a>
         </div>
@@ -652,6 +661,7 @@
             <p>&copy; 2026 FavCircles. All rights reserved.</p>
             <p><a href="/widgets.html">Widgets</a> |
                <a href="/watch.html">Watch</a> |
+               <a href="/faq.html">FAQ</a> |
                <a href="/store-owners.html">Store Owners</a> |
                <a href="/rewards.html">Store Rewards</a> |
                <a href="/cactus.html">Cactus Blockchain</a> |
