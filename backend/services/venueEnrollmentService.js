@@ -93,6 +93,8 @@ const enrollPlace = async (placeId, { googlePlaceId = null } = {}) => {
   if (errors.length > 0) throw new ServiceError(400, 'PLACE_INCOMPLETE', errors.join('. '));
 
   const venue = await rewardService.createVenue(payload);
+  // Its own App Clip cards now, not at the overnight job
+  require('./appClipExperienceService').publishNewVenueQuiet(venue.venueId);
   return { venue, created: true };
 };
 

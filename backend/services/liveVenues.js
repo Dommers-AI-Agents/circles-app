@@ -30,4 +30,13 @@ async function listLiveVenues() {
   );
 }
 
-module.exports = { listLiveVenues };
+/** One venue, by the same rule: loyalty live (a comp, or its owner's premium). */
+async function isLiveVenue(venue) {
+  if (!venue) return false;
+  if (isCompActive(venue)) return true;
+  if (!venue.ownerUserId) return false;
+  const owner = await getFirestore().collection(COLLECTIONS.USERS).doc(venue.ownerUserId).get();
+  return isOwnerPremiumForVenue(owner.exists ? owner.data() : null, venue.venueId, venue);
+}
+
+module.exports = { listLiveVenues, isLiveVenue };

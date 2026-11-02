@@ -217,6 +217,8 @@ exports.createVirtualVenue = async (req, res) => {
       contactEmail: req.body.contactEmail || req.user.email || null,
       contactName: req.user.displayName || null
     });
+    // Its own App Clip cards now, not at the overnight job
+    require('../../services/appClipExperienceService').publishNewVenueQuiet(venue.venueId);
 
     // Bind an unbound business subscription to this venue (same rule as
     // receipt verification: never silently move an existing binding)

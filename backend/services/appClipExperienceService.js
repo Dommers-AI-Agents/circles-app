@@ -414,4 +414,21 @@ function syncVenueQuiet(venue, options) {
   syncVenue(venue, options).catch((error) => console.error('⚠️ App Clip experience sync failed:', venue.venueId, error.message));
 }
 
-module.exports = { KINDS, HEADER_VERSION, copyFor, businessCategoryFor, wrapName, headerImagePNG, fingerprintFor, syncVenue, syncVenueQuiet, removeExperience, TITLE_MAX, SUBTITLE_MAX };
+/// A store just created (from a place, a claim or a storefront) gets its
+/// cards now rather than at the 4:30 AM job, by the job's own rule: the
+/// register card promises points where loyalty is live or the store is
+/// unclaimed (a demo). Reads the store fresh, so call it after the owner is
+/// set. Fire-and-forget (Wes, 2026-11-02: Fresh Monkee's new codes showed
+/// the generic card all day).
+function publishNewVenueQuiet(venueId) {
+  if (!asc.configured() || !venueId) return;
+  (async () => {
+    const doc = await getFirestore().collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(venueId).get();
+    if (!doc.exists) return;
+    const venue = { venueId: doc.id, ...doc.data() };
+    const live = !venue.ownerUserId || await require('./liveVenues').isLiveVenue(venue);
+    await syncVenue(venue, { live });
+  })().catch((error) => console.error('⚠️ App Clip card publish failed for new store', venueId, error.message));
+}
+
+module.exports = { KINDS, HEADER_VERSION, copyFor, businessCategoryFor, wrapName, headerImagePNG, fingerprintFor, syncVenue, syncVenueQuiet, publishNewVenueQuiet, removeExperience, TITLE_MAX, SUBTITLE_MAX };

@@ -380,6 +380,8 @@ exports.approveClaim = async (req, res) => {
         ownerUserId: claim.userId,
         ownerEmail
       });
+      // Its own App Clip cards now, not at the overnight job
+      require('../../services/appClipExperienceService').publishNewVenueQuiet(venue.venueId);
 
       // QR codes go to the approving admin for printing — best-effort
       let emailSent = false;
