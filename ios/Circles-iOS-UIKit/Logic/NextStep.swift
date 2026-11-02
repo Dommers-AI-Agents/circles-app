@@ -31,6 +31,26 @@ struct NextStep: Equatable {
         case storeOffersSaved, storeDetailsSaved, circleSaved, suggestionSent, connectionAccepted
     }
 
+    static let all: [NextStep] = [.seeOnMap, .addPlace, .addMoreLikeIt, .postMoment, .scanForPoints, .myCheckIns,
+                                  .findPeople, .seeTheirMap, .seeMoments, .shareIt, .myRewards, .previewStore,
+                                  .printCodes, .explore, .openChat]
+
+    /// Phase 4 (2026-11-02): the server's order for this person. Candidates
+    /// are the moment's own steps plus the server's boosts; the server's
+    /// order decides, steps they keep skipping go last, and the moment's own
+    /// order breaks ties. Two at most, no repeats.
+    static func rank(_ candidates: [NextStep], order: [String], avoid: Set<String> = []) -> [NextStep] {
+        var seen = Set<String>()
+        let unique = candidates.filter { seen.insert($0.id).inserted }
+        let position = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
+        return unique.enumerated().sorted { a, b in
+            let aAvoid = avoid.contains(a.element.id), bAvoid = avoid.contains(b.element.id)
+            if aAvoid != bAvoid { return !aAvoid }
+            let pa = position[a.element.id] ?? Int.max, pb = position[b.element.id] ?? Int.max
+            return pa != pb ? pa < pb : a.offset < b.offset
+        }.map(\.element).prefix(2).map { $0 }
+    }
+
     static func after(_ moment: Moment) -> [NextStep] {
         switch moment {
         case .checkedIn: return [.postMoment, .myCheckIns]

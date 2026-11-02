@@ -53,6 +53,7 @@ class AddPlaceToCircleViewController: BaseViewController {
     override var emptyStateActionTitle: String? { "Create a circle" }
     override func emptyStateActionTapped() {
         let create = CreateCircleViewController()
+        create.delegate = self
         present(UINavigationController(rootViewController: create), animated: true)
     }
     
@@ -304,5 +305,13 @@ extension AddPlaceToCircleViewController: UITableViewDelegate {
             steps: [(.seeOnMap, { leave { NextStepNavigator.explore() } }),
                     (.addPlace, { leave { NextStepNavigator.addPlace() } })],
             surface: "add_to_circle", from: self, onDone: { [weak self] in self?.dismiss(animated: true) })
+    }
+}
+
+// The new circle shows here right away, ready to pick (2026-11-02)
+extension AddPlaceToCircleViewController: CreateCircleDelegate {
+    func didCreateCircle(_ circle: Circle) {
+        hideEmptyState()
+        loadData()
     }
 }

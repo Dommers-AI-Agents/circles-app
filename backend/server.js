@@ -305,6 +305,7 @@ app.get('/share/video/:videoId/preview.jpg', videoShare.sharePreviewImage);
 app.get('/share/video/:videoId', videoShare.renderSharePage);
 app.use('/api/users/referral', require('./routes/referralRoutes'));
 app.use('/api/rewards', require('./routes/rewardRoutes'));
+app.use('/api/next-steps', require('./routes/nextStepRoutes')); // never a dead end: which next steps this person sees first
 app.use('/api/attest', require('./routes/appAttestRoutes')); // App Attest key registration
 app.use('/api/wallet', require('./routes/walletRoutes')); // Apple Wallet store cards' web service
 app.use('/api/clip', require('./routes/clipRoutes')); // iOS App Clip (public venue preview + install conversion)

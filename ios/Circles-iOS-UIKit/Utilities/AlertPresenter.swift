@@ -57,17 +57,37 @@ class AlertPresenter {
         from viewController: UIViewController,
         onDone: (() -> Void)? = nil
     ) {
-        let offered = Array(steps.prefix(2))
+        // Phase 4: the server's boosts for this person (a reward ready, find
+        // people, add a place, post a moment) join the moment's own steps;
+        // its order picks the two shown. A boosted step leaves the screen
+        // the way Done does, then opens where it goes.
+        let service = NextStepService.shared
+        service.refreshIfStale()
+        var candidates = steps
+        for id in service.boost {
+            guard !candidates.contains(where: { $0.step.id == id }),
+                  let step = NextStep.all.first(where: { $0.id == id }),
+                  let open = NextStepNavigator.opener(for: step) else { continue }
+            candidates.append((step, {
+                onDone?()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: open)
+            }))
+        }
+        let picked = NextStep.rank(candidates.map(\.step), order: service.order, avoid: service.avoid)
+        let offered = picked.compactMap { step in candidates.first(where: { $0.step == step }) }
+
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         for (step, handler) in offered {
             alert.addAction(UIAlertAction(title: step.title, style: .default) { _ in
                 AnalyticsService.shared.logEvent("next_step_tapped", parameters: ["surface": surface, "step": step.id])
+                service.record([step], surface: surface, kind: "tapped")
                 handler()
             })
         }
         alert.addAction(UIAlertAction(title: "Done", style: .cancel) { _ in onDone?() })
         if let first = alert.actions.first, !offered.isEmpty { alert.preferredAction = first }
         AnalyticsService.shared.logEvent("next_step_shown", parameters: ["surface": surface, "steps": offered.map(\.step.id).joined(separator: ",")])
+        service.record(offered.map(\.step), surface: surface, kind: "shown")
         viewController.present(alert, animated: true)
     }
 

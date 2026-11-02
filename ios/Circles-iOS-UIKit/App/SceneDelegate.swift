@@ -261,6 +261,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         NetworkManager.shared.processPendingConnectionInvite()
         rewardCodes.redeemPendingStickerCodeIfNeeded()
         reauth.offerPasskeySetupIfPending()
+        // This person's next-step order, for "where to next" (2026-11-02)
+        NextStepService.shared.refreshIfStale()
 
         // Quietly locate any imported places still waiting on a coordinate
         // (rows past the import flow's inline-resolution cap)

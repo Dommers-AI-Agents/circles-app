@@ -34,6 +34,21 @@ enum NextStepNavigator {
     static func findPeople() { tabBar?.selectedIndex = 1 }
     static func checkIns() { push(VisitHistoryViewController()) }
     static func profile(_ user: User) { push(ProfileViewController(user: user)) }
+    /// Where a step goes when it needs nothing from the screen (the
+    /// server's boosts use these)
+    static func opener(for step: NextStep) -> (() -> Void)? {
+        switch step.id {
+        case NextStep.myRewards.id: return { rewards() }
+        case NextStep.findPeople.id: return { findPeople() }
+        case NextStep.addPlace.id: return { addPlace() }
+        case NextStep.postMoment.id: return { postMoment() }
+        case NextStep.explore.id: return { explore() }
+        case NextStep.myCheckIns.id: return { checkIns() }
+        case NextStep.seeMoments.id: return { moments() }
+        default: return nil
+        }
+    }
+
     static func rewards() {
         let hub = RewardsHubViewController()
         hub.initialTab = .rewards
