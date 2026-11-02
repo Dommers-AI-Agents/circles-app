@@ -557,7 +557,13 @@ class AuthService {
         }
     }
     
+    /// They tapped Log Out in this run of the app: the login screen doesn't
+    /// start Face ID on its own (they may be switching accounts). A fresh
+    /// launch clears it.
+    private(set) var loggedOutThisSession = false
+
     func logout(completion: ((Bool) -> Void)? = nil) {
+        loggedOutThisSession = true
         // The next account on this phone must report its own push permission
         UserDefaults.standard.removeObject(forKey: "lastReportedPushStatus")
         // …and its own analytics / crash-report identity

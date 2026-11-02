@@ -738,6 +738,7 @@ class LoginViewController: BaseViewController {
     // MARK: - Register-screen handoff
 
     private var pendingAutoPasskeySignIn = false
+    private var autoFaceIDTried = false
 
     /// Set by RegisterViewController when the typed email already has a
     /// passkey: after the pop lands, kick off the assertion automatically.
@@ -755,6 +756,34 @@ class LoginViewController: BaseViewController {
             let email = (emailTextField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             passkeyConfirmedEmail = email.isEmpty ? nil : email
             performPasskeySignIn(email: email.isEmpty ? nil : email, preferImmediate: true, fallbackToPassword: true)
+        } else {
+            startFaceIDIfSetUp()
+        }
+    }
+
+    /// Face ID starts on its own when the account last used on this phone
+    /// has one (Wes, 2026-11-02: "they don't even need to tap"). Apple's
+    /// sheet still asks for one Continue before it reads their face. Not
+    /// right after a Log Out in this run (they may be switching accounts),
+    /// and once per visit to the screen.
+    private func startFaceIDIfSetUp() {
+        guard !autoFaceIDTried, !AuthService.shared.loggedOutThisSession,
+              let hint = lastSignIn, !isLoggingIn else { return }
+        autoFaceIDTried = true
+        let start = { [weak self] in
+            guard let self, self.view.window != nil, self.presentedViewController == nil, !self.isLoggingIn else { return }
+            AnalyticsService.shared.logEvent("login_auto_face_id", parameters: ["method": "\(hint.method)"])
+            self.passkeyConfirmedEmail = hint.email
+            self.performPasskeySignIn(email: hint.email, preferImmediate: true, fallbackToPassword: false)
+        }
+        if hint.method == .passkey {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: start)
+        } else if let email = hint.email, !hint.isHiddenEmail {
+            // Signed in another way last time, but may have set up Face ID since
+            AuthService.shared.checkEmail(email) { result in
+                guard case .success(let check) = result, check.hasPasskey else { return }
+                DispatchQueue.main.async(execute: start)
+            }
         }
     }
 
