@@ -27,19 +27,39 @@ function testCredentials() {
   return { cert: make('Pass Type ID: pass.com.favcircles.loyalty'), wwdr: make('Test WWDR'), key: keys.privateKey };
 }
 
-test('a live store shows points, the next reward and the store on the lock screen', () => {
+test('a live store shows points, the next reward in short fields, and the store on the lock screen', () => {
   const pass = wallet.passJson({
     serial: 's1', authToken: 't'.repeat(32), venue,
-    progress: { live: true, points: 40, earnRate: 10, nextRewardLine: '60 more points for a free coffee' }
+    progress: {
+      live: true, points: 40, earnRate: 10, visits: 4, lastVisitAt: '2026-11-01T15:00:00Z',
+      next: { title: 'Free coffee', pointsCost: 100, remaining: 60, canRedeem: false },
+      nextRewardLine: '60 more points for a free coffee',
+      offers: [{ title: 'Free coffee', pointsCost: 100 }, { title: 'Pastry', pointsCost: 30 }],
+      announcement: { title: 'Live music', message: 'Friday 7 PM' }
+    }
   });
   expect(pass).toMatchObject({
     formatVersion: 1, passTypeIdentifier: 'pass.com.favcircles.loyalty', teamIdentifier: '67E8B4E8HV',
     serialNumber: 's1', webServiceURL: 'https://api.favcircles.com/api/wallet', logoText: 'Sal’s Bakery'
   });
   expect(pass.storeCard.primaryFields[0]).toMatchObject({ key: 'points', value: 40 });
-  expect(pass.storeCard.secondaryFields[0].value).toBe('60 more points for a free coffee');
-  expect(pass.storeCard.auxiliaryFields[0].value).toBe('+10 points');
+  expect(pass.storeCard.secondaryFields.map((f) => [f.label, f.value])).toEqual([['NEXT REWARD', 'Free coffee'], ['TO GO', '60 pts']]);
+  expect(pass.storeCard.auxiliaryFields.map((f) => [f.label, f.value])).toEqual([['EACH VISIT', '+10 points'], ['YOUR VISITS', 4]]);
+  // Wallet allows four front fields under the points on a store card
+  expect(pass.storeCard.secondaryFields.length + pass.storeCard.auxiliaryFields.length).toBeLessThanOrEqual(4);
+  const back = Object.fromEntries(pass.storeCard.backFields.map((f) => [f.key, f.value]));
+  expect(back.menu).toBe('100 pts · Free coffee\n30 pts · Pastry  ✓');
+  expect(back.news).toBe('Live music\nFriday 7 PM');
+  expect(back.lastVisit).toBe('2026-11-01T15:00:00Z');
   expect(pass.locations[0]).toMatchObject({ latitude: 35.2, longitude: -80.8 });
+});
+
+test('a reward they can take now says so on the front', () => {
+  const pass = wallet.passJson({
+    serial: 's1', authToken: 't'.repeat(32), venue,
+    progress: { live: true, points: 100, next: { title: 'Free coffee', pointsCost: 100, remaining: 0, canRedeem: true } }
+  });
+  expect(pass.storeCard.secondaryFields.map((f) => [f.label, f.value])).toEqual([['READY TO REDEEM', 'Free coffee'], ['IN THE APP', 'Tap Redeem']]);
 });
 
 test('the card opens the app on the store’s rewards (2026-11-02)', () => {

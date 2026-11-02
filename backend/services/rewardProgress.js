@@ -46,7 +46,7 @@ const article = (title) => {
 /** "75 more points for a free coffee · about 3 more visits" / "You've got enough for a free coffee". */
 const nextRewardLine = (reward) => {
   if (!reward) return null;
-  if (reward.canRedeem) return `You've got enough for ${article(reward.title)}. Scan at the register to use it.`;
+  if (reward.canRedeem) return `You've got enough for ${article(reward.title)}. Tap Redeem in FavCircles to use it.`;
   let line = `${reward.remaining} more ${reward.remaining === 1 ? 'point' : 'points'} for ${article(reward.title)}`;
   if (reward.visitsLeft > 0) line += ` · about ${reward.visitsLeft} more ${reward.visitsLeft === 1 ? 'visit' : 'visits'}`;
   return line;

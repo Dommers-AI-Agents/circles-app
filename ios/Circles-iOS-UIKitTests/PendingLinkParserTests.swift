@@ -32,6 +32,7 @@ struct PendingLinkParserTests {
     @Test func typedLinks() {
         #expect(PendingLinkParser.parse("circle:c1") == .circle(id: "c1"))
         #expect(PendingLinkParser.parse("place:p1") == .place(id: "p1"))
+        #expect(PendingLinkParser.parse("rewards:gp1") == .storeRewards(placeId: "gp1"))
         #expect(PendingLinkParser.parse("user:u1") == .user(id: "u1"))
         #expect(PendingLinkParser.parse("share:s1") == .share(id: "s1"))
         #expect(PendingLinkParser.parse("connect:u2") == .connect(fromUserId: "u2"))

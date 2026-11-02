@@ -124,7 +124,7 @@ final class DeepLinkCoordinator: SceneCoordinator {
         case .place(let id, let refUserId):
             navigateToPlace(placeId: id, refUserId: refUserId)
         case .storeRewards(let placeId):
-            navigateToPlace(placeId: placeId, opensRewards: true)
+            navigateToStoreRewards(placeId: placeId)
         case .placeFromExtension(let id):
             // The share extension writes the pending-open mailbox as a
             // fallback before trying this deep link — consume it so the
@@ -261,8 +261,7 @@ final class DeepLinkCoordinator: SceneCoordinator {
         }
     }
 
-    /// `opensRewards`: then its Get Rewards page, once the store's rewards load
-    func navigateToPlace(placeId: String, refUserId: String? = nil, opensRewards: Bool = false) {
+    func navigateToPlace(placeId: String, refUserId: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               let tabBarController = window?.rootViewController as? CirclesTabBarController else {
             // Store the deep link target to navigate after login
@@ -284,7 +283,6 @@ final class DeepLinkCoordinator: SceneCoordinator {
                     }
                     if let navController = tabBarController.selectedViewController as? UINavigationController {
                         let detailVC = PlaceDetailViewController(place: place)
-                        detailVC.opensGetRewardsOnLoad = opensRewards
                         navController.pushViewController(detailVC, animated: true)
                     }
                 case .failure:
@@ -323,6 +321,62 @@ final class DeepLinkCoordinator: SceneCoordinator {
                 }
             }
         }
+    }
+
+    /// A store's Get Rewards page, from its Apple Wallet card (2026-11-02).
+    /// Took three taps on Wes's phone: on a cold launch the link landed
+    /// before the tabs were up and lost its "rewards" part, and the place page
+    /// opening Get Rewards when its data arrived raced its own push (Rewards
+    /// showed, then the page jumped back). Now: wait for the tabs, fetch the
+    /// place and its rewards, then put the place page AND Get Rewards on the
+    /// stack in one move.
+    func navigateToStoreRewards(placeId: String, attempts: Int = 16) {
+        guard AuthService.shared.isLoggedIn else {
+            UserDefaults.standard.set("rewards:\(placeId)", forKey: "pendingDeepLink")
+            return
+        }
+        guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
+            guard attempts > 0 else {
+                UserDefaults.standard.set("rewards:\(placeId)", forKey: "pendingDeepLink")
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.navigateToStoreRewards(placeId: placeId, attempts: attempts - 1)
+            }
+            return
+        }
+        // A second tap while the page is already up just refreshes it
+        if let nav = tabBarController.selectedViewController as? UINavigationController,
+           let open = nav.topViewController as? GetRewardsViewController, open.showsStore(placeId: placeId),
+           tabBarController.presentedViewController == nil {
+            open.loadData()
+            return
+        }
+        PlaceService.shared.fetchPlaceById(id: placeId) { result in
+            guard case .success(let place) = result else {
+                DispatchQueue.main.async { [weak self] in self?.navigateToPlace(placeId: placeId) }
+                return
+            }
+            RewardsService.shared.getVenueByPlace(placeId: place.globalPlaceId ?? placeId, googlePlaceId: place.googlePlaceId,
+                                                  includeHistory: true) { venueResult in
+                DispatchQueue.main.async {
+                    self.showStoreRewards(place: place, data: try? venueResult.get(), in: tabBarController)
+                }
+            }
+        }
+    }
+
+    private func showStoreRewards(place: Place, data: PlaceVenueData?, in tabBarController: CirclesTabBarController) {
+        // A sheet over the tabs (the scanner, a ticket) would hide the page
+        if tabBarController.presentedViewController != nil {
+            tabBarController.dismiss(animated: false)
+        }
+        guard let nav = tabBarController.selectedViewController as? UINavigationController else { return }
+        var stack = nav.viewControllers
+        stack.append(PlaceDetailViewController(place: place))
+        // No rewards there (any more): the store page alone
+        if let rewards = GetRewardsViewController(place: place, data: data) { stack.append(rewards) }
+        nav.setViewControllers(stack, animated: true)
     }
 
     func handlePendingDeepLink() {
@@ -366,6 +420,7 @@ final class DeepLinkCoordinator: SceneCoordinator {
                 self.host?.inviteLinks.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
             case .circle(let id): self.navigateToCircle(circleId: id)
             case .place(let id): self.navigateToPlace(placeId: id)
+            case .storeRewards(let id): self.navigateToStoreRewards(placeId: id)
             case .user(let id): self.navigateToUserProfile(userId: id)
             case .share(let id): self.host?.inviteLinks.handleSharedCircle(shareId: id)
             case .connect(let fromUserId): self.host?.inviteLinks.handleConnectionInvite(from: fromUserId)

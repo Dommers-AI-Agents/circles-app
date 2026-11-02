@@ -393,9 +393,6 @@ class PlaceDetailViewController: BaseViewController {
     /// Opened from a store's row in Store Rewards: once the store's card has
     /// loaded, scroll to it (2026-11-01)
     var scrollsToStoreRewards = false
-    /// Opened from the store's Apple Wallet card: once the rewards load,
-    /// straight to Get Rewards to redeem or check points (2026-11-02)
-    var opensGetRewardsOnLoad = false
 
     init(place: Place, circle: Circle? = nil) {
         self.place = place
@@ -3877,10 +3874,6 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
         // both describe the physical location, so they read as one
         venueRewardsTopConstraint?.constant = showCard ? Constants.Spacing.small : 0
         view.layoutIfNeeded()
-        if opensGetRewardsOnLoad && RewardsAvailability(data) != .none {
-            opensGetRewardsOnLoad = false
-            getRewardsTapped()
-        }
         if scrollsToStoreRewards && showCard {
             scrollsToStoreRewards = false
             let card = venueRewardsView.convert(venueRewardsView.bounds, to: scrollView)

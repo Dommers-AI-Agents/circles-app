@@ -526,11 +526,28 @@ exports.getVenueByPlace = async (req, res) => {
       console.error('⚠️ Open-order lookup failed (place page continues):', orderError.message);
     }
 
+    // Get Rewards asks for the caller's own history here (?history=1);
+    // the place page doesn't, so it pays nothing for it. Never fails the page.
+    // It also gets the store's cover photo for its header.
+    let myHistory;
+    let coverPhotoUrl;
+    if (req.query.history === '1' && !isOwner) {
+      [myHistory, coverPhotoUrl] = await Promise.all([
+        require('../../services/rewardHistoryService').forUserAtVenue(userId, venue.venueId).catch((historyError) => {
+          console.error('⚠️ Reward history lookup failed (page continues):', historyError.message);
+          return undefined;
+        }),
+        require('../../services/storeCoverPhoto').coverUrlFor(venue).catch(() => null)
+      ]);
+    }
+
     res.json({
       success: true,
       data: {
+        myHistory,
         venue: {
           ...publicVenueInfo(venue),
+          coverPhotoUrl,
           // Rewards exist only once the store is claimed and its owner is on
           // Business (or comped). Until then nothing on the page says "earn":
           // an enrolled-but-unowned store carried its default rate here and

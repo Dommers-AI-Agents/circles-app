@@ -24,7 +24,7 @@ test('the next reward is the cheapest out of reach, with visits at the earn rate
 
 test('once something is affordable it is the best one they can take now', () => {
   expect(p.nextReward(OFFERS, 160, 25)).toMatchObject({ title: 'Espresso shot', remaining: 0, canRedeem: true });
-  expect(p.nextRewardLine(p.nextReward(OFFERS, 160, 25))).toBe("You've got enough for an espresso shot. Scan at the register to use it.");
+  expect(p.nextRewardLine(p.nextReward(OFFERS, 160, 25))).toBe("You've got enough for an espresso shot. Tap Redeem in FavCircles to use it.");
   expect(p.nextReward([], 500, 25)).toBeNull();
 });
 

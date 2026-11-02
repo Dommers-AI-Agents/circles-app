@@ -56,6 +56,8 @@ enum PendingLink: Equatable {
     case shareToken(circleId: String, shareToken: String)
     case circle(id: String)
     case place(id: String)
+    /// "rewards:<placeId>": a store's Get Rewards, from its Wallet card, before the app was ready
+    case storeRewards(placeId: String)
     case user(id: String)
     case share(id: String)
     case connect(fromUserId: String)
@@ -103,6 +105,7 @@ enum PendingLinkParser {
             return .shareToken(circleId: payload, shareToken: String(components[2]))
         case "circle": return .circle(id: payload)
         case "place": return .place(id: payload)
+        case "rewards": return .storeRewards(placeId: payload)
         case "user": return .user(id: payload)
         case "share": return .share(id: payload)
         case "connect": return .connect(fromUserId: payload)

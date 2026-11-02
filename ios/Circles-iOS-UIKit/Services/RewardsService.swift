@@ -227,15 +227,19 @@ class RewardsService {
 
     /// Rewards data for a place's detail page. `data.venue == nil` means the
     /// place has no enrolled venue — the common case, not an error.
-    func getVenueByPlace(placeId: String, googlePlaceId: String? = nil, completion: @escaping (Result<PlaceVenueData, Error>) -> Void) {
+    /// `includeHistory`: also the caller's history here and the store's cover photo (Get Rewards)
+    func getVenueByPlace(placeId: String, googlePlaceId: String? = nil, includeHistory: Bool = false,
+                         completion: @escaping (Result<PlaceVenueData, Error>) -> Void) {
         let encodedId = placeId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? placeId
         let endpoint = "rewards/venues/by-place/\(encodedId)"
-        let params = googlePlaceId.map { ["googlePlaceId": $0] }
+        var params: [String: String] = [:]
+        if let googlePlaceId { params["googlePlaceId"] = googlePlaceId }
+        if includeHistory { params["history"] = "1" }
 
         apiService.request(
             endpoint: endpoint,
             method: .get,
-            queryParams: params,
+            queryParams: params.isEmpty ? nil : params,
             body: nil,
             requiresAuth: true
         ) { (result: Result<RewardsEnvelope<PlaceVenueData>, APIError>) in
@@ -1246,6 +1250,26 @@ struct PlaceVenueData: Codable {
     /// the paid blocks are already stripped server-side when the store's
     /// subscription isn't live, so the view renders whatever arrives.
     let storefront: VenueStorefront?
+    /// The caller's own history here, when asked for (Get Rewards, 2026-11-02)
+    @LenientlyDecoded var myHistory: VenueRewardHistory?
+}
+
+/// A customer's visits, points and latest moves at one store
+struct VenueRewardHistory: Codable, Equatable {
+    struct Row: Codable, Equatable {
+        let at: String?
+        /// Signed: +25 earned, -100 spent
+        let points: Int
+        /// "earn" | "redeem" | "expired" | "refund"
+        let kind: String
+        let title: String
+    }
+    let visits: Int
+    let earned: Int
+    let redeemed: Int
+    let firstAt: String?
+    let lastVisitAt: String?
+    let recent: [Row]
 }
 
 // MARK: - Storefront (menu, buttons, gallery)
@@ -1399,6 +1423,8 @@ struct PlaceVenue: Codable {
     let globalPlaceId: String?
     let location: RewardCoordinate?
     let earnRate: Int?
+    /// The store's cover photo; sent only with ?history=1 (Get Rewards' header)
+    var coverPhotoUrl: String? = nil
 }
 
 struct PlaceVenueClaim: Codable {

@@ -67,8 +67,30 @@ const coords = (location) => {
   return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
 };
 
+/// Front of the card, under the points: the next reward by name and how far
+/// it is ("Ready" / "75 pts"). Store cards hold four of these fields in all.
+function frontRewardFields(progress) {
+  if (!progress.live || !progress.next) return [];
+  const next = progress.next;
+  return [
+    { key: 'next', label: next.canRedeem ? 'READY TO REDEEM' : 'NEXT REWARD', value: next.title },
+    next.canRedeem
+      ? { key: 'togo', label: 'IN THE APP', value: 'Tap Redeem', textAlignment: 'PKTextAlignmentRight' }
+      : { key: 'togo', label: 'TO GO', value: `${next.remaining} pts`, textAlignment: 'PKTextAlignmentRight' }
+  ];
+}
+
+/// …and the visit line: what a visit earns and how many they've made
+function frontVisitFields(progress) {
+  if (!progress.live) return [];
+  const fields = [];
+  if (progress.earnRate) fields.push({ key: 'earn', label: 'EACH VISIT', value: `+${progress.earnRate} points` });
+  if (progress.visits > 0) fields.push({ key: 'visits', label: 'YOUR VISITS', value: progress.visits, textAlignment: 'PKTextAlignmentRight' });
+  return fields;
+}
+
 /// pass.json for one customer at one store. Pure: everything comes in.
-/// `progress` = { points, nextRewardLine, earnRate, live }
+/// `progress` = { points, next, nextRewardLine, earnRate, live, offers, visits, lastVisitAt, announcement }
 function passJson({ serial, authToken, venue, progress }) {
   const name = venue.venueName || venue.placeName || 'Your store';
   const where = coords(venue.location);
@@ -99,12 +121,10 @@ function passJson({ serial, authToken, venue, progress }) {
         value: progress.live ? progress.points : name,
         ...(progress.live ? { changeMessage: 'You have %@ points at ' + name } : {})
       }],
-      secondaryFields: progress.live && progress.nextRewardLine
-        ? [{ key: 'next', label: 'NEXT REWARD', value: progress.nextRewardLine }]
-        : [],
-      auxiliaryFields: progress.live && progress.earnRate
-        ? [{ key: 'earn', label: 'EACH VISIT', value: `+${progress.earnRate} points` }]
-        : [],
+      // Short values only: Wallet shrinks a long one until it can't be read
+      // (Wes, 2026-11-02: the whole "next reward" sentence was one tiny line)
+      secondaryFields: frontRewardFields(progress),
+      auxiliaryFields: frontVisitFields(progress),
       backFields: [
         ...(rewardsLink ? [{
           key: 'open',
@@ -112,6 +132,14 @@ function passJson({ serial, authToken, venue, progress }) {
           value: rewardsLink,
           attributedValue: `<a href='${rewardsLink}'>Open ${name} in FavCircles</a>`
         }] : []),
+        ...(progress.live && progress.offers && progress.offers.length ? [{
+          key: 'menu',
+          label: `Rewards at ${name}`,
+          value: progress.offers.map((o) => `${o.pointsCost} pts · ${o.title}${o.pointsCost <= progress.points ? '  ✓' : ''}`).join('\n')
+        }] : []),
+        ...(progress.live && progress.nextRewardLine ? [{ key: 'progress', label: 'Your progress', value: progress.nextRewardLine }] : []),
+        ...(progress.announcement ? [{ key: 'news', label: `What's on at ${name}`, value: `${progress.announcement.title}\n${progress.announcement.message}`.trim() }] : []),
+        ...(progress.lastVisitAt ? [{ key: 'lastVisit', label: 'Your last visit', value: progress.lastVisitAt, dateStyle: 'PKDateStyleMedium', timeStyle: 'PKDateStyleNone' }] : []),
         {
           key: 'how',
           label: 'How it works',
@@ -218,7 +246,19 @@ async function progressFor(userId, venue) {
   const points = rewardService.venuePointsFrom(userDoc.exists ? userDoc.data() : {}, venue.venueId);
   const earnRate = live ? rewardService.effectiveEarnRate(venue) : null;
   const next = live ? rewardProgress.nextReward(activeOffers(venue), points, earnRate) : null;
-  return { live, points, earnRate, nextRewardLine: next ? rewardProgress.nextRewardLine(next) : null };
+  // Visits and the last one, from the customer's own ledger here (never fails the card)
+  const history = live
+    ? await require('../rewardHistoryService').forUserAtVenue(userId, venue.venueId).catch(() => null)
+    : null;
+  const announcement = live ? (rewardService.activeAnnouncements(venue) || [])[0] || null : null;
+  return {
+    live, points, earnRate, next,
+    nextRewardLine: next ? rewardProgress.nextRewardLine(next) : null,
+    offers: live ? rewardProgress.rewardLadder(activeOffers(venue)) : [],
+    visits: history ? history.visits : 0,
+    lastVisitAt: history ? history.lastVisitAt : null,
+    announcement: announcement ? { title: announcement.title || '', message: announcement.message || '' } : null
+  };
 }
 
 /// The customer's card for this store, creating its record the first time
