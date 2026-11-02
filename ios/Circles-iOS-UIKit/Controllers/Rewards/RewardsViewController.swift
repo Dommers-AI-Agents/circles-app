@@ -113,6 +113,16 @@ class RewardsViewController: BaseViewController {
     // Per-store loyalty: points are earned and spent shop by shop, so the
     // balance card's total is display only — these rows are the real
     // spendable buckets. Collapses to zero height until points exist.
+    /// "Rewards used": the customer's recent tickets and what became of
+    /// them, given or points back (2026-11-01)
+    private let ticketsStack: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
+
     private let storeBalancesStack: UIStackView = {
         let stack = UIStackView()
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -215,6 +225,50 @@ class RewardsViewController: BaseViewController {
     override func loadData(completion: (() -> Void)? = nil) {
         loadOffers(completion: completion)
         loadHistory()
+        loadTickets()
+    }
+
+    // MARK: - Rewards used
+
+    private func loadTickets() {
+        RewardsService.shared.fetchRewardTickets { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let data) = result else { return }
+                self.updateActiveVoucherBanner()
+                self.renderTickets(data.recent)
+            }
+        }
+    }
+
+    private func renderTickets(_ tickets: [RewardVoucher]) {
+        ticketsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        guard !tickets.isEmpty else { return }
+        let header = UILabel()
+        header.text = "Rewards used"
+        header.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        header.textColor = .label
+        ticketsStack.addArrangedSubview(header)
+        for ticket in tickets.prefix(10) {
+            let line = RewardTicketCopy.historyLine(ticket)
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.spacing = 8
+            let icon = UIImageView(image: UIImage(systemName: line.symbol))
+            icon.tintColor = line.isOpen ? .systemGreen : (ticket.status == "given" ? .systemGreen : .systemOrange)
+            icon.setContentHuggingPriority(.required, for: .horizontal)
+            let text = UILabel()
+            text.numberOfLines = 2
+            text.font = .systemFont(ofSize: 14)
+            text.text = line.text
+            row.addArrangedSubview(icon)
+            row.addArrangedSubview(text)
+            if line.isOpen {
+                row.isUserInteractionEnabled = true
+                let tap = UITapGestureRecognizer(target: self, action: #selector(activeVoucherBannerTapped))
+                row.addGestureRecognizer(tap)
+            }
+            ticketsStack.addArrangedSubview(row)
+        }
     }
 
     // MARK: - Offers loading (with best-effort location for the Nearby section)
@@ -317,6 +371,7 @@ class RewardsViewController: BaseViewController {
 
         contentView.addSubview(redeemCodeButton)
         contentView.addSubview(storeBalancesStack)
+        contentView.addSubview(ticketsStack)
         contentView.addSubview(savedOffersLabel)
         contentView.addSubview(savedOffersStack)
         contentView.addSubview(nearbyOffersLabel)
@@ -377,7 +432,11 @@ class RewardsViewController: BaseViewController {
             storeBalancesStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             storeBalancesStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
-            savedOffersLabel.topAnchor.constraint(equalTo: storeBalancesStack.bottomAnchor, constant: 16),
+            ticketsStack.topAnchor.constraint(equalTo: storeBalancesStack.bottomAnchor, constant: 16),
+            ticketsStack.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            ticketsStack.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+
+            savedOffersLabel.topAnchor.constraint(equalTo: ticketsStack.bottomAnchor, constant: 16),
             savedOffersLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             savedOffersLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -20),
 
@@ -523,7 +582,7 @@ class RewardsViewController: BaseViewController {
             return
         }
 
-        voucherBannerTitleLabel.text = "🎟 Active voucher — \(voucher.offerTitle)"
+        voucherBannerTitleLabel.text = "🎟 Your \(voucher.offerTitle) is ready, tap to show staff"
         activeVoucherBanner.isHidden = false
         voucherBannerHeight?.constant = 52
         updateVoucherBannerTime()

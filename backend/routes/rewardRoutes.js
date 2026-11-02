@@ -103,6 +103,10 @@ router.get('/venues/:venueId/wallet-pass', require('../controllers/wallet/wallet
 router.get('/offers', getOffers);
 router.get('/nearby-events', getNearbyEvents);
 router.post('/redeem-offer', appAttestMonitor, redeemOffer);
+// Reward tickets (2026-11-01): open + recent, and the staff "Given" tap
+const rewardVouchers = require('../controllers/venues/rewardVouchersController');
+router.get('/vouchers', rewardVouchers.listMine);
+router.post('/vouchers/:voucherId/given', rewardVouchers.markGiven);
 // Single-use brand loyalty codes (order-box cards, booth handouts)
 router.post('/redeem-code', appAttestMonitor, redeemCode);
 // Brand storefronts (account-anchored businesses / virtual stores)
@@ -168,6 +172,8 @@ router.delete('/venues/:venueId/managers/:managerId', requireVenueOwner, removeV
 // owner's phone; free like the window sticker (2026-11-01)
 const venueNfcStickers = require('../controllers/venues/venueNfcStickersController');
 router.get('/venues/:venueId/nfc-stickers', requireVenueOwner, venueNfcStickers.listStickers);
+// Rewards used at the store: who, what, when, given or expired (2026-11-01)
+router.get('/venues/:venueId/vouchers', requireVenueOwner, rewardVouchers.listForVenue);
 router.post('/venues/:venueId/nfc-stickers', requireVenueOwner, venueNfcStickers.createSticker);
 router.post('/venues/:venueId/nfc-stickers/:tag/written', requireVenueOwner, venueNfcStickers.markWritten);
 router.patch('/venues/:venueId/nfc-stickers/:tag', requireVenueOwner, venueNfcStickers.renameSticker);

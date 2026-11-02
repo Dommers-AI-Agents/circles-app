@@ -9,7 +9,8 @@ extension UIViewController {
                                onSuccess: ((RewardRedeemData) -> Void)? = nil) {
         showConfirmation(
             title: "Redeem \(offer.title)?",
-            message: "This uses \(offer.pointsCost) of your points at \(venueName) and shows a 5-minute voucher — redeem it at the counter."
+            message: "This uses \(offer.pointsCost) of your points at \(venueName) and opens a 15-minute ticket to show at the counter. If it isn\u{2019}t used in time, your points come back.",
+            confirmTitle: "Redeem"
         ) { [weak self] in
             self?.redeemOffer(offer, venueId: venueId, onSuccess: onSuccess)
         }

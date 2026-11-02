@@ -25,7 +25,8 @@ module.exports = {
   NEARBY_MAX_VENUES: 100,
 
   // How long a redemption voucher stays valid on screen
-  VOUCHER_TTL_MINUTES: 5,
+  // Time to reach the counter (Wes, 2026-11-01: 5 was too short for a line)
+  VOUCHER_TTL_MINUTES: 15,
 
   // Venue sticker codes: 6 uppercase alphanumeric chars (same alphabet as referral codes)
   CODE_LENGTH: 6,

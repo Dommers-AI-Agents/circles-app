@@ -10,6 +10,8 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     func placeVenueViewDidTapRewards(_ view: PlaceVenueRewardsView)
     /// A customer tapped "Add to Apple Wallet": this store's card (2026-11-01)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapAddToWallet venue: PlaceVenue)
+    /// A customer tapped their open reward ticket at this store (2026-11-01)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapTicket ticket: RewardVoucher)
     /// Owner bar: the store's Orders screen
     func placeVenueViewDidTapOrders(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
     /// Owner bar: flip between the owner's view and the customer's
@@ -135,6 +137,15 @@ class PlaceVenueRewardsView: UIView {
                                    nextRewardLine: nextRewardLine, showsChevron: opensRewards)
         if opensRewards { attachRewardsTap(to: headerRow) }
         containerStack.addArrangedSubview(headerRow)
+        // A reward they redeemed and haven't been handed yet, right on top
+        if !isOwner, let ticket = RewardsService.shared.activeTicket(venueId: venue.venueId, venueName: venue.venueName) {
+            let bar = RewardTicketBar(ticket: ticket)
+            bar.onTap = { [weak self] ticket in
+                guard let self else { return }
+                self.delegate?.placeVenueView(self, didTapTicket: ticket)
+            }
+            containerStack.addArrangedSubview(bar)
+        }
         // The money buttons sit right under the name — Reserve / Order are
         // the reason most people open a store's page at all.
         if let actions = storefront?.actions, let row = makeActionButtonsRow(actions) {

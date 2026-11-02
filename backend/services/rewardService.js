@@ -677,6 +677,11 @@ class RewardService {
           [`rewardPointsByVenue.${venueId}.venueName`]: venue.venueName
         });
         transaction.set(eventRef, event);
+        // The ticket the customer shows at the counter (2026-11-01): staff
+        // tap "Given" on it, or it expires and the points come back
+        transaction.set(require('./rewardVoucherService').voucherRef(eventRef.id), require('./rewardVoucherService').newVoucher({
+          voucherId: eventRef.id, userId, venueId, venueName: venue.venueName, offer, voucherCode, expiresAt
+        }));
       });
     } catch (error) {
       if (error.message === 'INSUFFICIENT_POINTS') {
@@ -694,11 +699,14 @@ class RewardService {
     return {
       success: true,
       voucher: {
+        voucherId: eventRef.id,
         voucherCode,
         offerTitle: offer.title,
         pointsCost: offer.pointsCost,
+        venueId,
         venueName: venue.venueName,
-        expiresAt
+        expiresAt,
+        status: 'issued'
       }
     };
   }

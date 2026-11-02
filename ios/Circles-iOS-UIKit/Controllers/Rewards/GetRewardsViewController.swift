@@ -49,6 +49,13 @@ final class GetRewardsViewController: BaseViewController {
         return button
     }()
 
+    /// An open reward ticket here (2026-11-01): one tap to show staff
+    private let ticketSlot: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        return stack
+    }()
+
     /// Progress toward the next reward
     private let nextRewardStack: UIStackView = {
         let stack = UIStackView()
@@ -115,6 +122,8 @@ final class GetRewardsViewController: BaseViewController {
         stack.setCustomSpacing(Constants.Spacing.tiny, after: earnLabel)
         stack.addArrangedSubview(balanceLabel)
         stack.setCustomSpacing(Constants.Spacing.large, after: balanceLabel)
+        stack.addArrangedSubview(ticketSlot)
+        stack.setCustomSpacing(Constants.Spacing.large, after: ticketSlot)
 
         stack.addArrangedSubview(Self.stepHeader("Scan the QR code at the register"))
         let scanCaption = Self.caption("After you buy something, scan the FavCircles QR code by the register. Ask staff if you can't find it. You can earn once a day.")
@@ -133,6 +142,7 @@ final class GetRewardsViewController: BaseViewController {
         earnLabel.text = RewardsAvailability.earnLine(details) ?? "Earn points every visit"
         balanceLabel.text = RewardsAvailability.balanceLine(details)
 
+        renderTicket()
         renderNextReward()
         renderAnnouncements()
         offersStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -141,6 +151,19 @@ final class GetRewardsViewController: BaseViewController {
         for offer in details.offers.sorted(by: { $0.pointsCost < $1.pointsCost }) {
             offersStack.addArrangedSubview(offerRow(offer))
         }
+    }
+
+    private func renderTicket() {
+        ticketSlot.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let ticket = RewardsService.shared.activeTicket(venueId: nil, venueName: details.venueName)
+        ticketSlot.isHidden = ticket == nil
+        guard let ticket else { return }
+        let bar = RewardTicketBar(ticket: ticket)
+        bar.onTap = { [weak self] ticket in
+            guard let self else { return }
+            RewardTicketBar.present(ticket, from: self)
+        }
+        ticketSlot.addArrangedSubview(bar)
     }
 
     private func renderNextReward() {

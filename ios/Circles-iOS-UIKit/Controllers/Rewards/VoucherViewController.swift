@@ -1,13 +1,14 @@
 import UIKit
 
-/// Full-screen redemption voucher shown to venue staff at the counter.
-/// Displays the offer, a short confirmation code, and a 5-minute countdown;
-/// dismisses itself when the voucher expires.
+/// Full-screen reward ticket shown to staff at the counter: the offer, a
+/// short code and a 15-minute countdown. Staff tap "Given" on it when they
+/// hand the reward over (2026-11-01); a ticket that runs out unclaimed says
+/// the points are back (the server refunds them).
 class VoucherViewController: BaseViewController {
 
     // MARK: - Properties
 
-    private let voucher: RewardVoucher
+    private var voucher: RewardVoucher
     private var countdownTimer: Timer?
     private var expiryDate: Date
 
@@ -68,7 +69,7 @@ class VoucherViewController: BaseViewController {
     private let staffInstructionLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Show this screen to staff before it expires.\nYou can close this and reopen it from the Rewards page — the timer keeps running."
+        label.text = "Show this screen to staff. They tap Given when they hand it over.\nYou can close it and come back: it waits on the store\u{2019}s page and in Store Rewards."
         label.font = UIFont.systemFont(ofSize: 15)
         label.textColor = .gray
         label.textAlignment = .center
@@ -109,11 +110,24 @@ class VoucherViewController: BaseViewController {
         return button
     }()
 
+    /// The staff's button; the customer never needs it
+    private let givenButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Staff: tap when given", for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = .systemGreen
+        button.layer.cornerRadius = 10
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .bold)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        return button
+    }()
+
     // MARK: - Init
 
     init(voucher: RewardVoucher) {
         self.voucher = voucher
-        self.expiryDate = voucher.expiryDate ?? Date().addingTimeInterval(5 * 60)
+        self.expiryDate = voucher.expiryDate ?? Date().addingTimeInterval(15 * 60)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -132,6 +146,10 @@ class VoucherViewController: BaseViewController {
         offerLabel.text = voucher.offerTitle
         codeLabel.text = voucher.voucherCode
 
+        if voucher.status == "given" {
+            showGiven()
+            return
+        }
         // Keep the screen awake while staff verify the voucher
         UIApplication.shared.isIdleTimerDisabled = true
         startCountdown()
@@ -154,9 +172,11 @@ class VoucherViewController: BaseViewController {
         cardView.addSubview(offerLabel)
         cardView.addSubview(codeLabel)
         cardView.addSubview(staffInstructionLabel)
+        view.addSubview(givenButton)
         view.addSubview(doneButton)
         view.addSubview(closeButton)
 
+        givenButton.addTarget(self, action: #selector(givenTapped), for: .touchUpInside)
         doneButton.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
         closeButton.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
 
@@ -194,6 +214,10 @@ class VoucherViewController: BaseViewController {
             staffInstructionLabel.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -20),
             staffInstructionLabel.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -28),
 
+            givenButton.bottomAnchor.constraint(equalTo: doneButton.topAnchor, constant: -12),
+            givenButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
+            givenButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
+
             doneButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
             doneButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 40),
             doneButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40)
@@ -215,14 +239,16 @@ class VoucherViewController: BaseViewController {
         guard remaining > 0 else {
             countdownTimer?.invalidate()
             countdownTimer = nil
-            countdownLabel.text = "Expired"
+            countdownLabel.text = "Time\u{2019}s up"
             codeLabel.textColor = .lightGray
             offerLabel.textColor = .lightGray
+            givenButton.isHidden = true
+            checkmarkImageView.image = UIImage(systemName: "arrow.uturn.backward.circle.fill")
+            checkmarkImageView.tintColor = .systemOrange
+            staffInstructionLabel.text = "This reward wasn\u{2019}t marked as given, so your \(voucher.pointsCost) points are back at \(voucher.venueName)."
             RewardsService.shared.clearActiveVoucher()
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                self?.dismiss(animated: true)
-            }
+            // The server refunds on this read; every points display refreshes
+            RewardsService.shared.fetchRewardTickets { _ in }
             return
         }
 
@@ -233,6 +259,60 @@ class VoucherViewController: BaseViewController {
         if remaining <= 30 {
             countdownLabel.textColor = .systemYellow
         }
+    }
+
+    // MARK: - Given
+
+    @objc private func givenTapped() {
+        AlertPresenter.showConfirmation(
+            title: "Hand over \(voucher.offerTitle)?",
+            message: "For staff: this marks the reward as given. It can\u{2019}t be used again.",
+            confirmTitle: "Given",
+            from: self
+        ) { [weak self] in
+            guard let self else { return }
+            self.givenButton.isEnabled = false
+            RewardsService.shared.markRewardGiven(self.voucher) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let given):
+                        self.voucher.status = "given"
+                        self.voucher.givenAt = given.givenAt ?? ISO8601DateFormatter().string(from: Date())
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        self.showGiven()
+                        RewardsService.postBalanceChanged()
+                    case .failure(let error):
+                        self.givenButton.isEnabled = true
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Green "Given ✓ 5:54 PM": the reward was handed over
+    private func showGiven() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        UIApplication.shared.isIdleTimerDisabled = false
+        view.backgroundColor = .systemGreen
+        countdownLabel.textColor = .white
+        countdownLabel.text = "Given \u{2713}"
+        givenButton.isHidden = true
+        checkmarkImageView.image = UIImage(systemName: "checkmark.circle.fill")
+        checkmarkImageView.tintColor = .systemGreen
+        codeLabel.textColor = .lightGray
+        let time = Self.givenTime(voucher.givenAt).map { " at \($0)" } ?? ""
+        staffInstructionLabel.text = "Given\(time). Enjoy!"
+        doneButton.setTitleColor(.systemGreen, for: .normal)
+    }
+
+    private static func givenTime(_ iso: String?) -> String? {
+        guard let iso else { return nil }
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = parser.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        return date.map { DateFormatter.localizedString(from: $0, dateStyle: .none, timeStyle: .short) }
     }
 
     // MARK: - Actions

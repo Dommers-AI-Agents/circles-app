@@ -293,6 +293,9 @@ class VenueActivityCell: UITableViewCell {
             let title = event.offerTitle.map { " — \($0)" } ?? ""
             (verb, icon) = ("redeemed a reward\(title)", "gift.fill")
         case "code_redemption": (verb, icon) = ("redeemed a code", "number.square.fill")
+        case "redemption_refund":
+            let title = event.offerTitle.map { " (\($0))" } ?? ""
+            (verb, icon) = ("got points back, reward not given in time\(title)", "arrow.uturn.backward.circle")
         case "share_conversion": (verb, icon) = ("brought a friend", "person.2.fill")
         default: (verb, icon) = (event.type.replacingOccurrences(of: "_", with: " "), "sparkles")
         }

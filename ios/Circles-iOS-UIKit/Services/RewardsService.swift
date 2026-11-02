@@ -99,10 +99,14 @@ class RewardsService {
         }
     }
 
-    /// Lets the home-screen $ badge refresh the moment points are earned or spent
-    private static func postBalanceChanged() {
+    /// Lets the home-screen $ badge refresh the moment points are earned or
+    /// spent, and every store page and Get Rewards with it (2026-11-01: a
+    /// redeem only posted the badge's name, so those pages kept the old
+    /// points and the next Redeem said "not enough points")
+    static func postBalanceChanged() {
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .rewardBalanceChanged, object: nil)
+            NotificationCenter.default.post(name: .rewardPointsDidChange, object: nil)
         }
     }
 
@@ -1059,6 +1063,7 @@ struct RewardEventItem: Codable {
         case "venue_visit": return "Purchase\(venueSuffix)"
         case "share_conversion": return "Friend added your shared place"
         case "redemption": return "Redeemed \(offerTitle ?? "offer")\(venueSuffix)"
+        case "redemption_refund": return "Points back: \(offerTitle ?? "reward") wasn\u{2019}t given in time\(venueSuffix)"
         default: return type
         }
     }
@@ -1069,12 +1074,18 @@ struct RewardEventItem: Codable {
     }
 }
 
-struct RewardVoucher: Codable {
+struct RewardVoucher: Codable, Equatable {
     let voucherCode: String
     let offerTitle: String
     let pointsCost: Int
     let venueName: String
     let expiresAt: String
+    /// Server ticket id for "Given" (2026-11-01); nil from older servers
+    let voucherId: String?
+    let venueId: String?
+    /// "issued" | "given" | "expired"
+    var status: String?
+    var givenAt: String?
 
     var expiryDate: Date? {
         let formatter = ISO8601DateFormatter()

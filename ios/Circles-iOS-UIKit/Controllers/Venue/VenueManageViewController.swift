@@ -949,6 +949,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("Make a new register card", "Turns the printed card off right away", "arrow.triangle.2.circlepath")
         case .loyaltyCodes:
             set("Loyalty codes", "Single-use codes for orders and event handouts", "ticket")
+        case .rewardsUsed:
+            set("Rewards used", "Who redeemed what, and whether staff gave it", "checkmark.seal")
 
         case .announcement(let index):
             let announcement = announcements[index]
@@ -1047,6 +1049,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             rotateRegisterCode()
         case .loyaltyCodes:
             navigationController?.pushViewController(VenueCodesViewController(venueId: venueId, venueName: venueName), animated: true)
+        case .rewardsUsed:
+            navigationController?.pushViewController(VenueRewardTicketsViewController(venueId: venueId), animated: true)
 
         case .announcement(let index):
             manageAnnouncement(announcements[index])
