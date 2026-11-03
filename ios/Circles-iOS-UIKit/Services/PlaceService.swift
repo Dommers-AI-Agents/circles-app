@@ -186,20 +186,54 @@ class PlaceService {
         )
     }
 
+    /// The places in these circles. Sends only "what changed since my saved
+    /// copy" when there is a good one (PlaceBatchSync), else downloads in
+    /// full; either way the caller gets the complete list.
     func fetchPlacesByMultipleCircles(circleIds: [String], completion: @escaping (Result<[Place], Error>) -> Void) {
-        let body: [String: Any] = [
-            "circleIds": circleIds
-        ]
-        
-        let apiCompletion = createAPICompletion { (result: Result<PlacesResponse, Error>) in
+        fetchPlacesBatch(circleIds: circleIds, allowDelta: true, completion: completion)
+    }
+
+    private func fetchPlacesBatch(circleIds: [String], allowDelta: Bool, completion: @escaping (Result<[Place], Error>) -> Void) {
+        let userId = AuthService.shared.getUserId()
+        let saved = allowDelta ? userId.flatMap { PlaceBatchSync.load(userId: $0, circleIds: circleIds) } : nil
+        var body: [String: Any] = ["circleIds": circleIds]
+        if let saved { body["since"] = saved.syncedAt }
+
+        let apiCompletion = createAPICompletion { [weak self] (result: Result<PlacesBatchRaw, Error>) in
             switch result {
-            case .success(let response):
-                completion(.success(response.places))
             case .failure(let error):
                 completion(.failure(error))
+            case .success(let raw):
+                let isDelta = raw.mode == "delta"
+                let merged: [JSONValue]?
+                if isDelta, let saved, let ids = raw.ids {
+                    merged = PlaceBatchSync.merge(cached: saved.places, changed: raw.places, ids: ids, newIds: raw.newIds ?? [])
+                } else if isDelta {
+                    merged = nil
+                } else {
+                    merged = raw.places
+                }
+                // A gap in the merge (or no copy to merge onto): download in full
+                guard let merged else {
+                    Logger.info("📍 places/batch: changes-only merge incomplete, downloading in full")
+                    self?.fetchPlacesBatch(circleIds: circleIds, allowDelta: false, completion: completion)
+                    return
+                }
+                do {
+                    // Decoded exactly like a full answer (lossy per place, as before)
+                    let data = try JSONEncoder().encode(JSONValue.object(["success": .bool(true), "places": .array(merged)]))
+                    let places = try APIService.makeResponseDecoder().decode(PlacesResponse.self, from: data).places
+                    if let userId, let syncedAt = raw.syncedAt {
+                        PlaceBatchSync.save(merged, syncedAt: syncedAt, userId: userId, circleIds: circleIds, fullDownload: !isDelta)
+                    }
+                    if isDelta { Logger.debug("📍 places/batch: \(raw.places.count) changed of \(merged.count)") }
+                    completion(.success(places))
+                } catch {
+                    completion(.failure(error))
+                }
             }
         }
-        
+
         api.request(
             endpoint: "places/batch",
             method: .post,

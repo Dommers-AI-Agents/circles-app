@@ -6,6 +6,7 @@ const { getConnectionPairSnapshots } = require('../../utils/networkAccess');
 const { getAcceptedConnectionSnapshots } = require('../../utils/networkAccess');
 const { queryInChunks } = require('../../utils/firestoreChunks');
 const { COLLECTIONS, validatePlace, serializeDoc, serializeQuerySnapshot } = require('../../models/FirestoreModels');
+const { GLOBAL_COLLECTIONS } = require('../../models/GlobalPlace');
 const geofire = require('geofire-common');
 const { normalizeUserId, isSameUser } = require('../../services/idService');
 const { ensureGlobalPlaceLink } = require('../../services/globalPlaceResolver');
@@ -1680,6 +1681,10 @@ exports.movePlace = async (req, res, next) => {
 // @desc    Get places from multiple circles in a single request
 // @route   POST /api/places/batch
 // @access  Private
+// What the "only what changed" pass reads per save: membership, visibility
+// and the venue link (isPlaceVisibleToViewer + isListed + isNewFor)
+const DELTA_LIST_FIELDS = ['deletedAt', 'circleId', 'addedBy', 'privacy', 'sharedWith', 'audienceListId', 'globalPlaceId'];
+
 exports.getPlacesByMultipleCircles = async (req, res, next) => {
   try {
     console.log('🔍 getPlacesByMultipleCircles - START - Request details:', {
@@ -1708,12 +1713,31 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     const currentUserId = req.user.uid;
     const allPlaces = [];
     const processedCircles = new Set();
+    // "Only what changed" (2026-11-03): the phone keeps its last full copy
+    // and sends when it got it. Captured BEFORE any read, so a write landing
+    // mid-request is caught next time; the margin covers clock skew between
+    // this instance and Firestore's update times.
+    const syncedAt = new Date();
+    const sinceMs = Date.parse(req.body.since || '');
+    const lean = req.query.lean === '1' || req.body.lean === true;
+    const delta = !lean && Number.isFinite(sinceMs);
+    const changedAfterMs = sinceMs - 5000;
 
-    // Resolve the user's accepted connections ONCE (both directions), storing
-    // normalized ids. The previous per-circle exact-match connection queries
-    // silently denied myNetwork circles whose owner id used a different format
-    // than the connection doc (e.g. Apple Sign-In complex ids).
-    const [connSnap1, connSnap2] = await getAcceptedConnectionSnapshots(currentUserId, { first: 'userId' });
+    // Everything the access checks need, read together (they don't depend on
+    // each other; they were four reads in a row)
+    const uniqueCircleIds = [...new Set(circleIds)];
+    const [[connSnap1, connSnap2], following, innerCircleLists, circleDocs] = await Promise.all([
+      // Resolve the user's accepted connections ONCE (both directions), storing
+      // normalized ids. The previous per-circle exact-match connection queries
+      // silently denied myNetwork circles whose owner id used a different format
+      // than the connection doc (e.g. Apple Sign-In complex ids).
+      getAcceptedConnectionSnapshots(currentUserId, { first: 'userId' }),
+      require('../../services/viewerContext').followingOf(currentUserId),
+      getInnerCircleGrantorLists(currentUserId),
+      // Doc-id lookups in one batched read (the old nested chunk-of-10 loops
+      // awaited serially — ~500 sequential round trips for 50 circles)
+      db.getAll(...uniqueCircleIds.map(id => db.collection(COLLECTIONS.CIRCLES).doc(id)))
+    ]);
     const connectedUserIds = new Set();
     connSnap1.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().connectedUserId)));
     connSnap2.docs.forEach(doc => connectedUserIds.add(normalizeUserId(doc.data().userId)));
@@ -1723,8 +1747,8 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     const batchViewerCtx = makeViewerContext({
       viewerId: currentUserId,
       connections: connectedUserIds,
-      following: await require('../../services/viewerContext').followingOf(currentUserId),
-      innerCircleLists: await getInnerCircleGrantorLists(currentUserId)
+      following,
+      innerCircleLists
     });
 
     // Place activities across ALL connections, keyed by place id — powers the
@@ -1740,15 +1764,6 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
         }
       });
     });
-
-    // Fetch all requested circles in one batched read (doc-id lookups don't
-    // need '__name__ in' chunk queries), then all their places in parallel
-    // batched reads. The previous nested chunk-of-10 loops awaited serially —
-    // ~500 sequential round trips for a full 50-circle batch.
-    const uniqueCircleIds = [...new Set(circleIds)];
-    const circleDocs = await db.getAll(
-      ...uniqueCircleIds.map(id => db.collection(COLLECTIONS.CIRCLES).doc(id))
-    );
 
     const accessibleCircles = [];
     for (const circleDoc of circleDocs) {
@@ -1779,49 +1794,74 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     }
 
     const PLACE_READ_BATCH = 300;
-    const placeBatchReads = [];
-    for (let i = 0; i < placeRefs.length; i += PLACE_READ_BATCH) {
-      placeBatchReads.push(db.getAll(...placeRefs.slice(i, i + PLACE_READ_BATCH)));
-    }
-    const placeDocGroups = await Promise.all(placeBatchReads);
-
-    for (const group of placeDocGroups) {
-      for (const placeDoc of group) {
-        if (!placeDoc.exists) continue;
-        const place = serializeDoc(placeDoc);
-        // Match getPlacesByCircleId semantics: soft-deleted places are
-        // excluded whether deletedAt is null OR missing (the old
-        // "deletedAt == null" query silently dropped legacy docs without
-        // the field), place-level privacy is enforced, and the place must
-        // still belong to one of the requested, accessible circles.
-        if (place.deletedAt !== null && place.deletedAt !== undefined) continue;
-        if (!accessibleCircleIds.has(place.circleId)) continue;
-        if (!isPlaceVisibleToViewer(place, currentUserId, batchViewerCtx)) continue;
-
-        // Filter privateNotes - only visible to the user who added the place
-        const placeData = { ...place };
-        if (place.addedBy !== currentUserId) {
-          delete placeData.privateNotes;
-        }
-
-        // isNew: same semantics as getPlacesByCircleId — only meaningful in
-        // circles the viewer doesn't own, never for places they added, and
-        // driven by the connection activity's viewedBy list.
-        let isNew = false;
-        const parentCircle = accessibleCircleById.get(place.circleId);
-        if (parentCircle && parentCircle.owner !== currentUserId && place.addedBy !== currentUserId) {
-          const activity = placeActivityById.get(place.id);
-          if (activity) {
-            isNew = !(activity.viewedBy || []).includes(currentUserId);
-          }
-        }
-        placeData.isNew = isNew;
-
-        allPlaces.push(placeData);
+    const readPlaces = async (refs, options) => {
+      const reads = [];
+      for (let i = 0; i < refs.length; i += PLACE_READ_BATCH) {
+        reads.push(db.getAll(...refs.slice(i, i + PLACE_READ_BATCH), ...(options ? [options] : [])));
       }
+      return (await Promise.all(reads)).flat();
+    };
+
+    // The same rules for the full list and for "what changed": soft-deleted
+    // places are excluded whether deletedAt is null OR missing (the old
+    // "deletedAt == null" query silently dropped legacy docs without the
+    // field), place-level privacy is enforced, and the place must still
+    // belong to one of the requested, accessible circles.
+    const isListed = (place) => (place.deletedAt === null || place.deletedAt === undefined)
+      && accessibleCircleIds.has(place.circleId)
+      && isPlaceVisibleToViewer(place, currentUserId, batchViewerCtx);
+    // isNew: same semantics as getPlacesByCircleId — only meaningful in
+    // circles the viewer doesn't own, never for places they added, and
+    // driven by the connection activity's viewedBy list.
+    const isNewFor = (place) => {
+      const parentCircle = accessibleCircleById.get(place.circleId);
+      if (!parentCircle || parentCircle.owner === currentUserId || place.addedBy === currentUserId) return false;
+      const activity = placeActivityById.get(place.id);
+      return activity ? !(activity.viewedBy || []).includes(currentUserId) : false;
+    };
+
+    let listedIds = null;      // delta: every place the list holds now, in order
+    let newIds = null;         // delta: which of them carry the red dot now
+    let docsToBuild;           // the places sent in full
+    if (delta) {
+      // Pass 1: just what decides membership and visibility, plus Firestore's
+      // own update time (set on ANY write, so no writer can be missed)
+      const slim = await readPlaces(placeRefs, { fieldMask: DELTA_LIST_FIELDS });
+      const listed = slim.filter(doc => doc.exists).map(doc => ({ doc, place: { id: doc.id, ...doc.data() } }))
+        .filter(({ place }) => isListed(place));
+      listedIds = listed.map(({ place }) => place.id);
+      newIds = listed.filter(({ place }) => isNewFor(place)).map(({ place }) => place.id);
+      // A venue edit (likes, comments, photos, hours) changes the places that
+      // show it, even when the save itself didn't change
+      const venueIds = [...new Set(listed.map(({ place }) => place.globalPlaceId).filter(Boolean))];
+      const venueDocs = venueIds.length
+        ? await db.getAll(...venueIds.map(id => db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(id)), { fieldMask: ['commentsCount'] })
+        : [];
+      const venueUpdatedMs = new Map(venueDocs.filter(doc => doc.exists).map(doc => [doc.id, doc.updateTime.toMillis()]));
+      const changedRefs = listed
+        .filter(({ doc, place }) => doc.updateTime.toMillis() > changedAfterMs
+          || (venueUpdatedMs.get(place.globalPlaceId) || 0) > changedAfterMs)
+        .map(({ doc }) => doc.ref);
+      docsToBuild = await readPlaces(changedRefs);
+    } else {
+      docsToBuild = await readPlaces(placeRefs);
     }
 
-    console.log(`✅ Batch fetched ${allPlaces.length} places from ${processedCircles.size} accessible circles`);
+    for (const placeDoc of docsToBuild) {
+      if (!placeDoc.exists) continue;
+      const place = serializeDoc(placeDoc);
+      if (!isListed(place)) continue;
+
+      // Filter privateNotes - only visible to the user who added the place
+      const placeData = { ...place };
+      if (place.addedBy !== currentUserId) {
+        delete placeData.privateNotes;
+      }
+      placeData.isNew = isNewFor(place);
+      allPlaces.push(placeData);
+    }
+
+    console.log(`✅ Batch ${delta ? `delta: ${allPlaces.length} changed of ${listedIds.length}` : `fetched ${allPlaces.length} places`} from ${processedCircles.size} accessible circles`);
 
     // Lean pin mode (opt-in via ?lean=1 or body {lean:true}): map markers
     // render only name/coordinates/category — no photos, no social counts —
@@ -1829,7 +1869,6 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
     // pin draws. Surfaces that display photos or social data must use the
     // default full mode. Old clients never send the flag, so the default
     // response shape is untouched.
-    const lean = req.query.lean === '1' || req.body.lean === true;
     if (lean) {
       const leanPlaces = allPlaces.map(p => ({
         id: p.id,
@@ -1875,9 +1914,25 @@ exports.getPlacesByMultipleCircles = async (req, res, next) => {
       });
     });
 
+    if (delta) {
+      // The phone merges: `places` are the changed ones in full, `ids` the
+      // list as it stands (order kept, removals implied), `newIds` the dots
+      return res.status(200).json({
+        success: true,
+        mode: 'delta',
+        ids: listedIds,
+        places: placesWithSocial,
+        newIds,
+        syncedAt: syncedAt.toISOString(),
+        circlesProcessed: processedCircles.size,
+        totalPlaces: listedIds.length
+      });
+    }
+
     res.status(200).json({
       success: true,
       places: placesWithSocial,
+      syncedAt: syncedAt.toISOString(),
       circlesProcessed: processedCircles.size,
       totalPlaces: placesWithSocial.length
     });
