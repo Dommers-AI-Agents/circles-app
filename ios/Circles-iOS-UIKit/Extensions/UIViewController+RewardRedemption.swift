@@ -47,14 +47,10 @@ extension UIViewController {
         }
     }
 
-    /// Once per store: "Fresh Monkee will see your name, photo and email."
+    /// Once per store: a terms-style checkbox to let the store see the name,
+    /// photo and email already on the FavCircles profile (ShareWithStoreViewController)
     private func askToShare(venueId: String, venueName: String, then retry: @escaping () -> Void) {
-        showConfirmation(
-            title: "Claim rewards by name",
-            message: "Rewards at \(venueName) are claimed by name. \(venueName) will see your name, photo and email, and your name shows on the reward you hand the counter.",
-            confirmTitle: "Share and claim"
-        ) { [weak self] in
-            guard let self else { return }
+        let sheet = ShareWithStoreViewController(venueName: venueName) { [weak self] in
             RewardsService.shared.shareWithStore(venueId: venueId) { [weak self] result in
                 DispatchQueue.main.async {
                     switch result {
@@ -64,5 +60,10 @@ extension UIViewController {
                 }
             }
         }
+        if let presentation = sheet.sheetPresentationController {
+            presentation.detents = [.medium(), .large()]
+            presentation.prefersGrabberVisible = true
+        }
+        present(sheet, animated: true)
     }
 }
