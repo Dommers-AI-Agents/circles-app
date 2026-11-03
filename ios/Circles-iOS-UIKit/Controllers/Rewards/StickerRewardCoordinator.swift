@@ -449,6 +449,9 @@ final class StickerRewardCoordinator: NSObject {
             message = balanceHere <= awarded.points
                 ? "Welcome! You now have \(balanceHere) points here."
                 : "Thanks for coming back. You now have \(balanceHere) points here."
+        } else if scan.notAtStore == true {
+            title = "Scan this at the store"
+            message = "Points are for purchases at \(scan.venue.venueName), so the register code only earns when your phone is there. You have \(balanceHere) points here."
         } else if scan.removedFromRewards == true {
             title = scan.venue.venueName
             message = "\(scan.venue.venueName) has taken you off its rewards. Ask at the counter if that's a mistake."

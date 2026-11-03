@@ -9,7 +9,6 @@ struct VenueActivityCopyTests {
         #expect(VenueActivityCopy.verb(type: "venue_visit", location: nil, offerTitle: nil).text == "bought something (register scan)")
         #expect(VenueActivityCopy.verb(type: "venue_visit", location: "off", offerTitle: nil).text.hasSuffix("location off)"))
         #expect(VenueActivityCopy.verb(type: "venue_visit", location: "unknown", offerTitle: nil).text.hasSuffix("location not checked)"))
-        #expect(VenueActivityCopy.verb(type: "venue_visit", location: "far", offerTitle: nil).text.hasSuffix("far from the store)"))
     }
 
     @Test func scansThatEarnedNothingAreNamedAndKeptOutOfCharts() {

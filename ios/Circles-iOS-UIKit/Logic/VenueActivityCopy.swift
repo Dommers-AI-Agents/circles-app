@@ -6,8 +6,7 @@ import Foundation
 /// them against their security cameras.
 enum VenueActivityCopy {
 
-    /// Scans that earned nothing (server: services/scanAttempts; "scan_far"
-    /// rows are from before far scans earned, 2026-11-03) — listed,
+    /// Scans that earned nothing (server: services/scanAttempts) — listed,
     /// but left out of the busiest hours/days charts.
     static let attemptTypes: Set<String> = ["scan_far", "scan_repeat", "scan_removed"]
 
@@ -15,11 +14,9 @@ enum VenueActivityCopy {
     static func verb(type: String, location: String?, offerTitle: String?) -> (text: String, icon: String) {
         switch type {
         case "venue_visit":
-            // Every register scan earns (honor system); where the phone was
-            // is for the owner to review. "unknown" = no location sent (an
-            // older app version).
+            // Location off still earns (honor system); the owner sees it.
+            // "unknown" = the phone sent no location (an older app version).
             switch location {
-            case "far": return ("bought something (register scan, far from the store)", "exclamationmark.triangle.fill")
             case "off": return ("bought something (register scan, location off)", "location.slash")
             case "unknown": return ("bought something (register scan, location not checked)", "qrcode.viewfinder")
             default: return ("bought something (register scan)", "qrcode.viewfinder")

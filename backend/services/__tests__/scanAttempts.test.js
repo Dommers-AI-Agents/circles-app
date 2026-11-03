@@ -29,7 +29,7 @@ describe('scan attempts', () => {
   beforeEach(() => { store.rewardEvents = []; store.scanAttempts = []; });
 
   test('types for each reason; earning or unknown reasons are not logged', async () => {
-    expect(attemptType('far')).toBeNull();
+    expect(attemptType('far')).toBe('scan_far');
     expect(attemptType('already_today')).toBe('scan_repeat');
     expect(attemptType('removed')).toBe('scan_removed');
     expect(await recordScanAttempt('u1', { venueId: 'v1' }, { reason: undefined })).toBeNull();

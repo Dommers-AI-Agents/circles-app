@@ -1000,6 +1000,8 @@ struct RewardScanData: Codable {
     let awarded: RewardAward?
     let alreadySaved: Bool?
     let alreadyEarnedToday: Bool?
+    /// The phone was clearly away from the store: no points
+    let notAtStore: Bool?
     /// The store took this customer off its rewards
     let removedFromRewards: Bool?
     /// Register scans while the store's Business plan has lapsed earn nothing

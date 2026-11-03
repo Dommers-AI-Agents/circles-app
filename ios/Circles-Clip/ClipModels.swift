@@ -125,6 +125,8 @@ struct ScanResult: Decodable {
     let venueBalance: Int?
     /// "75 more points for a free coffee · about 3 more visits" (server-made)
     let nextRewardLine: String?
+    /// Apple's location check said the phone wasn't at the store: no visit points
+    let notAtStore: Bool?
     let alreadyEarnedToday: Bool?
     let earnRate: Int?
     /// Window code (2026-11-01): the clip asked the server to save the store

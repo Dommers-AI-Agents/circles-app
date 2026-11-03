@@ -1,9 +1,10 @@
 import UIKit
 import CoreLocation
 
-/// Where the phone is for a register scan (Wes, 2026-11-02): the store's
-/// Activity marks scans from far away or with location off. It never costs
-/// the customer the points (2026-11-03) — the owner reviews them instead.
+/// Where the phone is for a register scan (Wes, 2026-11-02): the server
+/// refuses points when the phone is clearly away from the store, so a photo
+/// of the register card can't earn from home. It's the honor system, not a
+/// lock — location off still earns (the store sees "location off").
 ///
 /// Not asked yet → one plain-words alert, then iOS's own prompt (where
 /// "Allow Once" is fine). Denied → no fix, `locationOff`. A fix older than

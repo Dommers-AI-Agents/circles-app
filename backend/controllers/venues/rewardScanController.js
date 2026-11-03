@@ -204,19 +204,21 @@ exports.scan = async (req, res) => {
       console.info(`[loyalty-integrity] comped award venue=${venue.venueId} until=${venue.loyaltyCompedUntil || 'open-ended'} reason=${venue.loyaltyCompReason || 'unspecified'}`);
     }
 
-    // Where the phone was (services/scanLocation) is stamped on the visit for
-    // the owner's Activity. It never costs the customer the points (Wes,
-    // 2026-11-03: rather give a small reward than upset an honest customer
-    // over a bad GPS fix; the owner reviews "far from the store" scans)
+    // Where the phone was (services/scanLocation): clearly away from the
+    // store (the app's fix, or the App Clip's Apple check) earns nothing and
+    // shows on the owner's Activity; location off still earns, marked
     const location = scanLocationCheck(req.body, venue);
-    if (location === 'far') {
+    const notAtStore = location === 'far';
+    if (notAtStore) {
       console.warn(`[loyalty-integrity] register scan away from the store venue=${venue.venueId} user=${userId}`);
     }
-    const visitResult = await rewardService.awardVenueVisit(userId, venue, { location });
+    const visitResult = notAtStore
+      ? { awarded: false, reason: 'not_at_store' }
+      : await rewardService.awardVenueVisit(userId, venue, { location });
     // Every scan that earned nothing is on the owner's Activity too, with its
     // time (services/scanAttempts), so scans can be checked against cameras
     if (!visitResult.awarded) {
-      await recordScanAttempt(userId, venue, { reason: visitResult.reason, location })
+      await recordScanAttempt(userId, venue, { reason: notAtStore ? 'far' : visitResult.reason, location })
         .catch((e) => console.warn('⚠️ scan attempt not recorded:', e.message));
     }
 
@@ -234,6 +236,7 @@ exports.scan = async (req, res) => {
           ? { type: 'venue_visit', points: visitResult.points }
           : null,
         alreadyEarnedToday: visitResult.reason === 'already_today',
+        ...(notAtStore ? { notAtStore: true } : {}),
         ...(visitResult.reason === 'removed' ? { removedFromRewards: true } : {}),
         alreadySaved,
         balance: rewardPoints,
