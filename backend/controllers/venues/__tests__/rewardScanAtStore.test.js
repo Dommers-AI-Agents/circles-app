@@ -1,6 +1,6 @@
-// A register scan the App Clip's location check says is away from the store
-// earns no visit points (2026-10-31); missing atStore changes nothing. The
-// app's own fix does the same (2026-11-02); location off still earns, marked.
+// Where the phone was is stamped on every register visit for the owner; it
+// never costs the customer the points (Wes, 2026-11-03: far, off and unknown
+// all earn). Before that a far scan earned nothing (2026-10-31 / 11-02).
 // Scans that earn nothing are logged for the owner's Activity (2026-11-03).
 jest.mock('../../../config/firebase', () => ({ getFirestore: () => ({}) }));
 const mockAward = jest.fn(async () => ({ awarded: true, points: 25 }));
@@ -33,27 +33,26 @@ const run = async (body) => {
 describe('register scan atStore', () => {
   beforeEach(() => { mockAward.mockClear(); mockAttempt.mockClear(); });
 
-  test('atStore false: no points, says why, still answers with the store', async () => {
+  test('atStore false still earns, stamped far for the owner', async () => {
     const out = await run({ code: 'REG001', atStore: false });
-    expect(mockAward).not.toHaveBeenCalled();
-    expect(out.data).toMatchObject({ kind: 'register', awarded: null, notAtStore: true, loyaltyLive: true });
+    expect(mockAward.mock.calls[0][2]).toEqual({ location: 'far' });
+    expect(out.data).toMatchObject({ kind: 'register', awarded: { type: 'venue_visit', points: 25 }, loyaltyLive: true });
+    expect(out.data.notAtStore).toBeUndefined();
   });
 
   test('missing or true: points as before', async () => {
     for (const body of [{ code: 'REG001' }, { code: 'REG001', atStore: true }]) {
       const out = await run(body);
       expect(out.data.awarded).toEqual({ type: 'venue_visit', points: 25 });
-      expect(out.data.notAtStore).toBeUndefined();
     }
     expect(mockAward).toHaveBeenCalledTimes(2);
   });
 
-  test("the app's fix far from the store: no points, recorded for the owner", async () => {
+  test("the app's fix far from the store still earns, stamped far; nothing extra logged", async () => {
     const out = await run({ code: 'REG001', location: { latitude: 35.27, longitude: -80.858, accuracy: 10 } });
-    expect(mockAward).not.toHaveBeenCalled();
-    expect(mockAttempt).toHaveBeenCalledTimes(1);
-    expect(mockAttempt.mock.calls[0][2]).toEqual({ reason: 'far', location: 'far' });
-    expect(out.data).toMatchObject({ awarded: null, notAtStore: true });
+    expect(mockAward.mock.calls[0][2]).toEqual({ location: 'far' });
+    expect(mockAttempt).not.toHaveBeenCalled();
+    expect(out.data.awarded).toEqual({ type: 'venue_visit', points: 25 });
   });
 
   test("the app's fix at the store earns, stamped near; location off earns, stamped off", async () => {

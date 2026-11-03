@@ -5,7 +5,6 @@
 // someone scanned the register code, not only the ones that paid. Kept out of
 // rewardEvents so a customer's points history stays points only.
 //
-//   scan_far      the phone was clearly away from the store
 //   scan_repeat   already earned at this store today
 //   scan_removed  the store took them off its rewards
 //
@@ -15,7 +14,9 @@ const { getFirestore } = require('../config/firebase');
 const { newId, nowIso } = require('../utils/ids');
 
 const SCAN_ATTEMPTS = 'scanAttempts';
-const OUTCOME_TYPES = { far: 'scan_far', already_today: 'scan_repeat', removed: 'scan_removed' };
+// (Far-away scans earn since 2026-11-03, marked on the visit itself; older
+// 'scan_far' rows are still in rewardEvents.)
+const OUTCOME_TYPES = { already_today: 'scan_repeat', removed: 'scan_removed' };
 
 /** The attempt's row type for a scan that didn't earn, or null when it isn't one we log. */
 const attemptType = (reason) => OUTCOME_TYPES[reason] || null;

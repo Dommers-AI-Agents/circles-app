@@ -192,9 +192,6 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
         if let award = result.awarded {
             hookLabel.attributedText = ClipTheme.hookText(hello, "+\(award.points) points.", size: 46)
             detailLabel.text = "You have \(balance) points at \(name)."
-        } else if result.notAtStore == true {
-            hookLabel.attributedText = ClipTheme.hookText("Almost.", "Scan it at the counter.", size: 46)
-            detailLabel.text = "Visit points are for scans at \(name). Scan the code at the register on your next visit."
         } else if result.alreadyEarnedToday == true {
             hookLabel.attributedText = ClipTheme.hookText("Welcome back.", "See you next visit.", size: 46)
             detailLabel.text = "You've collected today's points here. You have \(balance) points at \(name)."
