@@ -515,6 +515,14 @@ const getMyNetworkCircles = async (req, res) => {
   try {
     const userId = req.user.uid;
     console.log('🔍 Getting network circles for user:', userId);
+    // "Only what changed" (2026-11-03): see places/batch. Circles change
+    // when their places do, so the circle's own update time is the signal.
+    const syncedAt = new Date();
+    const sinceMs = Date.parse(req.query.since || '');
+    const delta = Number.isFinite(sinceMs);
+    const changedAfterMs = sinceMs - 5000;
+    // Pass 1 in a delta reads only the owner (privacy is in the query)
+    const pick = (query) => (delta ? query.select('owner') : query).get();
 
     // Get all connections for the current user (both directions) plus their
     // user doc (following list) — three independent reads, in parallel
@@ -576,30 +584,29 @@ const getMyNetworkCircles = async (req, res) => {
 
     const circleResults = await Promise.all([
       ...batchOwners(connectedUserIdsArray).map(batch =>
-        db.collection(COLLECTIONS.CIRCLES)
+        pick(db.collection(COLLECTIONS.CIRCLES)
           .where('owner', 'in', batch)
-          .where('privacy', 'in', ['public', 'myNetwork'])
-          .get()
+          .where('privacy', 'in', ['public', 'myNetwork']))
       ),
       ...batchOwners(grantorIds).map(batch =>
-        db.collection(COLLECTIONS.CIRCLES)
+        pick(db.collection(COLLECTIONS.CIRCLES)
           .where('owner', 'in', batch)
-          .where('privacy', '==', 'innerCircle')
-          .get()
+          .where('privacy', '==', 'innerCircle'))
       ),
       ...batchOwners(followedOnlyIds).map(batch =>
-        db.collection(COLLECTIONS.CIRCLES)
+        pick(db.collection(COLLECTIONS.CIRCLES)
           .where('owner', 'in', batch)
-          .where('privacy', '==', 'public')
-          .get()
+          .where('privacy', '==', 'public'))
       )
     ]);
 
     // Combine all circle results
     let circles = [];
+    const changedRefs = [];
     circleResults.forEach(snapshot => {
       snapshot.docs.forEach(doc => {
         circles.push(serializeDoc(doc));
+        if (delta && doc.updateTime.toMillis() > changedAfterMs) changedRefs.push(doc.ref);
       });
     });
 
@@ -622,9 +629,12 @@ const getMyNetworkCircles = async (req, res) => {
     // Enrich circles with owner details from map. A circle whose owner no
     // longer exists is orphaned (deleted account) — flag it and drop it from
     // this list rather than shipping "Shared by Unknown" to the client.
+    // Worked out fresh every time: a stale ownerMissing stored on the doc
+    // (clean-orphaned-circles.js) hid a live circle, "Eateries", 2026-11-03
     circles.forEach(circle => {
       circle.ownerDetails = ownersMap.get(circle.owner) || null;
-      if (!circle.ownerDetails) circle.ownerMissing = true;
+      if (circle.ownerDetails) delete circle.ownerMissing;
+      else circle.ownerMissing = true;
     });
     const orphanCount = circles.filter(c => c.ownerMissing).length;
     if (orphanCount > 0) {
@@ -634,9 +644,35 @@ const getMyNetworkCircles = async (req, res) => {
 
     console.log('✅ Returning', circles.length, 'circles with batch-loaded owner details');
 
+    if (delta) {
+      // The phone merges: `data` holds the changed circles in full, `ids` the
+      // list as it stands (removals implied), `owners` every owner's public
+      // card, re-stamped onto each circle so a rename shows at once
+      const listed = new Set(circles.map(c => c.id));
+      const changedDocs = changedRefs.length ? await db.getAll(...changedRefs) : [];
+      const changed = changedDocs.filter(doc => doc.exists && listed.has(doc.id)).map(doc => {
+        const circle = serializeDoc(doc);
+        circle.ownerDetails = ownersMap.get(circle.owner) || null;
+        delete circle.ownerMissing;   // listed means its owner was found
+        return circle;
+      });
+      const owners = {};
+      ownersMap.forEach((card, id) => { owners[id] = card; });
+      console.log(`✅ Network circles delta: ${changed.length} changed of ${circles.length}`);
+      return res.status(200).json({
+        success: true,
+        mode: 'delta',
+        ids: circles.map(c => c.id),
+        data: changed,
+        owners,
+        syncedAt: syncedAt.toISOString()
+      });
+    }
+
     res.status(200).json({
       success: true,
-      data: circles
+      data: circles,
+      syncedAt: syncedAt.toISOString()
     });
 
   } catch (error) {

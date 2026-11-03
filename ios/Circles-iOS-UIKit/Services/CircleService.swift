@@ -887,3 +887,33 @@ struct CircleCopyResponse: Decodable {
     let message: String
     let circle: Circle
 }
+
+extension CircleService {
+    // MARK: - Network circles (only what changed, 2026-11-03)
+
+    /// network/my-network-circles the changed-only way (DeltaSync): every
+    /// caller gets the whole list, decoded exactly like a full answer. Owner
+    /// cards come fresh with every answer (`owners`) and are stamped onto
+    /// each circle, so a rename shows at once.
+    func fetchMyNetworkCircles(completion: @escaping (Result<CirclesDataResponse, APIError>) -> Void) {
+        let restamp: ([String: JSONValue]) -> ((String, inout [String: JSONValue]) -> Void) = { answer in
+            guard case .object(let owners)? = answer["owners"] else { return { _, _ in } }
+            return { _, fields in
+                if case .string(let owner)? = fields["owner"] { fields["ownerDetails"] = owners[owner] ?? .null }
+            }
+        }
+        DeltaSync.fetch(.networkCircles, endpoint: "network/my-network-circles", method: .get,
+                        cacheKey: "my-network-circles", restamp: restamp) { result in
+            switch result {
+            case .failure(let error):
+                completion(.failure(error as? APIError ?? .requestFailed(error)))
+            case .success(let data):
+                do {
+                    completion(.success(try APIService.makeResponseDecoder().decode(CirclesDataResponse.self, from: data)))
+                } catch {
+                    completion(.failure(.decodingFailed(error)))
+                }
+            }
+        }
+    }
+}

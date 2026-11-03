@@ -5,6 +5,7 @@
 const { getFirestore } = require('../config/firebase');
 const { sendServiceError } = require('../utils/serviceError');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
+const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const { getAllowedCircleIds } = require('../utils/networkAccess');
 const { isPlaceVisibleToViewer } = require('../services/visibility');
 const { buildViewerContext } = require('../services/viewerContext');
@@ -18,6 +19,10 @@ const { getDocsById } = require('../utils/batchGet');
 
 const db = getFirestore();
 
+// What pass 1 reads to pick the pins: dedupe, deleted, visibility
+// (isPlaceVisibleToViewer), the radius check, and the venue link
+const VIEWPORT_PICK_FIELDS = ['deletedAt', 'location', 'addedBy', 'privacy', 'sharedWith', 'audienceListId', 'globalPlaceId', 'circleId'];
+
 const MIN_RADIUS_M = 100;
 const MAX_RADIUS_M = 100000; // 100 km
 const DEFAULT_LIMIT = 200;
@@ -29,6 +34,7 @@ const MAX_LIMIT = 500;
 const getNetworkPlacesInViewport = async (req, res) => {
   try {
     const userId = req.user.uid;
+    const syncedAt = new Date();
 
     const centerLat = parseFloat(req.query.centerLat);
     const centerLng = parseFloat(req.query.centerLng);
@@ -88,6 +94,9 @@ const getNetworkPlacesInViewport = async (req, res) => {
             .startAt(b[0])
             .endAt(b[1])
             .limit(perQueryLimit)
+            // Pass 1 reads only what picks the pins (2026-11-03): up to
+            // chunks × bounds × 60 full docs were read to send at most 200
+            .select(...VIEWPORT_PICK_FIELDS)
             .get()
         );
       }
@@ -120,21 +129,43 @@ const getNetworkPlacesInViewport = async (req, res) => {
         const distanceM = geofire.distanceBetween([centerLat, centerLng], [latitude, longitude]) * 1000;
         if (distanceM > radiusM) continue;
 
-        const place = serializeDoc(doc);
-        // privateNotes are only visible to the user who added the place
-        if (place.addedBy !== userId) {
-          delete place.privateNotes;
-        }
-        place._viewportDistanceM = distanceM;
-        matches.push(place);
+        matches.push({ doc, distanceM });
       }
     }
 
-    matches.sort((a, b) => a._viewportDistanceM - b._viewportDistanceM);
+    matches.sort((a, b) => a.distanceM - b.distanceM);
     const hasMore = matches.length > limit;
-    const places = matches.slice(0, limit).map(place => {
-      const { _viewportDistanceM, ...rest } = place;
-      return rest;
+    const picked = matches.slice(0, limit);
+
+    // "Only what changed" (2026-11-03): the phone sends when it last loaded
+    // this same view; Firestore's own update time says which picked pins
+    // (or their venues) changed since. Captured before the reads (see
+    // places/batch); the margin covers clock skew.
+    const sinceMs = Date.parse(req.query.since || '');
+    const delta = req.query.lean !== '1' && Number.isFinite(sinceMs);
+    const changedAfterMs = sinceMs - 5000;
+    let toBuild = picked.map(({ doc }) => doc.ref);
+    if (delta) {
+      const venueIds = [...new Set(picked.map(({ doc }) => doc.get('globalPlaceId')).filter(Boolean))];
+      const venueDocs = venueIds.length
+        ? await db.getAll(...venueIds.map(id => db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(id)), { fieldMask: ['commentsCount'] })
+        : [];
+      const venueUpdatedMs = new Map(venueDocs.filter(d => d.exists).map(d => [d.id, d.updateTime.toMillis()]));
+      toBuild = picked.filter(({ doc }) => doc.updateTime.toMillis() > changedAfterMs
+          || (venueUpdatedMs.get(doc.get('globalPlaceId')) || 0) > changedAfterMs)
+        .map(({ doc }) => doc.ref);
+    }
+
+    // Pass 2: the full records, for just the pins being sent
+    const fullDocs = toBuild.length ? await db.getAll(...toBuild) : [];
+    const fullById = new Map(fullDocs.filter(d => d.exists).map(d => [d.id, d]));
+    const places = picked.filter(({ doc }) => fullById.has(doc.id)).map(({ doc }) => {
+      const place = serializeDoc(fullById.get(doc.id));
+      // privateNotes are only visible to the user who added the place
+      if (place.addedBy !== userId) {
+        delete place.privateNotes;
+      }
+      return place;
     });
 
     // Lean pin mode (opt-in via ?lean=1): map markers draw only name/
@@ -166,9 +197,25 @@ const getNetworkPlacesInViewport = async (req, res) => {
 
     console.log(`🗺️ Viewport query for ${userId}: center=(${centerLat},${centerLng}) r=${radiusM}m circles=${circleIds.length} → ${placesWithSocial.length} places${hasMore ? ' (truncated)' : ''}`);
 
+    if (delta) {
+      // The phone merges: `places` are the changed pins in full, `ids` the
+      // view as it stands (nearest first; removals implied)
+      return res.status(200).json({
+        success: true,
+        mode: 'delta',
+        ids: picked.map(({ doc }) => doc.id),
+        places: placesWithSocial,
+        syncedAt: syncedAt.toISOString(),
+        total: picked.length,
+        hasMore,
+        clampedRadiusM: radiusM
+      });
+    }
+
     res.status(200).json({
       success: true,
       places: placesWithSocial,
+      syncedAt: syncedAt.toISOString(),
       total: placesWithSocial.length,
       hasMore,
       clampedRadiusM: radiusM

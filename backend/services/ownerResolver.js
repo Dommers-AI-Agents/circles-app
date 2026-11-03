@@ -96,7 +96,10 @@ async function attachOwnerDetails(circle, { isOwner = false } = {}) {
   if (!circle || isOwner || !circle.owner) return circle;
   const owner = await resolveUser(circle.owner);
   // The public card only, never the whole user doc (2026-11-03)
-  if (owner) circle.ownerDetails = projectPublicUser(owner);
+  if (owner) {
+    circle.ownerDetails = projectPublicUser(owner);
+    delete circle.ownerMissing;   // never trust a flag stored on the doc
+  }
   // A circle whose owner no longer exists is orphaned. Say so explicitly so
   // clients can hide it rather than rendering "Shared by Unknown".
   else circle.ownerMissing = true;
@@ -112,8 +115,10 @@ async function attachOwnerDetailsToAll(circles, currentUserId) {
     if (!circle || !circle.owner) return;
     if (currentUserId && circle.owner === currentUserId) return;
     const owner = resolved.get(circle.owner);
-    if (owner) circle.ownerDetails = projectPublicUser(owner, [], { viewerId: currentUserId });
-    else circle.ownerMissing = true;
+    if (owner) {
+      circle.ownerDetails = projectPublicUser(owner, [], { viewerId: currentUserId });
+      delete circle.ownerMissing;
+    } else circle.ownerMissing = true;
   });
   return circles;
 }

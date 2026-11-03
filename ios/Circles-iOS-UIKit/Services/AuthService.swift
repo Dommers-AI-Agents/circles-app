@@ -565,7 +565,7 @@ class AuthService {
     func logout(completion: ((Bool) -> Void)? = nil) {
         loggedOutThisSession = true
         NextStepService.shared.reset()
-        PlaceBatchSync.clearAll()
+        DeltaSync.clearAll()
         // The next account on this phone must report its own push permission
         UserDefaults.standard.removeObject(forKey: "lastReportedPushStatus")
         // …and its own analytics / crash-report identity

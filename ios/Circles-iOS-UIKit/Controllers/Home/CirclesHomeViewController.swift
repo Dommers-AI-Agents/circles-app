@@ -4015,11 +4015,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         // 3. Refresh circles based on current view (parallel)
         refreshGroup.enter()
         if isShowingNetworkCircles {
-            APIService.shared.request(
-                endpoint: "network/my-network-circles",
-                method: .get,
-                requiresAuth: true
-            ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
+            CircleService.shared.fetchMyNetworkCircles { [weak self] (result: Result<CirclesDataResponse, APIError>) in
                 // APIService completes on its delegate queue; state and the
                 // place fetch it kicks off belong on main
                 DispatchQueue.main.async {

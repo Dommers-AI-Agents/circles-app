@@ -139,11 +139,7 @@ final class HomeDataLoader {
 
         // 2. Load network circles (parallel)
         group.enter()
-        APIService.shared.request(
-            endpoint: "network/my-network-circles",
-            method: .get,
-            requiresAuth: true
-        ) { (result: Result<CirclesDataResponse, APIError>) in
+        CircleService.shared.fetchMyNetworkCircles { (result: Result<CirclesDataResponse, APIError>) in
             switch result {
             case .success(let response):
                 networkCirclesResult = response.data
@@ -334,11 +330,7 @@ final class HomeDataLoader {
     }
 
     func fetchNetworkCircles(completion: (() -> Void)? = nil) {
-        APIService.shared.request(
-            endpoint: "network/my-network-circles",
-            method: .get,
-            requiresAuth: true
-        ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
+        CircleService.shared.fetchMyNetworkCircles { [weak self] (result: Result<CirclesDataResponse, APIError>) in
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 switch result {
@@ -478,11 +470,7 @@ final class HomeDataLoader {
         // Always fetch network circles for map view (need to show connection places)
         if state.networkCircles.isEmpty && !state.circles.isEmpty {
             group.enter()
-            APIService.shared.request(
-                endpoint: "network/my-network-circles",
-                method: .get,
-                requiresAuth: true
-            ) { [weak self] (result: Result<CirclesDataResponse, APIError>) in
+            CircleService.shared.fetchMyNetworkCircles { [weak self] (result: Result<CirclesDataResponse, APIError>) in
                 switch result {
                 case .success(let response):
                     // State is main-thread only; APIService completes off main
