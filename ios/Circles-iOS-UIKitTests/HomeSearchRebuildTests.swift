@@ -95,6 +95,20 @@ struct RecentSearchListTests {
         #expect(list.removing("QUERY 19").queries.first == "query 18")
     }
 
+    @Test func picksAreKeptOnceAndReopenable() {
+        let sal = RecentSearchItem(kind: .place, id: "save1", title: "Sal's Bakery", subtitle: "1 Main St", globalPlaceId: "g1")
+        let salAgain = RecentSearchItem(kind: .place, id: "save2", title: "Sal's Bakery", globalPlaceId: "g1")
+        let brittany = RecentSearchItem(kind: .person, id: "u1", title: "Brittany")
+        var list = RecentSearchList().adding(sal).adding(brittany).adding(salAgain)
+        // The same venue once, newest first; the person stays
+        #expect(list.items.map(\.kind) == [.place, .person])
+        #expect(list.items.first?.id == "save2")
+        // A short pick still counts (it is a real thing); one typed letter does not
+        list = list.adding(RecentSearchItem(kind: .widget, id: "wo", title: "Wo")).adding("W")
+        #expect(list.items.count == 3)
+        #expect(list.removing(brittany).items.map(\.title) == ["Wo", "Sal's Bakery"])
+    }
+
     @Test func storeIsPerAccount() {
         let defaults = UserDefaults(suiteName: "RecentSearchListTests.\(UUID().uuidString)")!
         var user: String? = "a"
@@ -195,7 +209,7 @@ struct HomeSearchPlanIdleAndStatusTests {
         let idle = HomeSearchPlan.idle(recent: 9)
         #expect(idle.recentRows == HomeSearchPlan.maxRecentRows)
         #expect(idle.browseRows == HomeSearchBrowseItem.all.count)
-        #expect(idle.handleTitle == "Recent searches")
+        #expect(idle.handleTitle == "Recent")
         #expect(HomeSearchPlan.idle(recent: 0).handleTitle == "Browse nearby")
     }
 

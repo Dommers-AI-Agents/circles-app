@@ -83,9 +83,10 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         isSearching ? matchedWidgetsCache : []
     }
 
-    /// Recent searches shown under the empty bar
-    var visibleRecentSearches: [String] {
-        Array(recentSearches.list.queries.prefix(searchPlan.recentRows))
+    /// What they picked lately (and searches run with the Search key),
+    /// under the empty bar
+    var visibleRecentSearches: [RecentSearchItem] {
+        Array(recentSearches.list.items.prefix(searchPlan.recentRows))
     }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
@@ -514,7 +515,8 @@ extension CirclesHomeViewController {
     /// Handles a tap on a PEOPLE result: connections/followees filter the map
     /// (like tapping their avatar); everyone else opens their profile to act.
     func selectSearchedUser(_ user: User) {
-        recordRecentSearch()
+        recentSearches.record(RecentSearchItem(kind: .person, id: user.id, title: user.displayName,
+                                               subtitle: user.username.map { "@\($0)" }, imageURL: user.profilePicture))
         searchBar.text = ""
         searchBar.resignFirstResponder()
         endSearch(keepFocus: false)

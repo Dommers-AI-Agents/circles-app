@@ -92,11 +92,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 cell.accessoryType = .none
                 let recents = visibleRecentSearches
                 guard indexPath.row < recents.count else { return cell }
-                var content = cell.defaultContentConfiguration()
-                content.text = recents[indexPath.row]
-                content.image = UIImage(systemName: "clock.arrow.circlepath")
-                content.imageProperties.tintColor = Constants.Colors.secondaryLabel
-                cell.contentConfiguration = content
+                configureRecentCell(cell, item: recents[indexPath.row])
                 return cell
             case .browse:
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
@@ -325,23 +321,35 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 guard indexPath.row < widgets.count else { return }
                 let id = widgets[indexPath.row].id
                 AnalyticsService.shared.logEvent("home_search_widget_opened", parameters: ["widget": id])
-                recordRecentSearch()
+                let widget = widgets[indexPath.row]
+                recentSearches.record(RecentSearchItem(kind: .widget, id: id, title: widget.title,
+                                                       subtitle: "Widget", symbolName: widget.symbolName))
                 resetSearch()
                 showWidgetsTab(openingWidget: id)
             case .places:
                 let places = visibleFilteredPlaces
                 guard indexPath.row < places.count else { return }
                 // The search (query, pins, sheet) survives the push and the pop
-                recordRecentSearch()
+                let place = places[indexPath.row]
+                recentSearches.record(RecentSearchItem(kind: .place, id: place.id, title: place.name,
+                                                       subtitle: place.address, globalPlaceId: place.globalPlaceId))
                 searchBar.resignFirstResponder()
-                presentDetailForPlace(places[indexPath.row])
+                presentDetailForPlace(place)
             case .people:
                 guard indexPath.row < searchedUsers.count else { return }
                 selectSearchedUser(searchedUsers[indexPath.row])
             case .suggested:
                 guard indexPath.row < visibleSuggestedRows.count else { return }
                 let row = visibleSuggestedRows[indexPath.row]
-                recordRecentSearch()
+                switch row {
+                case .global(let suggestion):
+                    let place = suggestion.toLegacyPlace()
+                    recentSearches.record(RecentSearchItem(kind: .place, id: place.id, title: place.name,
+                                                           subtitle: place.address, globalPlaceId: place.globalPlaceId ?? place.id))
+                case .apple(let venue):
+                    // Not on FavCircles yet: nothing to reopen, so the name as a search
+                    recentSearches.record(venue.name)
+                }
                 searchBar.text = ""
                 searchBar.resignFirstResponder()
                 endSearch(keepFocus: false)
@@ -359,7 +367,7 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             case .recent:
                 let recents = visibleRecentSearches
                 guard indexPath.row < recents.count else { return }
-                runSearch(recents[indexPath.row])
+                openRecent(recents[indexPath.row])
             case .browse:
                 let items = HomeSearchBrowseItem.all
                 guard indexPath.row < items.count else { return }
@@ -389,9 +397,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         guard tableView == searchResultsTableView, SearchSection(rawValue: indexPath.section) == .recent else { return nil }
         let recents = visibleRecentSearches
         guard indexPath.row < recents.count else { return nil }
-        let query = recents[indexPath.row]
+        let item = recents[indexPath.row]
         let remove = UIContextualAction(style: .destructive, title: "Remove") { [weak self] _, _, done in
-            self?.recentSearches.remove(query)
+            self?.recentSearches.remove(item)
             self?.refreshSearchOverlay()
             done(true)
         }
@@ -428,5 +436,106 @@ extension CirclesHomeViewController {
         addPlaceVC.circleWasRemembered = target.id == lastUsedId && circles.count > 1
         addPlaceVC.prefillSearchWithPlace(name: venue.name, coordinate: venue.location?.clLocation?.coordinate)
         navigationController?.pushViewController(addPlaceVC, animated: true)
+    }
+}
+
+// MARK: - Recent (what they picked, 2026-11-03)
+extension CirclesHomeViewController {
+    func configureRecentCell(_ cell: UITableViewCell, item: RecentSearchItem) {
+        var content = cell.defaultContentConfiguration()
+        content.text = item.title
+        content.secondaryText = item.subtitle
+        content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
+        content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
+        content.secondaryTextProperties.numberOfLines = 1
+        content.imageProperties.maximumSize = CGSize(width: 34, height: 34)
+        content.imageProperties.reservedLayoutSize = CGSize(width: 34, height: 34)
+        switch item.kind {
+        case .query:
+            content.image = UIImage(systemName: "magnifyingglass")
+            content.imageProperties.tintColor = Constants.Colors.secondaryLabel
+        case .place:
+            content.image = UIImage(systemName: "mappin.circle.fill")
+            content.imageProperties.tintColor = Constants.Colors.primary
+        case .widget:
+            content.image = UIImage(systemName: item.symbolName ?? "square.grid.2x2.fill")
+            content.imageProperties.tintColor = Constants.Colors.primary
+        case .person:
+            content.image = UIImage(systemName: "person.crop.circle.fill")
+            content.imageProperties.tintColor = Constants.Colors.secondaryLabel
+            content.imageProperties.cornerRadius = 17
+        }
+        cell.contentConfiguration = content
+        // Their photo, once it loads (if the row still shows them)
+        if item.kind == .person, let url = item.imageURL, !url.isEmpty {
+            let key = item.key
+            cell.accessibilityIdentifier = key
+            ImageService.shared.loadImage(from: url) { image in
+                DispatchQueue.main.async {
+                    guard let image, cell.accessibilityIdentifier == key,
+                          var updated = cell.contentConfiguration as? UIListContentConfiguration else { return }
+                    updated.image = image
+                    cell.contentConfiguration = updated
+                }
+            }
+        } else {
+            cell.accessibilityIdentifier = nil
+        }
+    }
+
+    /// Reopen a recent pick: the place's page, the person, the widget; a
+    /// typed search runs again.
+    func openRecent(_ item: RecentSearchItem) {
+        AnalyticsService.shared.logEvent("home_search_recent_opened", parameters: ["kind": item.kind.rawValue])
+        switch item.kind {
+        case .query:
+            runSearch(item.title)
+        case .widget:
+            guard let id = item.id else { return }
+            recentSearches.record(item)
+            resetSearch()
+            showWidgetsTab(openingWidget: id)
+        case .place:
+            recentSearches.record(item)
+            searchBar.resignFirstResponder()
+            // One of their saves: the same page a result opens
+            if let saved = allPlaces.first(where: { $0.id == item.id || ($0.globalPlaceId != nil && $0.globalPlaceId == item.globalPlaceId) }) {
+                presentDetailForPlace(saved)
+                return
+            }
+            guard let venueId = item.globalPlaceId ?? item.id else { return }
+            let loading = AlertPresenter.showLoading(from: self)
+            GlobalPlaceService.shared.getGlobalPlace(id: venueId) { [weak self] result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        guard let self else { return }
+                        switch result {
+                        case .success(let response):
+                            self.endSearch(keepFocus: false)
+                            self.navigationController?.pushViewController(
+                                PlaceDetailViewController(place: response.bestDetailPlace()), animated: true)
+                        case .failure:
+                            // Gone (or offline): search its name instead
+                            self.runSearch(item.title)
+                        }
+                    }
+                }
+            }
+        case .person:
+            guard let userId = item.id else { return }
+            searchBar.resignFirstResponder()
+            let loading = AlertPresenter.showLoading(from: self)
+            UserService.shared.fetchUserProfile(userId: userId) { [weak self] result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        guard let self else { return }
+                        switch result {
+                        case .success(let user): self.selectSearchedUser(user)
+                        case .failure: self.runSearch(item.title)
+                        }
+                    }
+                }
+            }
+        }
     }
 }

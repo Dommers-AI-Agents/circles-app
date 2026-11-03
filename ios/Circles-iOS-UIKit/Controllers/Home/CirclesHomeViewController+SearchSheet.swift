@@ -122,7 +122,7 @@ extension CirclesHomeViewController {
         let people = searchedUsers.prefix(plan.peopleRows).map(\.id)
         let widgets = matchedWidgets.map(\.id)
         let status = plan.status.map { "\($0)" } ?? ""
-        let recent = visibleRecentSearches
+        let recent: [String] = visibleRecentSearches.map(\.key)
         let query = searchBar.text ?? ""
         return (widgets + ["|"] + places + ["|"] + nearby + ["|"] + people + ["|", status, "|"] + recent
                 + ["|", "\(plan.browseRows)", "\(plan.scope)", "\(plan.morePeople)\(plan.moreNearby)", query]).joined(separator: ",")

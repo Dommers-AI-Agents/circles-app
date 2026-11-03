@@ -189,7 +189,7 @@ struct HomeSearchPlan: Equatable {
     /// The sheet's handle line when there are no chips: "Places 26",
     /// "Searching…", "Recent searches".
     var handleTitle: String {
-        if isIdle { return recentRows > 0 ? "Recent searches" : "Browse nearby" }
+        if isIdle { return recentRows > 0 ? "Recent" : "Browse nearby" }
         let parts = HomeSearchScope.allCases.filter { $0 != .all && total(of: $0) > 0 }.map(chipTitle)
         if parts.isEmpty {
             switch status {
