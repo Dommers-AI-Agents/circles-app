@@ -15,7 +15,7 @@ const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const { getConnectedUserIds } = require('../utils/networkAccess');
 const { queryInChunks } = require('../utils/firestoreChunks');
 const { buildViewerContext } = require('./viewerContext');
-const { canViewCircle, isPlaceVisibleToViewer } = require('./visibility');
+const { canViewCircle, isPlaceVisibleToViewer, canSeePlace } = require('./visibility');
 const { excludedUserIds } = require('./moderationService');
 const { isSameUser, normalizeUserId } = require('./idService');
 const placePhotos = require('./placePhotoService');
@@ -95,7 +95,8 @@ async function forViewer(viewerId, { limit = MAX_RESULTS, now = Date.now() } = {
   const visible = saves.filter((s) => {
     const circle = circles.get(String(s.circleId));
     if (!circle || circle.deletedAt || isSystemCircle(circle)) return false;
-    return canViewCircle(circle, viewerId, ctx) && isPlaceVisibleToViewer(s, viewerId, ctx);
+    // The place's own privacy wins over its circle's (Wes, 2026-11-03)
+    return canSeePlace(s, circle, viewerId, ctx);
   });
 
   const ranked = rankVenues(visible, { limit: MAX_RESULTS });

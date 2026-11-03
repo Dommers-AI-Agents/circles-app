@@ -286,13 +286,15 @@ exports.getGlobalPlace = async (req, res, next) => {
         // A save outside any circle has nothing to inherit: credit it only
         // when it says Public itself (as before).
         if (!save.circleId) return normalizePrivacy(save.privacy) === PRIVACY.PUBLIC;
+        // The place's own privacy wins over its circle's (Wes, 2026-11-03)
         if (!circleAccess.has(save.circleId)) {
           circleAccess.set(save.circleId, db.collection('circles').doc(save.circleId).get()
-            .then(doc => (doc.exists ? canViewCircleFor(serializeDoc(doc), viewerId) : false)));
+            .then(doc => (doc.exists ? serializeDoc(doc) : null)));
         }
-        if (!(await circleAccess.get(save.circleId))) return false;
+        const circle = await circleAccess.get(save.circleId);
+        if (!circle) return false;
         viewerContext = viewerContext || await buildViewerContext(viewerId);
-        return isPlaceVisibleToViewer(save, viewerId, viewerContext);
+        return require('../services/visibility').canSeePlace(save, circle, viewerId, viewerContext);
       };
 
       const chosen = await pickRepresentativeSave(

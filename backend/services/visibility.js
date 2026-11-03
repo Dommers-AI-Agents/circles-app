@@ -210,6 +210,44 @@ const isPlaceVisibleToViewer = (place, viewerId, ctx) => {
   return canViewAtTier(place.addedBy, tier, viewerId, ctx, place.audienceListId || null);
 };
 
+/**
+ * THE rule for seeing a place (Wes, 2026-11-03): "A place's privacy is what
+ * matters. Places privacy always overrides circles privacy."
+ *
+ *   1. Whoever added it, and anyone on the place's own guest list, sees it.
+ *   2. A place with its OWN tier (public / connections / Inner Circle /
+ *      private) is decided by that tier alone — stricter OR more open than its
+ *      circle. A public place in a private circle is public.
+ *   3. A place with no tier, or `followCircle`, is decided by its circle
+ *      (owner, the circle's guest list, the circle's tier).
+ *   4. A tier we don't recognise denies.
+ *
+ * `circle` is only read in case 3, so callers may pass null when the place
+ * has its own tier; a place that follows a circle nobody can find denies.
+ */
+const canSeePlace = (place, circle, viewerId, ctx) => {
+  if (!place) return false;
+  if (isSameUser(place.addedBy, viewerId)) return true;
+  if ((place.sharedWith || []).some(id => isSameUser(id, viewerId))) return true;
+  if (followsCircle(place)) return canViewCircle(circle, viewerId, ctx);
+  const tier = normalizePrivacy(place.privacy);
+  if (tier === null) return false;
+  return canViewAtTier(place.addedBy, tier, viewerId, ctx, place.audienceListId || null);
+};
+
+/** No tier of its own: the circle decides (canSeePlace case 3) */
+const followsCircle = (place) => {
+  const raw = place && place.privacy;
+  return raw === undefined || raw === null || raw === '' || normalizePrivacy(raw) === FOLLOW_CIRCLE;
+};
+
+/**
+ * May a viewer who can see this place also be told which circle it's in?
+ * Only when they could open that circle: a public place in a private circle
+ * shows without the circle's name (Wes, 2026-11-03).
+ */
+const canSeePlaceCircle = (circle, viewerId, ctx) => canViewCircle(circle, viewerId, ctx);
+
 /** Can `viewerId` see this moment? Moments carry their tier directly. */
 const canViewMoment = (moment, viewerId, ctx) => {
   if (!moment) return false;
@@ -273,6 +311,9 @@ module.exports = {
   canViewAtTier,
   canViewCircle,
   isPlaceVisibleToViewer,
+  canSeePlace,
+  followsCircle,
+  canSeePlaceCircle,
   isSaveInCircleVisible,
   canViewMoment
 };

@@ -21,7 +21,7 @@
 
 const { getFirestore } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
-const { canViewCircle, canViewMoment, isPlaceVisibleToViewer } = require('./visibility');
+const { canViewCircle, canViewMoment, isPlaceVisibleToViewer, canSeePlace } = require('./visibility');
 const { isSameUser, normalizeUserId } = require('./idService');
 const { ServiceError } = require('../utils/serviceError');
 
@@ -238,16 +238,24 @@ const passesItemGates = (activity, viewerId, viewerCtx, circlesById) => {
   if (!circleId) return true;
   const circle = circlesById && circlesById.get(circleId);
   if (!circle) return false;
-  if (!canViewCircle(circle, viewerId, viewerCtx)) return false;
 
-  if (meta.placePrivacy) {
-    return isPlaceVisibleToViewer(
+  // A row about a place: the place's own privacy wins over its circle's
+  // (Wes, 2026-11-03); a place that follows its circle is the circle's call
+  if (activity.targetType !== 'circle' && meta.placePrivacy) {
+    return canSeePlace(
       { addedBy: activity.actorId, privacy: meta.placePrivacy, audienceListId: meta.placeAudienceListId || null },
-      viewerId,
-      viewerCtx
+      circle, viewerId, viewerCtx
     );
   }
-  return true;
+  return canViewCircle(circle, viewerId, viewerCtx);
+};
+
+/** A row shown for its place, from a circle the viewer can't open, doesn't name the circle */
+const withoutClosedCircle = (activity, viewerId, viewerCtx, circlesById) => {
+  if (activity.targetType === 'circle' || !activity.circleId) return activity;
+  const circle = circlesById && circlesById.get(activity.circleId);
+  if (!circle || canViewCircle(circle, viewerId, viewerCtx)) return activity;
+  return { ...activity, circleId: null, circleName: null, metadata: { ...(activity.metadata || {}), circleId: null, circleName: null } };
 };
 
 /** Item gate ∧ grid, per row; anything that throws is withheld, as before. */
@@ -263,7 +271,7 @@ const filterActivitiesForViewer = ({ activities, viewerId, viewerCtx, circlesByI
       console.error('Error checking activity privacy:', error);
       return false;
     }
-  });
+  }).map((activity) => withoutClosedCircle(activity, viewerId, viewerCtx, circlesById));
 
 /** Grids off user docs a caller already fetched (raw or serialized). */
 const activityPrivacyFromUserDocs = (docsById) => {

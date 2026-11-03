@@ -7,7 +7,7 @@
 // doesn't narrow it. It used to print the name, address and photo of ANY
 // place id, private ones included (security audit 2026-10-01).
 
-const { canViewCircle, isPlaceVisibleToViewer } = require('./visibility');
+const { canViewCircle, isPlaceVisibleToViewer, canSeePlace } = require('./visibility');
 
 const isLive = (data) => !!data && (data.deletedAt === null || data.deletedAt === undefined);
 
@@ -23,9 +23,11 @@ const firstPhotoUrl = (photos) => {
  */
 async function publicPlacePreview(db, placeId) {
   const isPublicSave = async (save) => {
-    if (!isLive(save) || !save.circleId || !isPlaceVisibleToViewer(save, null, null)) return false;
+    if (!isLive(save) || !save.circleId) return false;
     const circleDoc = await db.collection('circles').doc(String(save.circleId)).get();
-    return circleDoc.exists && isLive(circleDoc.data()) && canViewCircle(circleDoc.data(), null, null);
+    // Public to anyone with the link: the place's own privacy, else its
+    // circle's (Wes, 2026-11-03: a place's privacy always wins)
+    return circleDoc.exists && isLive(circleDoc.data()) && canSeePlace(save, circleDoc.data(), null, null);
   };
 
   let shown = null;

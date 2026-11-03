@@ -286,3 +286,48 @@ describe('isSaveInCircleVisible', () => {
     expect(isSaveInCircleVisible(networkCircle, 'bob', 'stranger', makeViewerContext({ viewerId: 'stranger' }))).toBe(false);
   });
 });
+
+// Wes, 2026-11-03: "A place's privacy is what matters. Places privacy always
+// overrides circles privacy." Both directions, plus followCircle inheriting.
+describe('canSeePlace (place privacy wins)', () => {
+  const { canSeePlace, canSeePlaceCircle } = require('../visibility');
+  const circleAt = (privacy) => ({ owner: 'owner', privacy });
+  const placeAt = (privacy, extra = {}) => ({ addedBy: 'owner', privacy, ...extra });
+
+  test('a public place in a private circle is public', () => {
+    expect(canSeePlace(placeAt('public'), circleAt('private'), 'stranger', strangerCtx())).toBe(true);
+    // ...but the circle stays closed, so its name is not shown
+    expect(canSeePlaceCircle(circleAt('private'), 'stranger', strangerCtx())).toBe(false);
+  });
+
+  test('a private place in a public circle is private', () => {
+    expect(canSeePlace(placeAt('private'), circleAt('public'), 'stranger', strangerCtx())).toBe(false);
+    expect(canSeePlace(placeAt('private'), circleAt('public'), 'connection', ctx('connection'))).toBe(false);
+  });
+
+  test('a connections place reaches connections, whatever the circle', () => {
+    expect(canSeePlace(placeAt('myNetwork'), circleAt('private'), 'connection', ctx('connection'))).toBe(true);
+    expect(canSeePlace(placeAt('myNetwork'), circleAt('public'), 'follower', ctx('follower'))).toBe(false);
+  });
+
+  test('an Inner Circle place reaches only the list', () => {
+    expect(canSeePlace(placeAt('innerCircle'), circleAt('public'), 'insider', ctx('insider'))).toBe(true);
+    expect(canSeePlace(placeAt('innerCircle'), circleAt('public'), 'connection', ctx('connection'))).toBe(false);
+  });
+
+  test('followCircle and no setting follow the circle', () => {
+    for (const inherit of [undefined, null, '', FOLLOW_CIRCLE]) {
+      expect(canSeePlace(placeAt(inherit), circleAt('public'), 'stranger', strangerCtx())).toBe(true);
+      expect(canSeePlace(placeAt(inherit), circleAt('private'), 'stranger', strangerCtx())).toBe(false);
+      expect(canSeePlace(placeAt(inherit), circleAt('myNetwork'), 'connection', ctx('connection'))).toBe(true);
+      // following a circle nobody can find denies
+      expect(canSeePlace(placeAt(inherit), null, 'stranger', strangerCtx())).toBe(false);
+    }
+  });
+
+  test('the adder and the place guest list always see it; an unknown tier denies', () => {
+    expect(canSeePlace(placeAt('private'), circleAt('private'), 'owner', strangerCtx())).toBe(true);
+    expect(canSeePlace(placeAt('private', { sharedWith: ['stranger'] }), circleAt('private'), 'stranger', strangerCtx())).toBe(true);
+    expect(canSeePlace(placeAt('secret-new-tier'), circleAt('public'), 'stranger', strangerCtx())).toBe(false);
+  });
+});

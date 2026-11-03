@@ -708,6 +708,16 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                 
                 switch result {
                 case .success(let updatedCircle):
+                    // Privacy changed: once this screen closes, ask whether the
+                    // places with their own setting should match (2026-11-03)
+                    let privacyChanged = updatedCircle.privacy != self?.circle.privacy
+                    let askOn: UIViewController? = (self?.navigationController?.viewControllers.count ?? 0) > 1
+                        ? self?.navigationController?.viewControllers.dropLast().last
+                        : self?.presentingViewController
+                    let ask = {
+                        guard privacyChanged, let askOn else { return }
+                        CirclePlacePrivacyPrompt.offer(circleId: updatedCircle.id, newPrivacy: updatedCircle.privacy, from: askOn)
+                    }
                     self?.presentAlert(title: "Success", message: "Circle updated successfully") { _ in
                         self?.delegate?.didUpdateCircle(updatedCircle)
                         // See note in the other success branch: the home map
@@ -715,8 +725,9 @@ class EditCircleViewController: UIViewController, UIGestureRecognizerDelegate {
                         NotificationCenter.default.post(name: .refreshCircles, object: nil)
                         if let navigationController = self?.navigationController, navigationController.viewControllers.count > 1 {
                             navigationController.popViewController(animated: true)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: ask)
                         } else {
-                            self?.dismiss(animated: true, completion: nil)
+                            self?.dismiss(animated: true, completion: ask)
                         }
                     }
                     

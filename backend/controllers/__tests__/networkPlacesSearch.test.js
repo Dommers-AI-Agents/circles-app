@@ -53,7 +53,12 @@ const ME = { lat: 35.2171, lng: -80.8572 };
 
 beforeEach(async () => {
   for (const name of ['users', 'globalPlaces', 'places']) mockDb.rows(name).clear();
+  for (const name of ['circles']) mockDb.rows(name).clear();
   await put('users', 'friend', { displayName: 'Friend', photoURL: 'https://x/f.jpg', email: 'friend@x.com' });
+  await put('circles', 'friends-circle', { owner: 'friend', privacy: 'myNetwork' });
+  await put('circles', 'own-circle', { owner: 'me', privacy: 'private' });
+  await put('circles', 'hidden-circle', { owner: 'stranger', privacy: 'private' });
+  await put('circles', 'friends-private', { owner: 'friend', privacy: 'private' });
   await venue('g-test', 'Test Bakery (Demo)', -80.8592, 35.2169, 0.41);     // 190 m away
   await venue('g-amelie', "Amélie's French Bakery", -80.8079, 35.2517, 0.52); // ~6 km
   await venue('g-colvitto', "Colvitto's Pizza & Bakery", -71.4837, 41.4283, 0.62); // Rhode Island
@@ -109,4 +114,18 @@ test('network search without text is refused; no venue match means an empty list
   const r2 = res();
   await searchNetworkPlaces({ user: { uid: 'me' }, query: { query: 'Sushi' } }, r2);
   expect(r2.json.mock.calls[0][0]).toEqual({ success: true, places: [], total: 0, hasMore: false });
+});
+
+// Wes, 2026-11-03: a place's privacy always wins over its circle's
+test('a friend\'s public place in their private circle is found; a private one is not', async () => {
+  await put('places', 'save-public-in-private', { globalPlaceId: 'g-test', addedBy: 'friend', circleId: 'friends-private',
+    privacy: 'public', name: 'Test Bakery (Demo)' });
+  await put('places', 'save-follows-private', { globalPlaceId: 'g-test', addedBy: 'friend', circleId: 'friends-private',
+    privacy: 'followCircle', name: 'Test Bakery (Demo)' });
+  const r = res();
+  await searchNetworkPlaces({ user: { uid: 'me' }, query: { query: 'Bakery', lat: String(ME.lat), lng: String(ME.lng) } }, r);
+  const ids = r.json.mock.calls[0][0].places.map(p => p.id);
+  expect(ids).toContain('save-public-in-private');
+  expect(ids).not.toContain('save-follows-private');
+  expect(ids).not.toContain('save-private');
 });

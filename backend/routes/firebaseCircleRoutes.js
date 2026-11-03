@@ -69,6 +69,26 @@ router.route('/:id')
   .put(updateCircle)
   .delete(deleteCircle);
 
+// After a circle's privacy changes: how many of the owner's places in it set
+// their own privacy (the app asks to bring them along when > 0), and "Yes,
+// make them match" (Wes, 2026-11-03; services/circlePlacePrivacy.js)
+router.get('/:id/place-privacy', async (req, res) => {
+  try {
+    const count = await require('../services/circlePlacePrivacy').countOwnPrivacy(req.params.id, req.user.uid);
+    res.json({ success: true, data: { placesWithOwnPrivacy: count } });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'place-privacy count failed', fallbackMessage: 'Something went wrong.' });
+  }
+});
+router.post('/:id/place-privacy/match-circle', async (req, res) => {
+  try {
+    const updated = await require('../services/circlePlacePrivacy').matchCircle(req.params.id, req.user.uid);
+    res.json({ success: true, data: { updated } });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'place-privacy match failed', fallbackMessage: 'Something went wrong.' });
+  }
+});
+
 // Sharing a circle with a named person. Writes a circleShares doc AND pushes
 // them onto circles.sharedWith, which is the array the read gates consult.
 router.route('/:id/share')

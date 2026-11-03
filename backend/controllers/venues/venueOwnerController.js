@@ -281,7 +281,7 @@ exports.getVenueSavers = async (req, res) => {
     const snapshot = await db.collection(COLLECTIONS.PLACES)
       .where('globalPlaceId', '==', globalPlaceId)
       .where('deletedAt', '==', null)
-      .select('addedBy', 'circleId', 'privacy', 'createdAt')
+      .select('addedBy', 'circleId', 'privacy', 'sharedWith', 'audienceListId', 'createdAt')
       .get();
 
     // Group saves by saver: circles their copies live in, earliest save date,
@@ -291,8 +291,9 @@ exports.getVenueSavers = async (req, res) => {
       const data = doc.data();
       const saverId = normalizeUserId(data.addedBy);
       if (!saverId) return;
-      const entry = bySaver.get(saverId) || { circleIds: new Set(), savedAt: null, hasNonPrivate: false };
+      const entry = bySaver.get(saverId) || { circleIds: new Set(), saves: [], savedAt: null, hasNonPrivate: false };
       if (data.circleId) entry.circleIds.add(data.circleId);
+      entry.saves.push(data);
       if (data.privacy !== 'private') entry.hasNonPrivate = true;
       if (data.createdAt && (!entry.savedAt || data.createdAt < entry.savedAt)) entry.savedAt = data.createdAt;
       bySaver.set(saverId, entry);
@@ -324,12 +325,12 @@ exports.getVenueSavers = async (req, res) => {
       following: await require('../../services/viewerContext').followingOf(ownerId),
       innerCircleLists: await getInnerCircleGrantorLists(ownerId)
     });
-    const isCircleVisibleToOwner = (circle, saverId) =>
-      require('../../services/visibility').isSaveInCircleVisible(circle, saverId, ownerId, ownerViewerCtx);
-
-    const visible = [...bySaver.entries()].filter(([saverId, entry]) =>
-      entry.hasNonPrivate &&
-      [...entry.circleIds].some((circleId) => isCircleVisibleToOwner(circlesById.get(circleId), saverId)));
+    // Per save, the place's privacy first (services/visibility canSeePlace):
+    // a public save shows its saver even from a private circle (Wes,
+    // 2026-11-03); a private one never does
+    const { canSeePlace } = require('../../services/visibility');
+    const visible = [...bySaver.entries()].filter(([, entry]) =>
+      entry.saves.some((save) => canSeePlace(save, circlesById.get(save.circleId), ownerId, ownerViewerCtx)));
 
     const cards = await loadUserCards(visible.map(([id]) => id));
     const savers = visible

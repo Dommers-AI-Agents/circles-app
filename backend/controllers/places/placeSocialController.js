@@ -257,6 +257,10 @@ exports.getPlaceSavers = async (req, res, next) => {
     // a place they had removed (Wes, 2026-10-16: a CVS unsaved in August
     // still read "saved by me").
     const circleIdsBySaver = new Map();
+    // Each saver's saves themselves: whether they show is decided per save by
+    // its own privacy first (Wes, 2026-11-03: "If someone makes a place
+    // public, it's okay to share who saved it")
+    const savesBySaver = new Map();
     for (const doc of placeDocs) {
       const data = doc.data();
       if (data.deletedAt) continue;
@@ -264,7 +268,9 @@ exports.getPlaceSavers = async (req, res, next) => {
       if (!saverId) continue;
       if (!circleIdsBySaver.has(saverId)) {
         circleIdsBySaver.set(saverId, new Set());
+        savesBySaver.set(saverId, []);
       }
+      savesBySaver.get(saverId).push(data);
       if (data.circleId) {
         circleIdsBySaver.get(saverId).add(data.circleId);
       }
@@ -322,12 +328,12 @@ exports.getPlaceSavers = async (req, res, next) => {
       following: await require('../../services/viewerContext').followingOf(userId),
       innerCircleLists: await getInnerCircleGrantorLists(userId)
     });
-    const isCircleVisible = (circle, saverId) =>
-      require('../../services/visibility').isSaveInCircleVisible(circle, saverId, userId, saverViewerCtx);
-
-    const visibleSaverIds = [...circleIdsBySaver.entries()]
-      .filter(([saverId, ids]) =>
-        [...ids].some(circleId => isCircleVisible(circlesById.get(circleId), saverId)))
+    const { canSeePlace } = require('../../services/visibility');
+    // A saver shows when any one of their saves of this venue is one the
+    // requester may see (the place's privacy, else its circle's)
+    const visibleSaverIds = [...savesBySaver.entries()]
+      .filter(([, saves]) =>
+        saves.some(save => canSeePlace(save, circlesById.get(save.circleId), userId, saverViewerCtx)))
       .map(([saverId]) => saverId);
 
     if (visibleSaverIds.length === 0) {

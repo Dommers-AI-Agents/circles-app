@@ -16,7 +16,7 @@ const placeCache = require('../../services/placeCache');
 const piggyBankService = require('../../services/piggyBankService');
 const { sameVenue, carryOverPatch } = require('../../services/placeMoveMerge');
 const { normalizePhotosArray, overlayVenuePhotos, overlayVenueFields, getGlobalSocial, fetchGlobalSocialMap, buildAddedByUserMap } = require('../../services/placeReadService');
-const { isPlaceVisibleToViewer } = require('../../services/visibility');
+const { isPlaceVisibleToViewer, canSeePlace, followsCircle } = require('../../services/visibility');
 const { resolveIncomingPrivacy, canViewCircle } = require('../../services/visibility');
 const { canViewCircleFor } = require('../../services/circleAccess');
 const { validateGuestList } = require('../../services/innerCircleService');
@@ -501,6 +501,7 @@ exports.getPlace = async (req, res, next) => {
     }
 
     // Check permissions based on whether place belongs to a circle
+    let placeViewerCtx = null;
     if (place.circleId) {
       console.log(`\n🔐 ========== CHECKING PERMISSIONS ==========`);
       // Place belongs to a circle - check circle permissions
@@ -519,33 +520,19 @@ exports.getPlace = async (req, res, next) => {
       console.log(`🔐 Circle owner: ${circle.owner}`);
       console.log(`🔐 Circle privacy: ${circle.privacy}`);
       
-      // Check permissions
-      // One rule, same as every other read path. The old version here also
-      // consulted the owner's denormalised `connections`/`followers` arrays as
-      // a fallback; canViewCircleFor reads the connections collection, which is
-      // the source of truth those arrays are derived from.
-      const hasAccess = await canViewCircleFor(circle, userId);
+      // One rule (services/visibility canSeePlace, Wes 2026-11-03): the
+      // place's own privacy wins over its circle's; a place that follows its
+      // circle is decided by the circle. A public place in a private circle
+      // opens; its circle stays closed (the app can't fetch its name).
+      placeViewerCtx = await buildViewerContext(userId);
+      const hasAccess = canSeePlace(place, circle, userId, placeViewerCtx);
 
-      // Deny access if none of the conditions are met
       if (!hasAccess) {
-        console.log(`\n❌ ========== ACCESS DENIED ==========`);
-        console.log(`❌ Place: ${place.name}`);
-        console.log(`❌ Circle: ${circle.name}`);
-        console.log(`❌ User: ${userId}`);
-        console.log(`❌ Circle Owner: ${circle.owner}`);
-        console.log(`❌ Circle Privacy: ${circle.privacy}`);
-        console.log(`❌ Shared with: ${(circle.sharedWith || []).length} people`);
-        console.log(`❌ ====================================\n`);
-        
-        console.error('❌ DENYING ACCESS - Version 3 - 2025-08-18-11:58');
+        console.log(`❌ Access denied: place ${place.id} (privacy ${place.privacy || 'followCircle'}), circle ${circle.id} (${circle.privacy}), viewer ${userId}`);
         return res.status(403).json({
           success: false,
-          message: 'Not authorized to access this place (v3-2025-08-18)'
+          message: followsCircle(place) ? 'Not authorized to access this place (v3-2025-08-18)' : 'This place is private'
         });
-      } else {
-        console.log(`\n✅ ========== ACCESS GRANTED ==========`);
-        console.log(`✅ User ${userId} can access place ${place.name}`);
-        console.log(`✅ ====================================\n`);
       }
     } else {
       // Floating place (no circle) - created from check-in
@@ -566,9 +553,9 @@ exports.getPlace = async (req, res, next) => {
       console.log(`✅ Allowing access to floating place: ${place.name} (check-in place)`);
     }
 
-    // A place's own privacy narrows the circle's: Private is owner-only and
-    // Inner Circle reaches only the owner's list, even inside a visible circle.
-    if (!isPlaceVisibleToViewer(place, req.user.uid, await buildViewerContext(req.user.uid))) {
+    // A floating place still answers to its own privacy (in a circle, the
+    // check above already did)
+    if (!place.circleId && !isPlaceVisibleToViewer(place, req.user.uid, placeViewerCtx || await buildViewerContext(req.user.uid))) {
       return res.status(403).json({
         success: false,
         message: 'This place is private'

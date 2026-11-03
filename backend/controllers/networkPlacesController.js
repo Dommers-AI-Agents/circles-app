@@ -6,8 +6,8 @@ const { getFirestore } = require('../config/firebase');
 const { sendServiceError } = require('../utils/serviceError');
 const { COLLECTIONS, serializeDoc } = require('../models/FirestoreModels');
 const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
-const { getAllowedCircleIds } = require('../utils/networkAccess');
-const { isPlaceVisibleToViewer } = require('../services/visibility');
+const { reachOf, visibleNetworkSaves } = require('../services/placeReach');
+const { isPlaceVisibleToViewer, canSeePlace } = require('../services/visibility');
 const { buildViewerContext } = require('../services/viewerContext');
 const { normalizeUserId } = require('../services/idService');
 const { publicUserSummary } = require('../services/publicProjection');
@@ -54,48 +54,44 @@ const getNetworkPlacesInViewport = async (req, res) => {
     radiusM = Math.min(Math.max(radiusM, MIN_RADIUS_M), MAX_RADIUS_M);
     limit = Number.isFinite(limit) ? Math.min(Math.max(limit, 1), MAX_LIMIT) : DEFAULT_LIMIT;
 
-    // mapOnly: honors each circle owner's showOnMap opt-out (map clutter
-    // control for bulk-import circles) — list/browse endpoints are unaffected
-    const [{ circleIds }, viewerCtx] = await Promise.all([
-      getAllowedCircleIds(userId, { connectionId, mapOnly: true }),
-      buildViewerContext(userId)
-    ]);
-    if (circleIds.length === 0) {
-      return res.status(200).json({
-        success: true,
-        places: [],
-        total: 0,
-        hasMore: false,
-        clampedRadiusM: radiusM
-      });
-    }
+    // Place-first (Wes, 2026-11-03): circles only organize, places carry the
+    // location and the privacy that matters. So: the places added by the
+    // people whose places this viewer could see (themself, connections,
+    // people they follow), inside the map area, each decided by canSeePlace
+    // — its own privacy, or its circle's when it follows the circle. Plus the
+    // circles someone shared with the viewer by name, whose owner may be
+    // outside their network. Was: every visible circle × map patch (174
+    // searches for Wes's 288 circles, most of them empty or far away).
+    const viewerCtx = await buildViewerContext(userId);
+    const reach = await reachOf(userId, viewerCtx, { onlyPerson: connectionId });
+    const people = reach.people;
+    const sharedCircleIds = reach.sharedCircleIds;
 
     // Geohash range bounds covering the circle (up to 9 bounds)
     const bounds = geofire.geohashQueryBounds([centerLat, centerLng], radiusM);
+    const byPeople = [];
+    for (let i = 0; i < people.length; i += 30) byPeople.push(['addedBy', people.slice(i, i + 30)]);
+    const byCircles = [];
+    for (let i = 0; i < sharedCircleIds.length; i += 30) byCircles.push(['circleId', sharedCircleIds.slice(i, i + 30)]);
 
-    // Chunk allowed circle IDs by 10 for the 'in' operator
-    const circleChunks = [];
-    for (let i = 0; i < circleIds.length; i += 10) {
-      circleChunks.push(circleIds.slice(i, i + 10));
-    }
-
-    // Each (chunk × bound) query previously carried the full response limit
-    // (200), so a dense viewport could read up to chunks × bounds × 200 docs
-    // to return 200. Cap per-query reads instead; the client re-queries with
-    // a smaller radius on zoom, so dense areas fill in as the user zooms.
-    const perQueryLimit = Math.min(limit, 60);
+    // A cap per (group × patch) query. High enough that the nearest-`limit`
+    // pick sees (nearly) everything in view: with ~18 searches instead of 174
+    // it's affordable, and a cut in geohash order would drop an arbitrary
+    // patch rather than the farthest pins. The client re-queries with a
+    // smaller radius on zoom anyway.
+    const perQueryLimit = Math.max(limit, 500);
     const queries = [];
-    for (const chunk of circleChunks) {
+    for (const [field, group] of [...byPeople, ...byCircles]) {
       for (const b of bounds) {
         queries.push(
           db.collection(COLLECTIONS.PLACES)
-            .where('circleId', 'in', chunk)
+            .where(field, 'in', group)
             .orderBy('geohash')
             .startAt(b[0])
             .endAt(b[1])
             .limit(perQueryLimit)
-            // Pass 1 reads only what picks the pins (2026-11-03): up to
-            // chunks × bounds × 60 full docs were read to send at most 200
+            // Pass 1 reads only what picks the pins; pass 2 reads the full
+            // records of the ones sent
             .select(...VIEWPORT_PICK_FIELDS)
             .get()
         );
@@ -104,34 +100,31 @@ const getNetworkPlacesInViewport = async (req, res) => {
 
     const snapshots = await Promise.all(queries);
 
-    // Post-filter: dedupe across bounds/chunks, drop deleted docs, drop
+    // Post-filter: dedupe across bounds/groups, drop deleted docs, drop
     // geohash false positives outside the precise radius
     const seenIds = new Set();
-    const matches = [];
-
+    const candidates = [];
     for (const snapshot of snapshots) {
       for (const doc of snapshot.docs) {
         if (seenIds.has(doc.id)) continue;
         seenIds.add(doc.id);
-
         const data = doc.data();
         if (data.deletedAt) continue;
-        // The place's own privacy narrows its circle's: Private is owner-only
-        // and Inner Circle reaches only the owner's list, even inside a circle
-        // the viewer can otherwise see.
-        if (!isPlaceVisibleToViewer(data, userId, viewerCtx)) continue;
-
         const coords = data.location && data.location.coordinates;
         if (!Array.isArray(coords) || coords.length < 2) continue;
         const [longitude, latitude] = coords;
         if (typeof longitude !== 'number' || typeof latitude !== 'number') continue;
-
         const distanceM = geofire.distanceBetween([centerLat, centerLng], [latitude, longitude]) * 1000;
         if (distanceM > radiusM) continue;
-
-        matches.push({ doc, distanceM });
+        candidates.push({ doc, data, distanceM });
       }
     }
+
+    // The one rule per pin (its privacy, else its circle's), the circle
+    // owner's "not on my map", and network reach (services/placeReach)
+    const shown = new Set((await visibleNetworkSaves(candidates.map(c => ({ ...c.data, id: c.doc.id })),
+      { userId, viewerCtx, reach, mapOnly: true })).map(save => save.id));
+    const matches = candidates.filter(c => shown.has(c.doc.id)).map(({ doc, distanceM }) => ({ doc, distanceM }));
 
     matches.sort((a, b) => a.distanceM - b.distanceM);
     const hasMore = matches.length > limit;
@@ -195,7 +188,7 @@ const getNetworkPlacesInViewport = async (req, res) => {
 
     const placesWithSocial = await enrichNetworkPlaces(places);
 
-    console.log(`🗺️ Viewport query for ${userId}: center=(${centerLat},${centerLng}) r=${radiusM}m circles=${circleIds.length} → ${placesWithSocial.length} places${hasMore ? ' (truncated)' : ''}`);
+    console.log(`🗺️ Viewport query for ${userId}: center=(${centerLat},${centerLng}) r=${radiusM}m people=${people.length} shared=${sharedCircleIds.length} searches=${queries.length} → ${placesWithSocial.length} places${hasMore ? ' (truncated)' : ''}`);
 
     if (delta) {
       // The phone merges: `places` are the changed pins in full, `ids` the
@@ -316,29 +309,23 @@ const searchNetworkPlaces = async (req, res) => {
     }
 
     // List surface, not the map: a circle owner's showOnMap opt-out does not
-    // hide their saves from a text search.
-    const [{ circleIds }, viewerCtx] = await Promise.all([
-      getAllowedCircleIds(userId),
-      buildViewerContext(userId)
-    ]);
-    const allowedCircles = new Set(circleIds);
-    if (allowedCircles.size === 0) {
-      return res.status(200).json({ success: true, places: [], total: 0, hasMore: false });
-    }
+    // hide their saves from a text search. Place-first: the saves of these
+    // venues by people in reach, each by the one rule (2026-11-03)
+    const viewerCtx = await buildViewerContext(userId);
+    const reach = await reachOf(userId, viewerCtx);
 
     const venueRank = new Map(venues.map((venue, index) => [venue.id, index]));
     const saveDocs = await queryInChunks(venues.map(v => v.id), chunk =>
       db.collection(COLLECTIONS.PLACES).where('globalPlaceId', 'in', chunk).get()
     );
 
+    // The viewer's own saves are already on their phone; this is the network
+    const others = saveDocs.filter(doc => !isSameUser(doc.data().addedBy, userId));
+    const shownIds = new Set((await visibleNetworkSaves(others.map(doc => ({ ...doc.data(), id: doc.id })),
+      { userId, viewerCtx, reach })).map(save => save.id));
     const matches = [];
-    for (const doc of saveDocs) {
-      const data = doc.data();
-      if (data.deletedAt) continue;
-      // The viewer's own saves are already on their phone; this is the network
-      if (isSameUser(data.addedBy, userId)) continue;
-      if (!allowedCircles.has(data.circleId)) continue;
-      if (!isPlaceVisibleToViewer(data, userId, viewerCtx)) continue;
+    for (const doc of others) {
+      if (!shownIds.has(doc.id)) continue;
       const place = serializeDoc(doc);
       delete place.privateNotes;
       matches.push(place);

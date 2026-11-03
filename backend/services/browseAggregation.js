@@ -163,9 +163,13 @@ function buildCityVenues(places, opts = {}) {
       };
       byVenue.set(vk, v);
     }
-    if (p.circleId && !v._circleIds.has(p.circleId)) {
+    // Only circles the viewer may name: a public place in a private circle
+    // shows without its circle (circleNameById holds just the nameable ones
+    // when the caller passes `onlyNamedCircles`)
+    const knownName = circleNameById && circleNameById.get(p.circleId);
+    if (p.circleId && !v._circleIds.has(p.circleId) && (knownName || !opts.onlyNamedCircles)) {
       v._circleIds.add(p.circleId);
-      v.circles.push({ id: p.circleId, name: (circleNameById && circleNameById.get(p.circleId)) || 'Circle' });
+      v.circles.push({ id: p.circleId, name: knownName || 'Circle' });
     }
     if (p.addedBy && !v._saverIds.has(p.addedBy)) {
       v._saverIds.add(p.addedBy);

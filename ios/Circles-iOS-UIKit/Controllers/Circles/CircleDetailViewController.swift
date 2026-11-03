@@ -1353,6 +1353,13 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     // Lists and the home map read circle privacy too
                     NotificationCenter.default.post(name: .refreshCircles, object: nil)
+                    // Places with their own privacy: bring them along? (2026-11-03)
+                    if newPrivacy != before.0 {
+                        CirclePlacePrivacyPrompt.offer(circleId: self.circle.id, newPrivacy: newPrivacy, from: self) { [weak self] in
+                            guard let self else { return }
+                            self.placesLoader.fetchPlaces(for: self.circle, isSharedViaLink: self.isSharedViaLink)
+                        }
+                    }
                 case .failure(let error):
                     self.circle.privacy = before.0
                     self.circle.audienceListId = before.1
