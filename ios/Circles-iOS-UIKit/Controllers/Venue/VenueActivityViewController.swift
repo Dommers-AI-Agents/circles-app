@@ -90,7 +90,8 @@ class VenueActivityViewController: BaseViewController {
 
     private func renderHeader() {
         headerStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let dates = events.compactMap { $0.createdAt }
+        // Scans that earned nothing are listed but not counted as busy times
+        let dates = events.filter { !VenueActivityCopy.attemptTypes.contains($0.type) }.compactMap { $0.createdAt }
         guard !dates.isEmpty else {
             tableView.tableHeaderView = nil
             return
@@ -284,36 +285,10 @@ class VenueActivityCell: UITableViewCell {
 
     func configure(with event: VenueActivityEvent) {
         let who = event.user?.displayName ?? "A customer"
-        let (verb, icon): (String, String)
-        switch event.type {
-        case "venue_visit":
-            // Location off still earns (honor system); the owner sees it
-            (verb, icon) = event.location == "off"
-                ? ("bought something (register scan, location off)", "location.slash")
-                : ("bought something (register scan)", "qrcode.viewfinder")
-        case "scan_far": (verb, icon) = ("scanned your register code from far away (no points)", "location.slash.fill")
-        case "sticker_signup": (verb, icon) = ("joined from your sticker", "person.badge.plus")
-        case "sticker_save": (verb, icon) = ("saved your place", "bookmark.fill")
-        case "redemption":
-            let title = event.offerTitle.map { " — \($0)" } ?? ""
-            (verb, icon) = ("redeemed a reward\(title)", "gift.fill")
-        case "code_redemption": (verb, icon) = ("redeemed a code", "number.square.fill")
-        case "redemption_refund":
-            let title = event.offerTitle.map { " (\($0))" } ?? ""
-            (verb, icon) = ("got points back, reward not given in time\(title)", "arrow.uturn.backward.circle")
-        case "share_conversion": (verb, icon) = ("brought a friend", "person.2.fill")
-        default: (verb, icon) = (event.type.replacingOccurrences(of: "_", with: " "), "sparkles")
-        }
+        let (verb, icon) = VenueActivityCopy.verb(type: event.type, location: event.location, offerTitle: event.offerTitle)
         titleLabel.text = "\(who) \(verb)"
         iconView.image = UIImage(systemName: icon)
 
-        if let date = event.createdAt {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
-            subtitleLabel.text = formatter.string(from: date)
-        } else {
-            subtitleLabel.text = nil
-        }
+        subtitleLabel.text = event.createdAt.map { VenueActivityCopy.time($0) }
     }
 }

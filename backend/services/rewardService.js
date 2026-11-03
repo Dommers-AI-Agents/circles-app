@@ -637,15 +637,6 @@ class RewardService {
     return result;
   }
 
-  // A register scan from far away earns nothing but shows on the owner's
-  // Activity (one row per person per store per day).
-  async recordFarScan(userId, venue) {
-    const day = new Date().toISOString().slice(0, 10);
-    await this.db.collection(STICKER_COLLECTIONS.REWARD_EVENTS)
-      .doc(sanitizeKeyPart(`far:${userId}:${venue.venueId}:${day}`))
-      .set(createRewardEvent({ userId, type: 'scan_far', points: 0, venueId: venue.venueId, venueName: venue.venueName, location: 'far' }));
-  }
-
   // (Share conversions no longer pay store points — they aren't tied to any
   // shop, so under per-store loyalty they had nowhere to be spent. The same
   // trigger already pays the sharer FavCoins via the piggy bank's

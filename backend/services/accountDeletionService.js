@@ -85,6 +85,7 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
   // Rewards and FavCoins, suggestions they sent or received, sign-in
   // challenges (a deleted test account left these behind, 2026-10-29)
   await deleteAll('rewardEvents', db.collection(COLLECTIONS.REWARD_EVENTS).where('userId', '==', uid));
+  await deleteAll('scanAttempts', db.collection('scanAttempts').where('userId', '==', uid));
   await deleteAll('coinLedger', db.collection(PIGGY_COLLECTIONS.LEDGER).where('userId', '==', uid));
   await deleteAll('suggestions', db.collection(COLLECTIONS.SUGGESTIONS).where('userId', '==', uid));
   await deleteAll('suggestions', db.collection(COLLECTIONS.SUGGESTIONS).where('recipientId', '==', uid));

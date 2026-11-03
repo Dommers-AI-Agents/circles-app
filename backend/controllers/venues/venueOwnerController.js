@@ -21,6 +21,7 @@ const { alertAudience } = require('../../services/placeAlerts');
 const { makeViewerContext } = require('../../services/viewerContext');
 const { getInnerCircleGrantorLists } = require('../../utils/networkAccess');
 const placePhotos = require('../../services/placePhotoService');
+const { venueActivityFeed } = require('../../services/scanAttempts');
 
 // ---------- Venue owner endpoints (self-service offer/earn-rate management) ----------
 
@@ -360,20 +361,15 @@ exports.getVenueActivity = async (req, res) => {
     const venue = req.venue;
     const limit = Math.min(parseInt(req.query.limit, 10) || 200, 500);
 
-    let query = db.collection(STICKER_COLLECTIONS.REWARD_EVENTS)
-      .where('venueId', '==', venue.venueId)
-      .orderBy('createdAt', 'desc')
-      .limit(limit);
-    if (req.query.before) {
-      query = query.startAfter(String(req.query.before));
-    }
-    const snapshot = await query.get();
+    // Reward events plus scans that earned nothing (services/scanAttempts)
+    const rows = await venueActivityFeed(venue.venueId, STICKER_COLLECTIONS.REWARD_EVENTS, {
+      limit, before: req.query.before || null
+    });
 
-    const cards = await loadUserCards(snapshot.docs.map((d) => d.data().userId));
-    const events = snapshot.docs.map((doc) => {
-      const e = doc.data();
+    const cards = await loadUserCards(rows.map((e) => e.userId));
+    const events = rows.map((e) => {
       return {
-        id: doc.id,
+        id: e.id,
         type: e.type,
         points: e.points || 0,
         createdAt: e.createdAt,

@@ -8,6 +8,7 @@ const { sanitizeKeyPart, STICKER_COLLECTIONS } = require('../../models/StickerMo
 const rewardService = require('../../services/rewardService');
 const { sendServiceError } = require('../../utils/serviceError');
 const { scanLocationCheck } = require('../../services/scanLocation');
+const { recordScanAttempt } = require('../../services/scanAttempts');
 const rewardProgress = require('../../services/rewardProgress');
 const nearbyEventsService = require('../../services/nearbyEventsService');
 const { listLiveVenues } = require('../../services/liveVenues');
@@ -210,11 +211,16 @@ exports.scan = async (req, res) => {
     const notAtStore = location === 'far';
     if (notAtStore) {
       console.warn(`[loyalty-integrity] register scan away from the store venue=${venue.venueId} user=${userId}`);
-      await rewardService.recordFarScan(userId, venue).catch((e) => console.warn('⚠️ far scan not recorded:', e.message));
     }
     const visitResult = notAtStore
       ? { awarded: false, reason: 'not_at_store' }
       : await rewardService.awardVenueVisit(userId, venue, { location });
+    // Every scan that earned nothing is on the owner's Activity too, with its
+    // time (services/scanAttempts), so scans can be checked against cameras
+    if (!visitResult.awarded) {
+      await recordScanAttempt(userId, venue, { reason: notAtStore ? 'far' : visitResult.reason, location })
+        .catch((e) => console.warn('⚠️ scan attempt not recorded:', e.message));
+    }
 
     const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
     const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;

@@ -1,13 +1,14 @@
 // A register scan the App Clip's location check says is away from the store
 // earns no visit points (2026-10-31); missing atStore changes nothing. The
 // app's own fix does the same (2026-11-02); location off still earns, marked.
+// Scans that earn nothing are logged for the owner's Activity (2026-11-03).
 jest.mock('../../../config/firebase', () => ({ getFirestore: () => ({}) }));
 const mockAward = jest.fn(async () => ({ awarded: true, points: 25 }));
-const mockFar = jest.fn(async () => {});
+const mockAttempt = jest.fn(async () => {});
+jest.mock('../../../services/scanAttempts', () => ({ recordScanAttempt: (...a) => mockAttempt(...a) }));
 jest.mock('../../../services/rewardService', () => ({
   findVenueByCode: async () => ({ venueId: 'v1', venueName: 'Test Bakery', kind: 'register', offers: [], location: { lat: 35.2161, lng: -80.858 } }),
   awardVenueVisit: (...a) => mockAward(...a),
-  recordFarScan: (...a) => mockFar(...a),
   getBalance: async () => ({ rewardPoints: 0, venueBalances: [] }),
   effectiveEarnRate: () => 25,
   effectiveSavePoints: () => 0,
@@ -30,7 +31,7 @@ const run = async (body) => {
 };
 
 describe('register scan atStore', () => {
-  beforeEach(() => { mockAward.mockClear(); mockFar.mockClear(); });
+  beforeEach(() => { mockAward.mockClear(); mockAttempt.mockClear(); });
 
   test('atStore false: no points, says why, still answers with the store', async () => {
     const out = await run({ code: 'REG001', atStore: false });
@@ -50,7 +51,8 @@ describe('register scan atStore', () => {
   test("the app's fix far from the store: no points, recorded for the owner", async () => {
     const out = await run({ code: 'REG001', location: { latitude: 35.27, longitude: -80.858, accuracy: 10 } });
     expect(mockAward).not.toHaveBeenCalled();
-    expect(mockFar).toHaveBeenCalledTimes(1);
+    expect(mockAttempt).toHaveBeenCalledTimes(1);
+    expect(mockAttempt.mock.calls[0][2]).toEqual({ reason: 'far', location: 'far' });
     expect(out.data).toMatchObject({ awarded: null, notAtStore: true });
   });
 
@@ -58,5 +60,17 @@ describe('register scan atStore', () => {
     await run({ code: 'REG001', location: { latitude: 35.2162, longitude: -80.858, accuracy: 30 } });
     await run({ code: 'REG001', locationOff: true });
     expect(mockAward.mock.calls.map((c) => c[2])).toEqual([{ location: 'near' }, { location: 'off' }]);
+    expect(mockAttempt).not.toHaveBeenCalled();
+  });
+
+  test('a scan that earns nothing (already today, removed) is logged for the owner', async () => {
+    mockAward.mockResolvedValueOnce({ awarded: false, duplicate: true, reason: 'already_today' });
+    mockAward.mockResolvedValueOnce({ awarded: false, reason: 'removed' });
+    await run({ code: 'REG001', location: { latitude: 35.2162, longitude: -80.858, accuracy: 30 } });
+    await run({ code: 'REG001' });
+    expect(mockAttempt.mock.calls.map((c) => c[2])).toEqual([
+      { reason: 'already_today', location: 'near' },
+      { reason: 'removed', location: 'unknown' }
+    ]);
   });
 });
