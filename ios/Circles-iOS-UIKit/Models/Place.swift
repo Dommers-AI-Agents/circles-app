@@ -630,3 +630,15 @@ extension Place {
         return location.coordinates[0]
     }
 }
+
+extension Place {
+    /// A save known only by its id (and maybe its name), to open a screen at
+    /// once while the real record loads (2026-11-03: comments from the feed)
+    static func placeholder(id: String, name: String = "") -> Place {
+        Place(id: id, name: name, description: nil, address: "", location: nil, website: nil, phone: nil,
+              googlePlaceId: nil, photos: nil, videos: nil, category: .restaurant, customCategoryId: nil, subcategory: nil,
+              rating: nil, userRatingsTotal: nil, notes: nil, privateNotes: nil, publicNotes: nil, tags: nil, reviews: nil,
+              openingHours: nil, priceLevel: nil, likes: nil, likesCount: nil, commentsCount: nil, circleId: nil,
+              addedBy: "", addedByUser: nil, privacy: .public, createdAt: Date(), updatedAt: Date())
+    }
+}

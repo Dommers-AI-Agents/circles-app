@@ -88,7 +88,8 @@ class BaseViewController: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        
+        bringStateViewsToFront()
+
         if reloadsDataOnAppear && hasLoadedData {
             loadData()
         } else if !hasLoadedData && loadsDataOnViewDidLoad {
@@ -183,7 +184,17 @@ class BaseViewController: UIViewController {
     
     // MARK: - Loading States
     
+    /// A subclass adds its table/list after `setupBaseUI`, which buried the
+    /// spinner and empty message under it: a blank screen while loading
+    /// (Wes, 2026-11-03, Comments). Keep them on top.
+    private func bringStateViewsToFront() {
+        for stateView in [loadingIndicator, emptyStateLabel, emptyStateButton] as [UIView] where stateView.superview === view {
+            view.bringSubviewToFront(stateView)
+        }
+    }
+
     func showLoadingState() {
+        bringStateViewsToFront()
         if showsLoadingIndicator && !hasLoadedData {
             loadingIndicator.startAnimating()
         }
@@ -198,6 +209,7 @@ class BaseViewController: UIViewController {
     /// Show empty state with optional custom message
     func showEmptyState(message: String? = nil) {
         hideLoadingState()
+        bringStateViewsToFront()
         emptyStateLabel.text = message ?? emptyStateMessage
         emptyStateLabel.isHidden = false
         emptyStateButton.isHidden = emptyStateActionTitle == nil

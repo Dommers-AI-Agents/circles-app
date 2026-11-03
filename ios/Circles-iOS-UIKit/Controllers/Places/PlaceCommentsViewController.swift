@@ -3,7 +3,7 @@ import UIKit
 class PlaceCommentsViewController: BaseViewController {
     
     // MARK: - Properties
-    private let place: Place
+    private var place: Place
     private var comments: [PlaceComment] = []
     var onCommentsUpdated: ((Int) -> Void)?
     
@@ -56,6 +56,15 @@ class PlaceCommentsViewController: BaseViewController {
     init(place: Place) {
         self.place = place
         super.init(nibName: nil, bundle: nil)
+    }
+
+    /// Opened straight from a feed row with just the save's id (no wait for
+    /// the place), then handed the full place when it arrives: only who
+    /// added it (may delete comments) comes from it.
+    func update(place: Place) {
+        guard place.id == self.place.id else { return }
+        self.place = place
+        tableView.reloadData()
     }
     
     required init?(coder: NSCoder) {

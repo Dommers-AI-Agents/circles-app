@@ -136,9 +136,30 @@ extension CirclesHomeViewController {
                 placeDetailVC.showCommentsOnAppear = showComments
                 navigationController?.pushViewController(placeDetailVC, animated: true)
             }
+        } else if showComments {
+            // A comment row: the comments open now, the place page loads
+            // underneath (2026-11-03: two waits and a blank sheet before)
+            openCommentsThenPlace(placeId: placeId)
         } else {
             // If not found, load the place
             loadPlaceAndNavigate(placeId: placeId, showComments: showComments)
+        }
+    }
+
+    /// Comments first, over Home, with only the save's id; the place page
+    /// is pushed under the sheet once it loads, so closing the comments
+    /// lands on the place.
+    func openCommentsThenPlace(placeId: String) {
+        let commentsVC = PlaceCommentsViewController(place: .placeholder(id: placeId))
+        present(UINavigationController(rootViewController: commentsVC), animated: true)
+        PlaceService.shared.fetchPlaceById(id: placeId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let place) = result else { return }
+                commentsVC.update(place: place)
+                let detail = PlaceDetailViewController(place: place)
+                detail.loadViewIfNeeded()
+                self.navigationController?.pushViewController(detail, animated: false)
+            }
         }
     }
     
@@ -257,24 +278,11 @@ extension CirclesHomeViewController {
                 loadingAlert.dismiss(animated: true) {
                     switch result {
                     case .success(let place):
-                        // We need to find the circle
-                        guard let circleId = place.circleId else {
-                            AlertPresenter.showError(title: "Oops", message: "Place has no associated circle", from: self)
-                            return
-                        }
-                        CircleService.shared.fetchCircleById(id: circleId) { circleResult in
-                            DispatchQueue.main.async {
-                                switch circleResult {
-                                case .success(let circle):
-                                    let placeDetailVC = PlaceDetailViewController(place: place, circle: circle)
-                                    placeDetailVC.showCommentsOnAppear = showComments
-                                    self.navigationController?.pushViewController(placeDetailVC, animated: true)
-                                case .failure:
-                                    // Show error
-                                    AlertPresenter.showError(title: "Oops", message: "Failed to load place details", from: self)
-                                }
-                            }
-                        }
+                        // Straight to the page: it loads its own circle
+                        // (waiting for it here was a second round trip)
+                        let placeDetailVC = PlaceDetailViewController(place: place)
+                        placeDetailVC.showCommentsOnAppear = showComments
+                        self.navigationController?.pushViewController(placeDetailVC, animated: true)
                     case .failure(let error):
                         AlertPresenter.showError(title: "Oops", message: FriendlyError.message(for: error), from: self)
                     }
