@@ -88,6 +88,14 @@ final class ImportResolutionQueue {
     }
 
     @objc private func appWillEnterForeground() {
+        kickIfDue()
+    }
+
+    /// Launch and foreground: a pass at most every 6 hours. Each pass reads
+    /// the person's whole list of saves on the server, and on a big account it
+    /// ran on every open (2026-11-03). Imports call kick() and run at once.
+    func kickIfDue() {
+        guard PeriodicPass.isDue("importResolution", every: 6 * 3600) else { return }
         kick()
     }
 

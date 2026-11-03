@@ -32,6 +32,9 @@ final class SpotlightIndexService {
     func refreshIndexIfNeeded() {
         guard !hasRefreshedThisSession, AuthService.shared.isLoggedIn else { return }
         hasRefreshedThisSession = true
+        // The full rebuild reads every save; once a day is plenty (this
+        // phone's saves and deletes update the index as they happen). 2026-11-03
+        guard PeriodicPass.isDue("spotlightRebuild", every: 24 * 3600) else { return }
 
         PlaceService.shared.getMyPlacesForCheckIn { [weak self] result in
             guard case .success(let places) = result else { return }

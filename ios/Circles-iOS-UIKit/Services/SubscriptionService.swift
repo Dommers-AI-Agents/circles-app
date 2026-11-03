@@ -521,12 +521,19 @@ class SubscriptionService: ObservableObject {
         }
     }
     
+    /// When the status was last asked for: launch asked twice within a
+    /// second (status update + backend sync), 2026-11-03
+    private static var lastTrialCheckAt: Date?
+
     private func checkTrialStatus() async {
         // Skip checking trial status if user is not logged in
         guard AuthService.shared.isLoggedIn else {
             Logger.debug("💎 Skipping trial status check - user not logged in")
             return
         }
+        // Asked moments ago: that answer is on its way or already applied
+        if let last = Self.lastTrialCheckAt, Date().timeIntervalSince(last) < 10 { return }
+        Self.lastTrialCheckAt = Date()
         
         APIService.shared.request(
             endpoint: "users/subscription/status",

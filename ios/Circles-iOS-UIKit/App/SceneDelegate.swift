@@ -278,8 +278,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // (rows past the import flow's inline-resolution cap), and give
         // imported places without a photo a free Apple Look Around one.
         // Both queues pace themselves past launch (see kick()).
-        ImportResolutionQueue.shared.kick()
-        ImportPhotoQueue.shared.kick()
+        ImportResolutionQueue.shared.kickIfDue()
+        ImportPhotoQueue.shared.kickIfDue()
 
         #if DEBUG
         // Debug relay: mirror the share extension's diagnostics dump into
@@ -470,8 +470,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 // launch cache only when it has gone stale - a fresh cache makes a
                 // background re-run pure duplicate traffic (the requests fire well
                 // outside APIService's short GET-dedup window).
+                // At 20 s, not 3: it re-asked for everything the screens had just
+                // loaded, in the middle of the launch rush (2026-11-03). It only
+                // rewrites the cache the next launch opens on.
                 if !PreloadManager.shared.isCacheValid() || cached.isMissingFeeds {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 20.0) {
                         PreloadManager.shared.refreshInBackground()
                     }
                 }

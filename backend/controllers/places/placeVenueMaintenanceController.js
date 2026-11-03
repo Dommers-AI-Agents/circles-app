@@ -432,8 +432,11 @@ exports.getUnresolvedPlaces = async (req, res) => {
     // Only the fields this needs: a full read of a big account's saves (952
     // for Wes) took ~10 s at app launch and held up everything behind it
     // (2026-11-03)
+    // Only the flagged ones (two equalities: served by the single-field
+    // indexes, no composite needed) — was every save the person has
     const snapshot = await db.collection(COLLECTIONS.PLACES)
       .where('addedBy', '==', req.user.uid)
+      .where('needsResolution', '==', true)
       .select('deletedAt', 'needsResolution', 'resolutionAttempts', 'name', 'address', 'circleId', 'website')
       .get();
     const places = [];

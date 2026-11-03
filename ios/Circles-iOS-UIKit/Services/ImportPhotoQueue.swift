@@ -72,7 +72,19 @@ final class ImportPhotoQueue {
     }
 
     @objc private func appDidEnterBackground() { shouldStop = true }
-    @objc private func appWillEnterForeground() { kick() }
+    @objc private func appWillEnterForeground() { kickIfDue() }
+
+    /// Launch and foreground: the outboxes always drain; the photo pass
+    /// itself runs at most every 6 hours (it reads all the person's saves on
+    /// the server, 2026-11-03). Saves and imports call kick() and run at once.
+    func kickIfDue() {
+        if PeriodicPass.isDue("importPhoto", every: 6 * 3600) {
+            kick()
+        } else {
+            PlaceSaveOutbox.shared.drain()
+            PlacePhotoOutbox.shared.drain()
+        }
+    }
 
     /// Safe to call often — no-ops when already running, logged out, or
     /// backgrounded; an empty candidate list ends the pass immediately.

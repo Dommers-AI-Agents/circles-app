@@ -839,19 +839,30 @@ class RewardsService {
 
     // MARK: - Super user (in-app venue management)
 
+    /// Callers waiting on the one rewards/me in flight (launch asked twice
+    /// at once, 2026-11-03). Every caller still gets its own answer.
+    private var rewardsProfileWaiters: [(Result<RewardsProfile, Error>) -> Void] = []
+    private let rewardsProfileLock = NSLock()
+
     func getRewardsProfile(completion: @escaping (Result<RewardsProfile, Error>) -> Void) {
+        rewardsProfileLock.lock()
+        let alreadyAsking = !rewardsProfileWaiters.isEmpty
+        rewardsProfileWaiters.append(completion)
+        rewardsProfileLock.unlock()
+        guard !alreadyAsking else { return }
         apiService.request(
             endpoint: "rewards/me",
             method: .get,
             body: nil,
             requiresAuth: true
-        ) { (result: Result<RewardsEnvelope<RewardsProfile>, APIError>) in
-            switch result {
-            case .success(let response):
-                completion(.success(response.data))
-            case .failure(let error):
-                completion(.failure(error))
-            }
+        ) { [weak self] (result: Result<RewardsEnvelope<RewardsProfile>, APIError>) in
+            guard let self else { return }
+            self.rewardsProfileLock.lock()
+            let waiters = self.rewardsProfileWaiters
+            self.rewardsProfileWaiters = []
+            self.rewardsProfileLock.unlock()
+            let answer: Result<RewardsProfile, Error> = result.map(\.data).mapError { $0 as Error }
+            waiters.forEach { $0(answer) }
         }
     }
 

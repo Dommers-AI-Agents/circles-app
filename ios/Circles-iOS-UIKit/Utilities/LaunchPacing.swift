@@ -22,3 +22,18 @@ enum LaunchPacing {
         }
     }
 }
+
+/// "At most every N hours" for background passes that rescan the person's
+/// whole account (2026-11-03): remembered per account on the device, so a
+/// relaunch doesn't redo a pass that just ran. Explicit triggers (an import,
+/// a save) don't ask this and run at once.
+enum PeriodicPass {
+    static func isDue(_ name: String, every interval: TimeInterval, defaults: UserDefaults = .standard,
+                      userId: String? = AuthService.shared.getUserId(), now: Date = Date()) -> Bool {
+        guard let userId else { return false }
+        let key = "periodicPass.\(name).\(userId)"
+        if let last = defaults.object(forKey: key) as? Date, now.timeIntervalSince(last) < interval { return false }
+        defaults.set(now, forKey: key)
+        return true
+    }
+}
