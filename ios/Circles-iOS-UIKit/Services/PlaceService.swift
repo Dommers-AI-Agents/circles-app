@@ -133,8 +133,13 @@ class PlaceService {
         let lat = String(format: "%.5f", centerLat)
         let lng = String(format: "%.5f", centerLng)
         let endpoint = "network/places/viewport?centerLat=\(lat)&centerLng=\(lng)&radiusM=\(Int(radiusM))&limit=\(limit)"
-        // Only what changed since this same view was last loaded (DeltaSync)
-        DeltaSync.fetch(.networkViewport, endpoint: endpoint, method: .get, cacheKey: endpoint) { [weak self] result in
+        // Only what changed since this view was last loaded (DeltaSync). The
+        // saved copy is keyed by the area rounded to ~1 km: the launch map
+        // centers on live GPS and moved a few metres every time, so an exact
+        // key never matched (2026-11-03). A copy from a nearby view merges
+        // fine; a pin it lacks makes the merge fall back to a full load.
+        let area = String(format: "%.2f,%.2f r%d l%d", centerLat, centerLng, Int((radiusM / 1000).rounded()), limit)
+        DeltaSync.fetch(.networkViewport, endpoint: endpoint, method: .get, cacheKey: area) { [weak self] result in
             completion(self?.decodePlaces(result) ?? .failure(PlaceError.unknown))
         }
     }
