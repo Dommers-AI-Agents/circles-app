@@ -262,20 +262,24 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         NetworkManager.shared.processPendingConnectionInvite()
         rewardCodes.redeemPendingStickerCodeIfNeeded()
         reauth.offerPasskeySetupIfPending()
-        // This person's next-step order, for "where to next" (2026-11-02)
-        NextStepService.shared.refreshIfStale()
+        // Background work waits a few seconds so the first screen (and any
+        // tap) isn't queued behind it on the server (2026-11-03). A fixed
+        // timer: it always runs, at most LaunchPacing.backgroundDelay late.
+        LaunchPacing.afterLaunch {
+            // This person's next-step order, for "where to next" (2026-11-02)
+            NextStepService.shared.refreshIfStale()
+            // Mirror saved places into iOS system search (once per session)
+            SpotlightIndexService.shared.refreshIndexIfNeeded()
+            // Feed the home-screen widget its snapshot
+            WidgetSnapshotService.shared.refresh()
+        }
 
         // Quietly locate any imported places still waiting on a coordinate
-        // (rows past the import flow's inline-resolution cap)
+        // (rows past the import flow's inline-resolution cap), and give
+        // imported places without a photo a free Apple Look Around one.
+        // Both queues pace themselves past launch (see kick()).
         ImportResolutionQueue.shared.kick()
-        // …and give imported places without a photo a free Apple Look Around one
         ImportPhotoQueue.shared.kick()
-
-        // Mirror saved places into iOS system search (once per session)
-        SpotlightIndexService.shared.refreshIndexIfNeeded()
-
-        // Feed the home-screen widget its snapshot
-        WidgetSnapshotService.shared.refresh()
 
         #if DEBUG
         // Debug relay: mirror the share extension's diagnostics dump into

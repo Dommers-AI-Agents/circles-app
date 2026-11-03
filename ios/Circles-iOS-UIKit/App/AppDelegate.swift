@@ -31,6 +31,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        _ = LaunchPacing.launchedAt   // the clock deferred launch work counts from
         Logger.debug("🚀 DAILY SUMMARY VERSION: App launched with enhanced notification handling - v2025.8.1-fixed")
         // Override point for customization after application launch.
         

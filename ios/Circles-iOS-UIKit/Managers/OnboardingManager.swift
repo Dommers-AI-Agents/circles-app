@@ -329,7 +329,30 @@ class OnboardingManager {
     // MARK: - New User Detection
     
     /// Check if user needs tutorial from backend
+    /// Callers waiting on the one status request in flight: launch asked
+    /// twice at once (SceneDelegate and Home, 2026-11-03)
+    private var tutorialStatusWaiters: [(Bool) -> Void] = []
+
     func checkIfUserNeedsTutorial(completion: @escaping (Bool) -> Void) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.checkIfUserNeedsTutorial(completion: completion) }
+            return
+        }
+        let alreadyAsking = !tutorialStatusWaiters.isEmpty
+        tutorialStatusWaiters.append(completion)
+        guard !alreadyAsking else { return }
+        fetchTutorialStatus { [weak self] needsTutorial in
+            // The waiters list lives on the main queue
+            DispatchQueue.main.async {
+                guard let self else { return }
+                let waiters = self.tutorialStatusWaiters
+                self.tutorialStatusWaiters = []
+                waiters.forEach { $0(needsTutorial) }
+            }
+        }
+    }
+
+    private func fetchTutorialStatus(completion: @escaping (Bool) -> Void) {
         APIService.shared.request(
             endpoint: "users/me/tutorial-status",
             method: .get
@@ -339,9 +362,13 @@ class OnboardingManager {
                 // User needs tutorial if they haven't completed it
                 let needsTutorial = !response.hasCompletedTutorial
                 
-                // Update local state based on backend
+                // Update local state based on backend. The server already
+                // says done: just the local side, no write-back (it re-wrote
+                // the same flag on every launch, 2026-11-03)
                 if response.hasCompletedTutorial {
-                    self.completeOnboarding()
+                    UserDefaults.standard.set(true, forKey: self.hasCompletedOnboardingKey)
+                    self.shouldShowTutorial = false
+                    self.dismissCurrentBubble()
                 } else {
                     self.shouldShowTutorial = true
                 }

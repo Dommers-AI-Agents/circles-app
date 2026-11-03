@@ -64,7 +64,14 @@ class NotificationService {
         }
     }
 
+    /// The token (for this account) already registered this session, or on
+    /// its way: launch sent the same one up to four times (2026-11-03)
+    private var sentTokenKey: String?
+
     private func sendDeviceTokenToBackend(_ token: String) {
+        let key = "\(AuthService.shared.getUserId() ?? "")|\(token)"
+        guard key != sentTokenKey else { return }
+        sentTokenKey = key
         Logger.debug("🔔 Sending device token to backend...")
         let body: [String: Any] = [
             "deviceToken": token,
@@ -83,6 +90,7 @@ class NotificationService {
                 Logger.debug("🔔 ✅ Device token registered successfully with backend")
                 Logger.debug("🔔 Old tokens have been automatically cleaned up")
             case .failure(let error):
+                self.sentTokenKey = nil   // not registered: the retry (and later calls) may send it
                 Logger.debug("🔔 ❌ Failed to register device token: \(error)")
                 Logger.debug("🔔 Error details: \(error.localizedDescription)")
                 

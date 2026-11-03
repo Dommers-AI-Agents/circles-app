@@ -81,7 +81,9 @@ final class ImportPhotoQueue {
         // (same launch/foreground/reconnect triggers)
         PlaceSaveOutbox.shared.drain()
         PlacePhotoOutbox.shared.drain()
-        DispatchQueue.main.async {
+        // Not in the first seconds after launch: each pass reads all of the
+        // person's saves on the server (2026-11-03). Later kicks run at once.
+        LaunchPacing.afterLaunch {
             guard #available(iOS 16.0, *) else { return }
             guard !self.isRunning else { return }
             guard AuthService.shared.isLoggedIn else { return }

@@ -429,8 +429,12 @@ exports.getUnresolvedPlaces = async (req, res) => {
   try {
     // Single-equality query + in-memory filter — no composite index needed,
     // and a user's own places are a small set
+    // Only the fields this needs: a full read of a big account's saves (952
+    // for Wes) took ~10 s at app launch and held up everything behind it
+    // (2026-11-03)
     const snapshot = await db.collection(COLLECTIONS.PLACES)
       .where('addedBy', '==', req.user.uid)
+      .select('deletedAt', 'needsResolution', 'resolutionAttempts', 'name', 'address', 'circleId', 'website')
       .get();
     const places = [];
     snapshot.forEach(doc => {
@@ -458,8 +462,10 @@ exports.getUnresolvedPlaces = async (req, res) => {
 // @access  Private
 exports.getPlacesNeedingPhoto = async (req, res) => {
   try {
+    // Only the fields this needs (see getUnresolvedPlaces)
     const snapshot = await db.collection(COLLECTIONS.PLACES)
       .where('addedBy', '==', req.user.uid)
+      .select('deletedAt', 'importSource', 'needsPhoto', 'photos', 'photoFallbackAttempts', 'location', 'name', 'googlePhotoChecked')
       .get();
     const places = [];
     snapshot.forEach(doc => {

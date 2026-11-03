@@ -95,7 +95,9 @@ final class ImportResolutionQueue {
     /// often — it no-ops when running, logged out, or backgrounded, and an
     /// empty unresolved list ends the pass immediately.
     func kick() {
-        DispatchQueue.main.async {
+        // Not in the first seconds after launch: each pass reads all of the
+        // person's saves on the server (2026-11-03). Later kicks run at once.
+        LaunchPacing.afterLaunch {
             guard !self.isRunning else { return }
             guard AuthService.shared.isLoggedIn else { return }
             guard UIApplication.shared.applicationState != .background else { return }

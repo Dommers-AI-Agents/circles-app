@@ -4146,13 +4146,29 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         }
     }
     
+    private static var bellFetchInFlight = false
+    private static var lastBellCount: (count: Int, at: Date)?
+
     func updateNotificationBadge() {
         // Always ensure badge is set up first
         if notificationBadgeLabel == nil {
             setupNotificationBadge()
         }
 
+        // One fetch for the bell: launch asked up to three times at once
+        // (viewWillAppear plus each rebuild of the bar buttons). A fresh answer
+        // (under 5 s) is reused, and a fetch already on its way answers all.
+        if let last = Self.lastBellCount, Date().timeIntervalSince(last.at) < 5 {
+            notificationBadgeLabel?.isHidden = last.count <= 0
+            return
+        }
+        guard !Self.bellFetchInFlight else { return }
+        Self.bellFetchInFlight = true
         NotificationService.shared.getUnreadNotificationCount { [weak self] result in
+            DispatchQueue.main.async {
+                Self.bellFetchInFlight = false
+                if case .success(let count) = result { Self.lastBellCount = (count, Date()) }
+            }
             guard let self = self else {
                 return
             }

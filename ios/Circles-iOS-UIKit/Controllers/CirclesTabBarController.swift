@@ -410,6 +410,11 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     /// page: badge the Me tab so the reviewer knows to head there. Super-user
     /// only — regular users and store owners never see it.
     private func updateMeBadge() {
+        // Super-user only, never on the first screen: after the launch rush
+        LaunchPacing.afterLaunch(2) { [weak self] in self?.fetchMeBadge() }
+    }
+
+    private func fetchMeBadge() {
         RewardsService.shared.getRewardsProfile { [weak self] result in
             guard case .success(let profile) = result, profile.isSuperUser else {
                 DispatchQueue.main.async { self?.viewControllers?[3].tabBarItem.badgeValue = nil }
