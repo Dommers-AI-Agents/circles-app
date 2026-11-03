@@ -741,6 +741,19 @@ class RewardsViewController: BaseViewController {
     // MARK: - UI Updates
 
     private func updateOffersUI(with data: RewardOffersData?) {
+        #if DEBUG
+        // PREVIEW_SCREEN=rewards: sample stores, to see the cards on any account
+        if ProcessInfo.processInfo.environment["PREVIEW_SCREEN"] == "rewards",
+           let sample = Self.previewOffers, data?.venues.isEmpty != false {
+            latestVenueBalances = sample.venueBalances ?? []
+            if let y = ProcessInfo.processInfo.environment["PREVIEW_SCROLL"].flatMap(Double.init) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                    self?.scrollView.setContentOffset(CGPoint(x: 0, y: y), animated: false)
+                }
+            }
+            return updateOffersUI(with: sample)
+        }
+        #endif
         savedOffersStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         nearbyOffersStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
@@ -749,19 +762,21 @@ class RewardsViewController: BaseViewController {
         let nearby = venues.filter { $0.savedByUser != true }
 
         if saved.isEmpty {
-            savedOffersStack.addArrangedSubview(makeEmptyLabel(
-                "Save places with a FavCircles sticker to see their offers here."
-            ))
+            savedOffersStack.addArrangedSubview(makeOffersEmptyCard(
+                symbol: "gift",
+                text: "Save a store with a FavCircles sticker and its offers show up here.",
+                step: nearby.isEmpty ? .explore : nil))
         } else {
             saved.forEach { savedOffersStack.addArrangedSubview(makeVenueCard($0)) }
         }
 
         if nearby.isEmpty {
-            nearbyOffersStack.addArrangedSubview(makeEmptyLabel(
-                "No participating places nearby yet — keep an eye out for FavCircles stickers!"
-            ))
+            nearbyOffersStack.addArrangedSubview(makeOffersEmptyCard(
+                symbol: "mappin.and.ellipse",
+                text: "No stores with rewards near you yet. Look for the FavCircles sticker in shop windows.",
+                step: .explore))
         } else {
-            nearby.forEach { nearbyOffersStack.addArrangedSubview(makeVenueCard($0)) }
+            nearbyOffersStack.addArrangedSubview(makeNearbyCarousel(nearby))
         }
     }
 
@@ -789,87 +804,285 @@ class RewardsViewController: BaseViewController {
         return label
     }
 
-    // MARK: - Venue offer cards
+    // MARK: - Venue offer cards (2026-11-03: photo cards like Store Rewards)
 
-    private func makeVenueCard(_ venue: OfferVenue) -> UIView {
-        let card = UIView()
-        card.translatesAutoresizingMaskIntoConstraints = false
-        card.backgroundColor = Constants.Colors.secondaryBackground
-        card.layer.cornerRadius = 12
+    /// A store's photo, or its category's icon on the brand color while
+    /// there's none (and while the photo loads)
+    private func makeVenuePhoto(_ venue: OfferVenue, height: CGFloat) -> UIView {
+        let header = UIView()
+        header.backgroundColor = Constants.Colors.primary
+        header.clipsToBounds = true
+        header.heightAnchor.constraint(equalToConstant: height).isActive = true
 
-        let nameLabel = UILabel()
-        nameLabel.translatesAutoresizingMaskIntoConstraints = false
-        nameLabel.text = venue.venueName
-        nameLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        nameLabel.textColor = .label
-        nameLabel.numberOfLines = 1
+        let category = PlaceCategory(rawValue: venue.category ?? "")
+        let icon = UIImageView(image: UIImage(systemName: category?.systemIconName ?? "storefront"))
+        icon.tintColor = UIColor.white.withAlphaComponent(0.85)
+        icon.contentMode = .scaleAspectFit
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(icon)
 
-        let detailLabel = UILabel()
-        detailLabel.translatesAutoresizingMaskIntoConstraints = false
-        var details: [String] = []
-        if let distance = venue.distanceDisplay { details.append(distance) }
-        if let earnRate = venue.earnRate { details.append("earn \(earnRate) pts per purchase") }
-        let pointsHere = venuePoints(at: venue.venueId)
-        if pointsHere > 0 { details.append("you have \(pointsHere) pts here") }
-        detailLabel.text = details.joined(separator: " · ")
-        detailLabel.font = UIFont.systemFont(ofSize: 13)
-        detailLabel.textColor = .secondaryLabel
-        detailLabel.numberOfLines = 1
+        let photo = UIImageView()
+        photo.contentMode = .scaleAspectFill
+        photo.clipsToBounds = true
+        photo.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(photo)
+        if let url = venue.photoUrl, !url.isEmpty {
+            ImageService.shared.loadImage(from: url) { image in
+                DispatchQueue.main.async {
+                    guard let image else { return }
+                    photo.image = image
+                    icon.isHidden = true
+                }
+            }
+        }
 
-        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
-        chevron.translatesAutoresizingMaskIntoConstraints = false
-        chevron.tintColor = .tertiaryLabel
-        chevron.contentMode = .scaleAspectFit
-        chevron.setContentHuggingPriority(.required, for: .horizontal)
-
-        // The name/detail header opens the venue's place page; the redeem
-        // buttons below keep their own tap targets.
-        let headerControl = UIControl()
-        headerControl.translatesAutoresizingMaskIntoConstraints = false
-        headerControl.addAction(UIAction { [weak self] _ in
-            self?.openVenuePlace(venue)
-        }, for: .touchUpInside)
-        headerControl.addSubview(nameLabel)
-        headerControl.addSubview(detailLabel)
-        headerControl.addSubview(chevron)
-        nameLabel.isUserInteractionEnabled = false
-        detailLabel.isUserInteractionEnabled = false
-        chevron.isUserInteractionEnabled = false
-
-        let offersStack = UIStackView()
-        offersStack.translatesAutoresizingMaskIntoConstraints = false
-        offersStack.axis = .vertical
-        offersStack.spacing = 8
-        venue.offers.forEach { offersStack.addArrangedSubview(makeOfferRow($0, venue: venue)) }
-
-        card.addSubview(headerControl)
-        card.addSubview(offersStack)
+        // Distance (or "Online store") in a chip over the photo
+        let chipText = venue.isVirtual == true ? "Online store" : venue.distanceDisplay
+        if let chipText {
+            let chip = PaddedChip(text: chipText)
+            chip.translatesAutoresizingMaskIntoConstraints = false
+            header.addSubview(chip)
+            NSLayoutConstraint.activate([
+                chip.topAnchor.constraint(equalTo: header.topAnchor, constant: 10),
+                chip.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -10)
+            ])
+        }
 
         NSLayoutConstraint.activate([
-            headerControl.topAnchor.constraint(equalTo: card.topAnchor, constant: 12),
-            headerControl.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
-            headerControl.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
+            icon.centerXAnchor.constraint(equalTo: header.centerXAnchor),
+            icon.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            icon.heightAnchor.constraint(equalToConstant: height * 0.36),
+            icon.widthAnchor.constraint(equalTo: icon.heightAnchor),
+            photo.topAnchor.constraint(equalTo: header.topAnchor),
+            photo.bottomAnchor.constraint(equalTo: header.bottomAnchor),
+            photo.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            photo.trailingAnchor.constraint(equalTo: header.trailingAnchor)
+        ])
+        if let chip = header.subviews.first(where: { $0 is PaddedChip }) { header.bringSubviewToFront(chip) }
+        return header
+    }
 
-            nameLabel.topAnchor.constraint(equalTo: headerControl.topAnchor),
-            nameLabel.leadingAnchor.constraint(equalTo: headerControl.leadingAnchor),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevron.leadingAnchor, constant: -8),
+    /// The reward this person is working toward at a store, on the same rule
+    /// as the place page and Store Rewards
+    private func nextReward(at venue: OfferVenue) -> RewardsAvailability.NextReward? {
+        RewardsAvailability.nextReward(RewardsAvailability.Details(
+            venueName: venue.venueName,
+            earnRate: venue.earnRate,
+            venueBalance: venuePoints(at: venue.venueId),
+            offers: venue.offers.filter { $0.active != false }.map { .init(title: $0.title, pointsCost: $0.pointsCost) }))
+    }
 
-            chevron.centerYAnchor.constraint(equalTo: headerControl.centerYAnchor),
-            chevron.trailingAnchor.constraint(equalTo: headerControl.trailingAnchor),
-            chevron.widthAnchor.constraint(equalToConstant: 14),
+    /// A saved store: photo, name, points here, progress to the next
+    /// reward, then each offer with Redeem or how far away it is
+    private func makeVenueCard(_ venue: OfferVenue) -> UIView {
+        let card = UIView()
+        card.backgroundColor = Constants.Colors.secondaryBackground
+        card.layer.cornerRadius = 16
+        card.clipsToBounds = true
 
-            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
-            detailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            detailLabel.trailingAnchor.constraint(lessThanOrEqualTo: chevron.leadingAnchor, constant: -8),
-            detailLabel.bottomAnchor.constraint(equalTo: headerControl.bottomAnchor),
+        let photo = makeVenuePhoto(venue, height: 128)
 
-            offersStack.topAnchor.constraint(equalTo: headerControl.bottomAnchor, constant: 10),
-            offersStack.leadingAnchor.constraint(equalTo: headerControl.leadingAnchor),
-            offersStack.trailingAnchor.constraint(equalTo: headerControl.trailingAnchor),
-            offersStack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -12)
+        let name = UILabel()
+        name.text = venue.venueName
+        name.font = .systemFont(ofSize: 18, weight: .bold)
+        name.numberOfLines = 2
+        let pointsHere = venuePoints(at: venue.venueId)
+        let points = UILabel()
+        points.text = "\(pointsHere) pts"
+        points.font = .systemFont(ofSize: 17, weight: .bold)
+        points.textColor = pointsHere > 0 ? Constants.Colors.primary : .tertiaryLabel
+        points.setContentHuggingPriority(.required, for: .horizontal)
+        points.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let titleRow = UIStackView(arrangedSubviews: [name, points])
+        titleRow.spacing = 8
+        titleRow.alignment = .firstBaseline
+
+        let body = UIStackView(arrangedSubviews: [titleRow])
+        body.axis = .vertical
+        body.spacing = 10
+
+        if let rate = venue.earnRate, rate > 0 {
+            body.addArrangedSubview(makeIconLine(symbol: "star.circle.fill", color: .systemOrange,
+                                                 text: "Earn \(rate) \(rate == 1 ? "point" : "points") per purchase"))
+        }
+
+        if let next = nextReward(at: venue) {
+            let bar = UIProgressView(progressViewStyle: .bar)
+            bar.progressTintColor = next.canRedeem ? .systemGreen : Constants.Colors.primary
+            bar.trackTintColor = Constants.Colors.tertiaryBackground
+            bar.progress = next.fraction
+            bar.layer.cornerRadius = 4
+            bar.clipsToBounds = true
+            bar.heightAnchor.constraint(equalToConstant: 8).isActive = true
+            let line = UILabel()
+            line.text = RewardsAvailability.nextRewardLine(next)
+            line.font = .systemFont(ofSize: 14)
+            line.textColor = next.canRedeem ? .systemGreen : .secondaryLabel
+            line.numberOfLines = 0
+            body.addArrangedSubview(bar)
+            body.addArrangedSubview(line)
+        }
+
+        let offers = venue.offers.filter { $0.active != false }.sorted { $0.pointsCost < $1.pointsCost }
+        if !offers.isEmpty {
+            let divider = UIView()
+            divider.backgroundColor = .separator
+            divider.heightAnchor.constraint(equalToConstant: 0.5).isActive = true
+            body.addArrangedSubview(divider)
+            offers.forEach { body.addArrangedSubview(makeOfferRow($0, venue: venue)) }
+        }
+
+        let open = UILabel()
+        open.text = "See the store"
+        open.font = .systemFont(ofSize: 14, weight: .semibold)
+        open.textColor = Constants.Colors.primary
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevron.tintColor = .tertiaryLabel
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        body.addArrangedSubview(UIStackView(arrangedSubviews: [open, UIView(), chevron]))
+
+        let column = UIStackView(arrangedSubviews: [photo, body])
+        column.axis = .vertical
+        column.spacing = 12
+        column.setCustomSpacing(14, after: photo)
+        column.translatesAutoresizingMaskIntoConstraints = false
+        body.isLayoutMarginsRelativeArrangement = true
+        body.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 14, trailing: 16)
+        card.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: card.topAnchor),
+            column.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            column.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: card.trailingAnchor)
         ])
 
+        // Tap anywhere but Redeem: the store's page
+        card.accessibilityTraits.insert(.button)
+        card.addGestureRecognizer(VenueTap(venue: venue, target: self, action: #selector(venueCardTapped(_:))))
         return card
+    }
+
+    /// Stores near you that you haven't saved: a swipeable row of photo cards
+    private func makeNearbyCarousel(_ venues: [OfferVenue]) -> UIView {
+        let scroll = UIScrollView()
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.clipsToBounds = false
+        let row = UIStackView(arrangedSubviews: venues.map { makeNearbyCard($0) })
+        row.spacing = 12
+        row.alignment = .fill
+        row.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            row.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            row.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            row.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor)
+        ])
+        scroll.heightAnchor.constraint(equalToConstant: 236).isActive = true
+        return scroll
+    }
+
+    private func makeNearbyCard(_ venue: OfferVenue) -> UIView {
+        let card = UIView()
+        card.backgroundColor = Constants.Colors.secondaryBackground
+        card.layer.cornerRadius = 16
+        card.clipsToBounds = true
+        card.widthAnchor.constraint(equalToConstant: 236).isActive = true
+
+        let photo = makeVenuePhoto(venue, height: 112)
+        let name = UILabel()
+        name.text = venue.venueName
+        name.font = .systemFont(ofSize: 16, weight: .bold)
+        name.numberOfLines = 1
+
+        let body = UIStackView(arrangedSubviews: [name])
+        body.axis = .vertical
+        body.spacing = 6
+        body.isLayoutMarginsRelativeArrangement = true
+        body.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 12, trailing: 12)
+
+        let offers = venue.offers.filter { $0.active != false }.sorted { $0.pointsCost < $1.pointsCost }
+        if let first = offers.first {
+            let more = offers.count > 1 ? " + \(offers.count - 1) more" : ""
+            body.addArrangedSubview(makeIconLine(symbol: "gift.fill", color: Constants.Colors.primary,
+                                                 text: "\(first.title) · \(first.pointsCost) pts\(more)", lines: 2))
+        }
+        if let rate = venue.earnRate, rate > 0 {
+            body.addArrangedSubview(makeIconLine(symbol: "star.circle.fill", color: .systemOrange,
+                                                 text: "\(rate) pts per purchase"))
+        }
+        body.addArrangedSubview(UIView())
+
+        let column = UIStackView(arrangedSubviews: [photo, body])
+        column.axis = .vertical
+        column.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: card.topAnchor),
+            column.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+            column.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: card.trailingAnchor)
+        ])
+        card.accessibilityTraits.insert(.button)
+        card.addGestureRecognizer(VenueTap(venue: venue, target: self, action: #selector(venueCardTapped(_:))))
+        return card
+    }
+
+    /// An SF Symbol and a line of text, for the earn rate and offer lines
+    private func makeIconLine(symbol: String, color: UIColor, text: String, lines: Int = 1) -> UIView {
+        let icon = UIImageView(image: UIImage(systemName: symbol))
+        icon.tintColor = color
+        icon.contentMode = .scaleAspectFit
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+        icon.widthAnchor.constraint(equalToConstant: 16).isActive = true
+        let label = UILabel()
+        label.text = text
+        label.font = .systemFont(ofSize: 14)
+        label.textColor = .secondaryLabel
+        label.numberOfLines = lines
+        let row = UIStackView(arrangedSubviews: [icon, label])
+        row.spacing = 6
+        row.alignment = .center
+        return row
+    }
+
+    /// No stores yet: a soft card that says why, with a way forward
+    private func makeOffersEmptyCard(symbol: String, text: String, step: NextStep?) -> UIView {
+        let card = UIView()
+        card.backgroundColor = Constants.Colors.secondaryBackground
+        card.layer.cornerRadius = 16
+        let icon = UIImageView(image: UIImage(systemName: symbol))
+        icon.tintColor = Constants.Colors.primary
+        icon.contentMode = .scaleAspectFit
+        icon.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        let label = makeEmptyLabel(text)
+        label.textAlignment = .center
+        let stack = UIStackView(arrangedSubviews: [icon, label])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 10
+        if let step {
+            let button = UIButton.smallActionButton(title: step.title, style: .primary)
+            button.addAction(UIAction { _ in
+                AnalyticsService.shared.logEvent("next_step_tapped", parameters: ["surface": "rewards_offers_empty", "step": step.id])
+                NextStepNavigator.explore()
+            }, for: .touchUpInside)
+            stack.addArrangedSubview(button)
+        }
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 20),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -20),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -20)
+        ])
+        return card
+    }
+
+    @objc private func venueCardTapped(_ gesture: VenueTap) {
+        openVenuePlace(gesture.venue)
     }
 
     // MARK: - Venue → place page
@@ -946,59 +1159,58 @@ class RewardsViewController: BaseViewController {
         navigationController?.pushViewController(detailVC, animated: true)
     }
 
+    /// One offer: a gift badge, the title and cost, then Redeem when this
+    /// store's points cover it, or how many more points it takes
     private func makeOfferRow(_ offer: RewardOffer, venue: OfferVenue) -> UIView {
-        let row = UIView()
-        row.translatesAutoresizingMaskIntoConstraints = false
-
         // Per-store loyalty: only points earned at THIS shop pay for its offers
         let balance = venuePoints(at: venue.venueId)
         let affordable = balance >= offer.pointsCost
 
-        let titleLabel = UILabel()
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.text = offer.title
-        titleLabel.font = UIFont.systemFont(ofSize: 14)
-        titleLabel.textColor = .label
-        titleLabel.numberOfLines = 2
-
-        let costLabel = UILabel()
-        costLabel.translatesAutoresizingMaskIntoConstraints = false
-        costLabel.text = affordable
-            ? "\(offer.pointsCost) pts"
-            : "\(offer.pointsCost) pts · earn \(offer.pointsCost - balance) more here"
-        costLabel.font = UIFont.systemFont(ofSize: 12)
-        costLabel.textColor = .secondaryLabel
-
-        let redeemButton = UIButton.smallActionButton(
-            title: "Redeem",
-            style: affordable ? .primary : .secondary
-        )
-        redeemButton.isEnabled = affordable
-        redeemButton.alpha = affordable ? 1.0 : 0.5
-        redeemButton.setContentHuggingPriority(.required, for: .horizontal)
-        redeemButton.setContentCompressionResistancePriority(.required, for: .horizontal)
-        redeemButton.addAction(UIAction { [weak self] _ in
-            self?.confirmRedeem(offer, venue: venue)
-        }, for: .touchUpInside)
-
-        row.addSubview(titleLabel)
-        row.addSubview(costLabel)
-        row.addSubview(redeemButton)
-
+        let badge = UIView()
+        badge.backgroundColor = (affordable ? UIColor.systemGreen : Constants.Colors.primary).withAlphaComponent(0.14)
+        badge.layer.cornerRadius = 18
+        badge.widthAnchor.constraint(equalToConstant: 36).isActive = true
+        badge.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        let gift = UIImageView(image: UIImage(systemName: "gift.fill"))
+        gift.tintColor = affordable ? .systemGreen : Constants.Colors.primary
+        gift.contentMode = .scaleAspectFit
+        gift.translatesAutoresizingMaskIntoConstraints = false
+        badge.addSubview(gift)
         NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: row.topAnchor),
-            titleLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: redeemButton.leadingAnchor, constant: -10),
-
-            costLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
-            costLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor),
-            costLabel.trailingAnchor.constraint(lessThanOrEqualTo: redeemButton.leadingAnchor, constant: -10),
-            costLabel.bottomAnchor.constraint(equalTo: row.bottomAnchor),
-
-            redeemButton.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            redeemButton.trailingAnchor.constraint(equalTo: row.trailingAnchor)
+            gift.centerXAnchor.constraint(equalTo: badge.centerXAnchor),
+            gift.centerYAnchor.constraint(equalTo: badge.centerYAnchor),
+            gift.widthAnchor.constraint(equalToConstant: 18),
+            gift.heightAnchor.constraint(equalToConstant: 18)
         ])
 
+        let title = UILabel()
+        title.text = offer.title
+        title.font = .systemFont(ofSize: 15, weight: .semibold)
+        title.numberOfLines = 2
+        let cost = UILabel()
+        cost.text = "\(offer.pointsCost) pts"
+        cost.font = .systemFont(ofSize: 13)
+        cost.textColor = .secondaryLabel
+        let text = UIStackView(arrangedSubviews: [title, cost])
+        text.axis = .vertical
+        text.spacing = 2
+
+        let trailing: UIView
+        if affordable {
+            let redeem = UIButton.smallActionButton(title: "Redeem", style: .primary)
+            redeem.addAction(UIAction { [weak self] _ in
+                self?.confirmRedeem(offer, venue: venue)
+            }, for: .touchUpInside)
+            trailing = redeem
+        } else {
+            trailing = PaddedChip(text: "\(offer.pointsCost - balance) to go", muted: true)
+        }
+        trailing.setContentHuggingPriority(.required, for: .horizontal)
+        trailing.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let row = UIStackView(arrangedSubviews: [badge, text, trailing])
+        row.spacing = 12
+        row.alignment = .center
         return row
     }
 
@@ -1091,3 +1303,59 @@ extension RewardsViewController: CLLocationManagerDelegate {
         fetchOffers(lat: nil, lng: nil)
     }
 }
+
+/// A tap that knows which store's card it's on
+private final class VenueTap: UITapGestureRecognizer {
+    let venue: OfferVenue
+    init(venue: OfferVenue, target: Any?, action: Selector?) {
+        self.venue = venue
+        super.init(target: target, action: action)
+        cancelsTouchesInView = false
+    }
+}
+
+/// A small rounded label: the distance over a store photo, or "40 to go"
+private final class PaddedChip: UILabel {
+    init(text: String, muted: Bool = false) {
+        super.init(frame: .zero)
+        self.text = text
+        font = .systemFont(ofSize: 12, weight: .semibold)
+        textColor = muted ? .secondaryLabel : .white
+        backgroundColor = muted ? Constants.Colors.tertiaryBackground : UIColor.black.withAlphaComponent(0.55)
+        layer.cornerRadius = 11
+        clipsToBounds = true
+        textAlignment = .center
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override var intrinsicContentSize: CGSize {
+        let size = super.intrinsicContentSize
+        return CGSize(width: size.width + 18, height: max(22, size.height + 6))
+    }
+}
+
+#if DEBUG
+extension RewardsViewController {
+    static let previewOffers: RewardOffersData? = {
+        let json = """
+        {"balance": 0,
+         "venueBalances": [{"venueId": "sal", "venueName": "Sal’s Bakery (Demo)", "points": 75}],
+         "venues": [
+          {"venueId": "sal", "venueName": "Sal’s Bakery (Demo)", "category": "bakery", "savedByUser": true,
+           "photoUrl": "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1200", "distanceMeters": 640, "earnRate": 25,
+           "offers": [{"offerId": "1", "title": "Free drip coffee", "pointsCost": 50},
+                      {"offerId": "2", "title": "Free croissant", "pointsCost": 100},
+                      {"offerId": "3", "title": "Dozen cookies", "pointsCost": 300}]},
+          {"venueId": "tb", "venueName": "Test Bakery", "category": "cafe", "savedByUser": true, "distanceMeters": 3200, "earnRate": 10,
+           "offers": [{"offerId": "4", "title": "10% off your order", "pointsCost": 80}]},
+          {"venueId": "n1", "venueName": "Undercurrent Coffee", "category": "cafe", "savedByUser": false,
+           "photoUrl": "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=1200", "distanceMeters": 1100, "earnRate": 10,
+           "offers": [{"offerId": "5", "title": "Free latte", "pointsCost": 120}, {"offerId": "6", "title": "Free pastry", "pointsCost": 60}]},
+          {"venueId": "n2", "venueName": "Pasta & Provisions", "category": "restaurant", "savedByUser": false,
+           "photoUrl": "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=1200", "distanceMeters": 4200, "earnRate": 20,
+           "offers": [{"offerId": "7", "title": "Free garlic bread", "pointsCost": 100}]}
+         ]}
+        """
+        return try? JSONDecoder().decode(RewardOffersData.self, from: Data(json.utf8))
+    }()
+}
+#endif

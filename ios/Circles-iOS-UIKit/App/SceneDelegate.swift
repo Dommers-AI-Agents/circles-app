@@ -140,10 +140,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.makeKeyAndVisible()
         #if DEBUG
         // Screenshots of one screen without walking the flow:
-        // PREVIEW_SCREEN=notifications | morePlaces | storeResult
+        // PREVIEW_SCREEN=notifications | morePlaces | storeResult | rewards
         if let screen = ProcessInfo.processInfo.environment["PREVIEW_SCREEN"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 let vc: UIViewController? = screen == "notifications" ? NotificationOnboardingViewController()
+                    : screen == "rewards" ? RewardsHubViewController()
                     : screen == "morePlaces" ? MorePlacesLikeViewController(favorite: nil, favoriteName: "Sal\u{2019}s Bakery (Demo)")
                     : screen == "storeResult" ? FirstFavoriteResultViewController(place: Place(
                         id: "preview", name: "Sal\u{2019}s Bakery (Demo)", description: nil, address: "1 Main St, Charlotte, NC",
