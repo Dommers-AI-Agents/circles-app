@@ -6,6 +6,7 @@ const geofire = require('geofire-common');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { sanitizeKeyPart, STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const rewardService = require('../../services/rewardService');
+const { sendServiceError } = require('../../utils/serviceError');
 const { scanLocationCheck } = require('../../services/scanLocation');
 const rewardProgress = require('../../services/rewardProgress');
 const nearbyEventsService = require('../../services/nearbyEventsService');
@@ -326,6 +327,31 @@ exports.shareWithStore = async (req, res) => {
   } catch (error) {
     console.error('❌ Share with store failed:', error);
     res.status(500).json({ success: false, error: 'Could not share with the store' });
+  }
+};
+
+// @desc    "Enjoying <store>?" after a reward is given — the card's data the
+//          first time only ({ show: false } after that). services/storeFeedback
+// @route   POST /api/rewards/venues/:venueId/enjoying
+// @access  Private
+exports.enjoyingCard = async (req, res) => {
+  try {
+    const data = await require('../../services/storeFeedback').enjoyingCard(req.user.uid, req.params.venueId);
+    res.json({ success: true, data });
+  } catch (error) {
+    sendServiceError(res, error, { log: '❌ enjoyingCard failed', fallbackMessage: 'Could not load the card' });
+  }
+};
+
+// @desc    Private feedback to a store: { rating 1–5, note? }, read only by its team
+// @route   POST /api/rewards/venues/:venueId/feedback
+// @access  Private
+exports.sendStoreFeedback = async (req, res) => {
+  try {
+    const data = await require('../../services/storeFeedback').sendFeedback(req.user.uid, req.params.venueId, req.body || {});
+    res.json({ success: true, data });
+  } catch (error) {
+    sendServiceError(res, error, { log: '❌ sendStoreFeedback failed', fallbackMessage: 'Could not send your feedback' });
   }
 };
 

@@ -47,6 +47,10 @@ class PlaceCommentsViewController: BaseViewController {
     }()
     
     private var commentInputBottomConstraint: NSLayoutConstraint?
+
+    /// Open with the keyboard up and this prompt in the field ("Write a
+    /// review of Fresh Monkee", from the after-reward card)
+    var composePrompt: String?
     
     // MARK: - Init
     init(place: Place) {
@@ -69,6 +73,15 @@ class PlaceCommentsViewController: BaseViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(false, animated: animated)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if let prompt = composePrompt {
+            composePrompt = nil
+            commentTextField.placeholder = prompt
+            commentTextField.becomeFirstResponder()
+        }
     }
     
     deinit {

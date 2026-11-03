@@ -39,7 +39,7 @@ const OLD_TYPE_MAP = {
 };
 const OLD_BADGE_WORTHY = ['new_message', 'connection_request', 'connection_accepted', 'place_like', 'place_comment', 'new_follower',
   'activity_reaction', 'activity_comment', 'check_in', 'new_suggestion', 'moment_tag', 'circle_invite', 'store_claim',
-  'store_claim_approved', 'premium_signup', 'did_you_know', 'check_in_response',
+  'store_claim_approved', 'store_feedback', 'premium_signup', 'did_you_know', 'check_in_response',
   // Order ahead (2026-10-20)
   'order_new', 'order_update',
   // Private profiles (2026-11-02)
@@ -75,7 +75,7 @@ test('the rows a person can catch up on in Notifications (Wes, 2026-10-01)', () 
     'care_accepted', 'care_alert_response', 'care_comment', 'care_invite', 'care_silence', 'care_watcher_accepted', 'care_watcher_declined',
     'care_watcher_invite', 'care_watcher_joined', 'care_watcher_removed', 'care_watcher_request',
     'check_in_response', 'club_bulletin', 'club_event', 'club_invite', 'club_joined', 'club_reply', 'dog_comment', 'dog_pet', 'event_invite', 'event_joined', 'event_message', 'event_rsvp', 'favcoin_claim_settled', 'follow_request', 'follow_request_accepted', 'fridgemail', 'milestone', 'nextbar_result',
-    'nextbar_round', 'order_new', 'order_update', 'postcard_order', 'run_live_finished', 'run_live_invite', 'store_alert'
+    'nextbar_round', 'order_new', 'order_update', 'postcard_order', 'run_live_finished', 'run_live_invite', 'store_alert', 'store_feedback'
   ]);
   // Reminders, digests and the questions themselves stay push-only
   ['engagement_reminder', 'reengagement', 'daily_summary', 'weekly_summary', 'daily_quote', 'daily_dog', 'care_ask', 'care_answer',

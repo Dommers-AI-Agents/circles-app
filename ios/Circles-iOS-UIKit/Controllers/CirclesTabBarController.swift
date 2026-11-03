@@ -291,6 +291,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         // Order ahead pushes: the customer's order, the store's Orders screen
         NotificationCenter.default.addObserver(self, selector: #selector(navigateToStoreOrder(_:)), name: .navigateToStoreOrder, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(navigateToVenueOrders(_:)), name: .navigateToVenueOrders, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(navigateToVenueFeedback(_:)), name: .navigateToVenueFeedback, object: nil)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(refreshHomeWidget(_:)),
@@ -606,6 +607,13 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             return
         }
         let nav = UINavigationController(rootViewController: VenueOrdersViewController(venueId: venueId))
+        nav.modalPresentationStyle = .pageSheet
+        topPresenter.present(nav, animated: true)
+    }
+
+    @objc private func navigateToVenueFeedback(_ note: Notification) {
+        guard let venueId = note.object as? String else { return }
+        let nav = UINavigationController(rootViewController: VenueFeedbackViewController(venueId: venueId))
         nav.modalPresentationStyle = .pageSheet
         topPresenter.present(nav, animated: true)
     }

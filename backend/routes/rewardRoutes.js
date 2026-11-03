@@ -105,6 +105,9 @@ router.get('/nearby-events', getNearbyEvents);
 router.post('/redeem-offer', appAttestMonitor, redeemOffer);
 // Claiming rewards by name: share name, photo and email with the store once (2026-11-02)
 router.post('/venues/:venueId/share', require('../controllers/venues/rewardScanController').shareWithStore);
+// "Enjoying <store>?" after a reward, and private feedback to the store (2026-11-02)
+router.post('/venues/:venueId/enjoying', require('../controllers/venues/rewardScanController').enjoyingCard);
+router.post('/venues/:venueId/feedback', require('../controllers/venues/rewardScanController').sendStoreFeedback);
 // Reward tickets (2026-11-01): open + recent, and the staff "Given" tap
 const rewardVouchers = require('../controllers/venues/rewardVouchersController');
 router.get('/vouchers', rewardVouchers.listMine);
@@ -158,6 +161,7 @@ const venueCustomers = require('../controllers/venues/venueCustomersController')
 router.get('/venues/:venueId/customers', requireVenueOwner, requireOwnerPremium, venueCustomers.listCustomers);
 router.post('/venues/:venueId/customers/:userId/remove', requireVenueOwner, requireOwnerPremium, venueCustomers.removeCustomer);
 router.post('/venues/:venueId/customers/:userId/restore', requireVenueOwner, requireOwnerPremium, venueCustomers.restoreCustomer);
+router.get('/venues/:venueId/feedback', requireVenueOwner, venueCustomers.listFeedback);
 // Cover photo is basic storefront presence — free owner tier
 router.put('/venues/:venueId/cover-photo', requireVenueOwner, setVenueCoverPhoto);
 // Canonical place-record edit (name/description/category/phone/website) —

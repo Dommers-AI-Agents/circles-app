@@ -953,6 +953,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("Rewards used", "Who redeemed what, and whether staff gave it", "checkmark.seal")
         case .customers:
             set("Customers", "Who earns here, and taking someone off your rewards", "person.text.rectangle")
+        case .feedback:
+            set("Private feedback", "Stars and notes customers sent only to you", "envelope.badge")
 
         case .announcement(let index):
             let announcement = announcements[index]
@@ -1055,6 +1057,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             navigationController?.pushViewController(VenueRewardTicketsViewController(venueId: venueId), animated: true)
         case .customers:
             navigationController?.pushViewController(VenueCustomersViewController(venueId: venueId, venueName: venueName), animated: true)
+        case .feedback:
+            navigationController?.pushViewController(VenueFeedbackViewController(venueId: venueId), animated: true)
 
         case .announcement(let index):
             manageAnnouncement(announcements[index])

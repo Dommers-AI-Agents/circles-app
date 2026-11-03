@@ -12,6 +12,8 @@ class ContentUploadViewController: UIViewController {
     
     // MARK: - Properties
     weak var delegate: ContentUploadDelegate?
+    /// The place picker opens with this typed in (a store's name)
+    var suggestedPlaceName: String?
     private var selectedPlace: Place?
     private var pendingContent: ContentType?
     /// Followers unless they shared to something else last time (seeded in viewDidLoad)
@@ -562,6 +564,7 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
         let picker = MomentPlacePickerViewController(initialVisibility: selectedVisibility,
                                                      initialAudienceListId: selectedAudienceListId)
         picker.delegate = self
+        picker.initialQuery = suggestedPlaceName
         let nav = UINavigationController(rootViewController: picker)
         present(nav, animated: true)
     }
@@ -572,6 +575,7 @@ extension ContentUploadViewController: MediaCaptureServiceDelegate {
         let placeSearchVC = MomentPlacePickerViewController(initialVisibility: selectedVisibility,
                                                      initialAudienceListId: selectedAudienceListId)
         placeSearchVC.delegate = self
+        placeSearchVC.initialQuery = suggestedPlaceName
 
         // Store content for upload completion
         self.pendingContent = content

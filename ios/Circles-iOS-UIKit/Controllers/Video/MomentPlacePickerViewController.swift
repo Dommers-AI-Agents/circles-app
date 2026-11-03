@@ -20,6 +20,9 @@ class MomentPlacePickerViewController: BaseViewController {
     override var loadsDataOnViewDidLoad: Bool { false }
 
     weak var delegate: MomentPlacePickerDelegate?
+    /// Start with this search typed in (the store's name, when the moment
+    /// was started from "Enjoying <store>?"); privacy and tags stay as usual
+    var initialQuery: String?
     private var visibility: VideoVisibility
     /// The named Inner Circle list, when the person chose one.
     private var audienceListId: String?
@@ -117,6 +120,10 @@ class MomentPlacePickerViewController: BaseViewController {
         [privacyLabel, privacyControl, tagPeopleButton, disappearRow, sourceControl, searchBar, tableView, loadingIndicator].forEach { view.addSubview($0) }
         refreshTagButton()
         setupConstraints()
+        if let query = initialQuery, !query.isEmpty {
+            searchBar.text = query
+            searchBar(searchBar, textDidChange: query)
+        }
         // The lists must be in hand before the menu is opened
         InnerCircleManager.shared.primeIfNeeded()
 
@@ -270,7 +277,12 @@ class MomentPlacePickerViewController: BaseViewController {
                 if case .success(let places) = result {
                     self.myPlaces = self.sortByDistance(places)
                 }
-                if self.isMyPlaces { self.tableView.reloadData() }
+                // A search typed in before the list arrived matches it now
+                if let text = self.searchBar.text, !text.trimmingCharacters(in: .whitespaces).isEmpty {
+                    self.searchBar(self.searchBar, textDidChange: text)
+                } else if self.isMyPlaces {
+                    self.tableView.reloadData()
+                }
             }
         }
     }

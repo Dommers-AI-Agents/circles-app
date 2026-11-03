@@ -33,3 +33,13 @@ exports.restoreCustomer = async (req, res) => {
     sendServiceError(res, error, { log: '❌ restoreCustomer failed', fallbackMessage: 'Could not restore them' });
   }
 };
+
+// GET /api/rewards/venues/:venueId/feedback — private feedback from customers
+exports.listFeedback = async (req, res) => {
+  try {
+    const feedback = await require('../../services/storeFeedback').listFeedback(req.venue);
+    res.json({ success: true, data: { feedback } });
+  } catch (error) {
+    sendServiceError(res, error, { log: '❌ listFeedback failed', fallbackMessage: 'Failed to load feedback' });
+  }
+};

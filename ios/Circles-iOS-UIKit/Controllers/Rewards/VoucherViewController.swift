@@ -11,6 +11,8 @@ class VoucherViewController: BaseViewController {
 
     private var voucher: RewardVoucher
     private var countdownTimer: Timer?
+    /// Staff just tapped Given here: closing asks "Enjoying <store>?" (once per store)
+    private var justGiven = false
     private var expiryDate: Date
 
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -323,6 +325,7 @@ class VoucherViewController: BaseViewController {
                         self.voucher.status = "given"
                         self.voucher.givenAt = given.givenAt ?? ISO8601DateFormatter().string(from: Date())
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        self.justGiven = true
                         self.showGiven()
                         RewardsService.postBalanceChanged()
                     case .failure(let error):
@@ -363,6 +366,12 @@ class VoucherViewController: BaseViewController {
     // MARK: - Actions
 
     @objc private func doneTapped() {
-        dismiss(animated: true)
+        guard justGiven, let venueId = voucher.venueId, let host = presentingViewController else {
+            dismiss(animated: true)
+            return
+        }
+        dismiss(animated: true) {
+            EnjoyingStoreViewController.presentIfFirstTime(venueId: venueId, from: host)
+        }
     }
 }

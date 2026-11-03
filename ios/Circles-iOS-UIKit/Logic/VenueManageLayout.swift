@@ -57,6 +57,8 @@ enum VenueManageLayout {
         case rewardsUsed
         /// Who earns here: purchases, rewards, last visit; Remove from rewards (2026-11-02)
         case customers
+        /// Stars and notes customers sent only to the team (2026-11-02)
+        case feedback
         // Announcements
         case announcement(Int)
         case addAnnouncement
@@ -114,7 +116,7 @@ enum VenueManageLayout {
         loyalty.append(.addOffer)
         if physical { loyalty += [.showRegisterCard, .replaceRegisterCard] }
         loyalty.append(.loyaltyCodes)
-        loyalty += [.rewardsUsed, .customers]
+        loyalty += [.rewardsUsed, .customers, .feedback]
 
         var announcements = (0..<facts.announcementCount).map { Row.announcement($0) }
         announcements.append(.addAnnouncement)

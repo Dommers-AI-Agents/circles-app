@@ -49,6 +49,8 @@ enum PendingLink: Equatable {
     case storeOrder(id: String)
     /// "venue-orders:<venueId>": a new-order push on a cold start (store)
     case venueOrders(venueId: String)
+    /// "venue-feedback:<venueId>": a private-feedback push on a cold start (store)
+    case venueFeedback(venueId: String)
     /// "tab:<local|widgets>": a shared home tab opened before the app was ready.
     case homeTab(HomeContentSegment)
 
@@ -129,6 +131,7 @@ enum PendingLinkParser {
         case "fridgemail-card": return .fridgeMailCard(id: payload)
         case "order": return .storeOrder(id: payload)
         case "venue-orders": return .venueOrders(venueId: payload)
+        case "venue-feedback": return .venueFeedback(venueId: payload)
         case "tab": return HomeContentSegment(shareSlug: payload).map(PendingLink.homeTab)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary

@@ -2,7 +2,7 @@
 //
 // Writes a comment on a venue: the placeComments doc (keyed by the canonical
 // globalPlaceId, placeId kept for legacy readers), the venue's commentsCount,
-// the first-comment FavCoin, the owner notification and the feed row. Shared
+// the first-comment FavCoin, the saver's and store team's notifications and the feed row. Shared
 // by POST /places/:id/comments and by check-ins that carry a note
 // ("the patio is great after 6" belongs on the place, not just in the feed).
 // Permission checks stay with the caller.
@@ -58,6 +58,9 @@ async function postPlaceComment({ placeDoc, userId, text, source = null, checkIn
     await notificationService.sendPlaceCommentNotification(place.addedBy, userId, placeDoc.id, place.name, trimmed)
       .catch((err) => console.error('⚠️ Comment notification failed:', err.message));
   }
+  // A claimed store's team hears about comments on it (reviews, 2026-11-02)
+  require('./storeFeedback').notifyTeamOfComment({ globalPlaceId: commentGlobalPlaceId, place, placeId: placeDoc.id, commenterId: userId, text: trimmed })
+    .catch((err) => console.error('⚠️ Team comment notification failed:', err.message));
 
   // Feed row (best-effort). activityController is the established writer.
   // Skipped for check-in notes — the check-in row already tells the story.
