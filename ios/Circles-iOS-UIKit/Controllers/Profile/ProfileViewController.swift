@@ -808,6 +808,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // Constraint references for dynamic button positioning
     var followButtonLeadingToMessageConstraint: NSLayoutConstraint?
     var followButtonLeadingToConnectConstraint: NSLayoutConstraint?
+    /// Message sits beside Follow, or fills the row when it's the only button (connected)
+    var messageButtonHalfWidthConstraint: NSLayoutConstraint?
+    var messageButtonFullWidthConstraint: NSLayoutConstraint?
     var connectButtonLeadingConstraint: NSLayoutConstraint?
     
     // Dynamic constraints for search bar container positioning
@@ -1176,7 +1179,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             messageButton.leadingAnchor.constraint(equalTo: buttonsContainer.leadingAnchor),
             messageButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
             messageButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
-            messageButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
+            // (width: half or full row, setupDynamicButtonConstraints)
             
             // Follow button (for other users) - fixed constraints
             followButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
@@ -1456,8 +1459,12 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         followButtonLeadingToMessageConstraint = followButton.leadingAnchor.constraint(equalTo: messageButton.trailingAnchor, constant: 6)
         followButtonLeadingToConnectConstraint = followButton.leadingAnchor.constraint(equalTo: connectButton.trailingAnchor, constant: 6)
         
+        messageButtonHalfWidthConstraint = messageButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48)
+        messageButtonFullWidthConstraint = messageButton.trailingAnchor.constraint(equalTo: buttonsContainer.trailingAnchor)
+
         // Initially activate the constraint to message button
         followButtonLeadingToMessageConstraint?.isActive = true
+        messageButtonHalfWidthConstraint?.isActive = true
     }
     
     func setupActions() {
@@ -2272,10 +2279,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             messageButton.isHidden = false
             connectButton.isHidden = true
             followButton.isHidden = true
-            
-            // Activate follow button constraint to message button
+
+            // Message is alone on the row, so it fills it (was a half-width
+            // button with an empty gap where Following used to be)
             followButtonLeadingToConnectConstraint?.isActive = false
-            followButtonLeadingToMessageConstraint?.isActive = true
+            followButtonLeadingToMessageConstraint?.isActive = false
+            messageButtonHalfWidthConstraint?.isActive = false
+            messageButtonFullWidthConstraint?.isActive = true
         } else {
             // Non-connected users: Show connect and follow buttons
             messageButton.isHidden = true
