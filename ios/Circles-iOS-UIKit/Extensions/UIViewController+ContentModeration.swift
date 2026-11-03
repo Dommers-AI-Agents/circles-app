@@ -184,7 +184,8 @@ extension UIViewController {
         }
     }
 
-    private func confirmDisconnect(connectionId: String, name: String) {
+    /// Shared by the ••• menu and the profile's "✓ Connected" button
+    func confirmDisconnect(connectionId: String, name: String) {
         AlertPresenter.showConfirmation(
             title: "Disconnect from \(name)?",
             message: "You'll stop following them and lose access to each other's Connections circles and messages. They can keep following you — unless your profile is private, then they'd have to ask again.",

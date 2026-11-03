@@ -424,6 +424,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         return button
     }()
     
+    lazy var connectedButton: UIButton = {
+        let button = UIButton.smallActionButton(title: "Connected", style: .secondary)
+        button.setImage(UIImage(systemName: "checkmark"), for: .normal)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+        button.accessibilityHint = "Shows the option to disconnect"
+        button.isHidden = true
+        return button
+    }()
+
     lazy var connectButton: UIButton = {
         let button = UIButton.smallActionButton(title: "Connect", style: .primary)
         button.backgroundColor = Constants.Colors.secondary
@@ -808,9 +817,6 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     // Constraint references for dynamic button positioning
     var followButtonLeadingToMessageConstraint: NSLayoutConstraint?
     var followButtonLeadingToConnectConstraint: NSLayoutConstraint?
-    /// Message sits beside Follow, or fills the row when it's the only button (connected)
-    var messageButtonHalfWidthConstraint: NSLayoutConstraint?
-    var messageButtonFullWidthConstraint: NSLayoutConstraint?
     var connectButtonLeadingConstraint: NSLayoutConstraint?
     
     // Dynamic constraints for search bar container positioning
@@ -1009,6 +1015,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         buttonsContainer.addSubview(messageButton)
         buttonsContainer.addSubview(followButton)
         buttonsContainer.addSubview(connectButton)
+        buttonsContainer.addSubview(connectedButton)
         
         contentView.addSubview(storefrontCard)
 
@@ -1179,7 +1186,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             messageButton.leadingAnchor.constraint(equalTo: buttonsContainer.leadingAnchor),
             messageButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
             messageButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
-            // (width: half or full row, setupDynamicButtonConstraints)
+            messageButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
+
+            // "✓ Connected" beside Message (connected profiles)
+            connectedButton.leadingAnchor.constraint(equalTo: messageButton.trailingAnchor, constant: 6),
+            connectedButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
+            connectedButton.bottomAnchor.constraint(equalTo: buttonsContainer.bottomAnchor),
+            connectedButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48),
             
             // Follow button (for other users) - fixed constraints
             followButton.topAnchor.constraint(equalTo: buttonsContainer.topAnchor),
@@ -1459,12 +1472,8 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         followButtonLeadingToMessageConstraint = followButton.leadingAnchor.constraint(equalTo: messageButton.trailingAnchor, constant: 6)
         followButtonLeadingToConnectConstraint = followButton.leadingAnchor.constraint(equalTo: connectButton.trailingAnchor, constant: 6)
         
-        messageButtonHalfWidthConstraint = messageButton.widthAnchor.constraint(equalTo: buttonsContainer.widthAnchor, multiplier: 0.48)
-        messageButtonFullWidthConstraint = messageButton.trailingAnchor.constraint(equalTo: buttonsContainer.trailingAnchor)
-
         // Initially activate the constraint to message button
         followButtonLeadingToMessageConstraint?.isActive = true
-        messageButtonHalfWidthConstraint?.isActive = true
     }
     
     func setupActions() {
@@ -1479,6 +1488,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         messageButton.addTarget(self, action: #selector(messageButtonTapped), for: .touchUpInside)
         followButton.addTarget(self, action: #selector(followButtonTapped), for: .touchUpInside)
         connectButton.addTarget(self, action: #selector(connectButtonTapped), for: .touchUpInside)
+        connectedButton.addTarget(self, action: #selector(connectedButtonTapped), for: .touchUpInside)
         
         // Add tap gestures for followers/following stats (owner only)
         let followersTapGesture = UITapGestureRecognizer(target: self, action: #selector(followersStatTapped))
@@ -2228,8 +2238,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             messageButton.isHidden = true
             followButton.isHidden = true
             connectButton.isHidden = true
+            connectedButton.isHidden = true
             return
         }
+        connectedButton.isHidden = connectionStatus != .accepted
         
         // Determine connection status
         let isConnected = connectionStatus == .accepted
@@ -2273,19 +2285,13 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             followButtonLeadingToMessageConstraint?.isActive = false
             followButtonLeadingToConnectConstraint?.isActive = true
         } else if isConnected {
-            // Connected users: Message only. Connected always means following
-            // (Wes, 2026-11-02), so there's no Unfollow here — Disconnect, in
-            // the ••• menu, ends both.
+            // Connected users: Message + "✓ Connected". Connected always means
+            // following (Wes, 2026-11-02), so there's no Unfollow — tapping
+            // Connected offers Disconnect, which ends both (Wes, 2026-11-03).
             messageButton.isHidden = false
+            connectedButton.isHidden = false
             connectButton.isHidden = true
             followButton.isHidden = true
-
-            // Message is alone on the row, so it fills it (was a half-width
-            // button with an empty gap where Following used to be)
-            followButtonLeadingToConnectConstraint?.isActive = false
-            followButtonLeadingToMessageConstraint?.isActive = false
-            messageButtonHalfWidthConstraint?.isActive = false
-            messageButtonFullWidthConstraint?.isActive = true
         } else {
             // Non-connected users: Show connect and follow buttons
             messageButton.isHidden = true
@@ -2632,6 +2638,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             messageButton.isHidden = true
             followButton.isHidden = true
             connectButton.isHidden = true
+            connectedButton.isHidden = true
         }
         
         // Only show the activity notifications section for accepted connections
@@ -2778,6 +2785,15 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
             object: nil
         )
         
+        // A connection made or ended anywhere (••• menu, Connected button,
+        // the network list) updates this profile's buttons
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConnectionsChanged),
+            name: .connectionsChanged,
+            object: nil
+        )
+
         // Listen for connections loaded notification
         NotificationCenter.default.addObserver(
             self,
@@ -2826,6 +2842,21 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         }
     }
     
+    @objc func handleConnectionsChanged() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let user = self.user, !AuthService.shared.isMe(user.id) else { return }
+            self.checkConnectionAndFollowStatus()
+        }
+    }
+
+    /// "✓ Connected" → Disconnect (the same confirmation as the ••• menu)
+    @objc func connectedButtonTapped() {
+        guard let user = user else { return }
+        let me = AuthService.shared.getUserId() ?? ""
+        guard let connection = NetworkManager.shared.connections.first(where: { $0.otherUserId(currentUserId: me) == user.id }) else { return }
+        confirmDisconnect(connectionId: connection.id, name: user.displayName)
+    }
+
     @objc func handleConnectionsLoaded() {
         // Update connections count when NetworkManager finishes loading
         if let userId = self.user?.id, AuthService.shared.isMe(userId) {
