@@ -1,16 +1,18 @@
 // services/scanLocation.js
 //
 // Was the phone at the store when it scanned the register code? (Wes,
-// 2026-11-02: rewards are small giveaways on the honor system.) The answer
-// never refuses points — it marks the scan on the owner's Activity so a
-// photo of the sticker used from home stands out (2026-11-03).
+// 2026-11-02: rewards are small giveaways on the honor system — the check
+// stops earning from home with a photo of the sticker; it doesn't try to tell
+// the counter from the parking lot, which phone GPS can't.)
 //
-//   'near'   the phone's fix is within reach of the store
-//   'far'    clearly elsewhere (or the App Clip's Apple check said so) → still
-//            earns (Wes, 2026-11-03), marked for the owner to review
+//   'near'   the phone's fix is within reach of the store → earns
+//   'far'    clearly elsewhere (or the App Clip's Apple check said so) → no points
 //   'off'    the customer kept location off → still earns, marked for the owner
-//   'unknown' no fix and no "off" (older apps, the clip couldn't tell, a store
-//            with no map point) → earns, as before
+//   'unknown' no usable fix and no "off" (older apps, GPS timed out, a fix too
+//            vague to judge such as Approximate Location, the clip couldn't
+//            tell, a store with no map point) → earns, as before. A failed
+//            check never turns an honest customer away (Wes, 2026-11-03);
+//            only a good fix clearly away from the store does.
 //
 // Reach = SCAN_RADIUS_M plus the fix's own uncertainty (capped), so a poor
 // indoor fix never turns a regular away.
@@ -43,13 +45,15 @@ const phoneFix = (body) => {
 /** 'near' | 'far' | 'off' | 'unknown' for a register scan (see top). */
 function scanLocationCheck(body, venue) {
   if (body && body.atStore === false) return 'far';
-  const fix = phoneFix(body);
+  // A fix vaguer than the slack we allow can't say where the phone is
+  const raw = phoneFix(body);
+  const fix = raw && raw.accuracy <= MAX_ACCURACY_SLACK_M ? raw : null;
   const store = pointOf(venue && venue.location);
   if (fix && store) {
-    const reach = SCAN_RADIUS_M + Math.min(fix.accuracy, MAX_ACCURACY_SLACK_M);
+    const reach = SCAN_RADIUS_M + fix.accuracy;
     return distanceMeters(fix.latitude, fix.longitude, store.latitude, store.longitude) <= reach ? 'near' : 'far';
   }
-  if (!fix && body && body.locationOff === true) return 'off';
+  if (!raw && body && body.locationOff === true) return 'off';
   if (body && body.atStore === true) return 'near';
   return 'unknown';
 }

@@ -17,7 +17,12 @@ describe('scanLocationCheck', () => {
   test("a poor indoor fix widens the reach so a regular isn't turned away", () => {
     expect(scanLocationCheck(at(0.004, { accuracy: 200 }), venue)).toBe('near'); // ~445 m, ±200
     expect(scanLocationCheck(at(0.004), venue)).toBe('far');
-    expect(scanLocationCheck(at(0.05, { accuracy: 100000 }), venue)).toBe('far'); // slack is capped
+    expect(scanLocationCheck(at(0.008, { accuracy: 500 }), venue)).toBe('far'); // ~890 m, ±500
+  });
+
+  test('a fix too vague to judge (Approximate Location, a failed GPS) is unknown and earns', () => {
+    expect(scanLocationCheck(at(0.05, { accuracy: 501 }), venue)).toBe('unknown');
+    expect(scanLocationCheck(at(0.05, { accuracy: 3000 }), venue)).toBe('unknown');
   });
 
   test("the App Clip's Apple check wins either way", () => {
