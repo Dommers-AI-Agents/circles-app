@@ -6,6 +6,7 @@ const { FieldValue } = require('firebase-admin/firestore');
 const { COLLECTIONS, serializeDoc } = require('../../models/FirestoreModels');
 const { normalizeUserId, isSameUser } = require('../../services/idService');
 const { getPlaceCountMap } = require('../../services/userStatsCache');
+const { getDocsById } = require('../../utils/batchGet');
 const { buildConnectionMap } = require('../../services/connectionMap');
 
 const db = getFirestore();
@@ -740,6 +741,10 @@ exports.getUserFollowers = async (req, res, next) => {
 // @desc    Get user's following (owner only)
 // @route   GET /api/users/:id/following
 // @access  Private
+// What a following-list card reads from each person's user doc
+const FOLLOW_CARD_FIELDS = ['email', 'displayName', 'profilePicture', 'bio', 'location', 'firstName', 'lastName',
+  'assumedLocation', 'preferences'];
+
 exports.getUserFollowing = async (req, res, next) => {
   try {
     const userId = normalizeUserId(req.params.id);
@@ -801,16 +806,17 @@ exports.getUserFollowing = async (req, res, next) => {
       // Normalize all following IDs
       const normalizedFollowingIds = followingIds.map(id => normalizeUserId(id));
       
-      // Batch fetch all following users in chunks of 10 (Firestore limit for 'in' queries)
+      // One batched read of just the card fields (was a serial 'in' query
+      // per 10 people reading whole user docs, follower arrays and all: 8
+      // round trips for 75 follows, 2026-11-03). Same order as before:
+      // groups of 10 in list order, by id within a group.
+      const byId = await getDocsById(COLLECTIONS.USERS, normalizedFollowingIds, { fields: FOLLOW_CARD_FIELDS });
       const chunkSize = 10;
       for (let i = 0; i < normalizedFollowingIds.length; i += chunkSize) {
-        const chunk = normalizedFollowingIds.slice(i, i + chunkSize);
-        
-        const followingSnapshot = await db.collection(COLLECTIONS.USERS)
-          .where('__name__', 'in', chunk)
-          .get();
-        
-        followingSnapshot.forEach(doc => {
+        const chunk = [...new Set(normalizedFollowingIds.slice(i, i + chunkSize))].sort();
+        const docs = chunk.map(id => byId.get(id)).filter(doc => doc && doc.exists);
+
+        docs.forEach(doc => {
           const followingUser = serializeDoc(doc);
           // Check if current user is following this user
           const normalizedFollowingUserId = normalizeUserId(followingUser.id);

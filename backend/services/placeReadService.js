@@ -76,6 +76,11 @@ const AUTHORITATIVE_GOOGLE_FIELDS = ['website', 'phone', 'openingHours'];
 
 // Merge canonical venue fields over a save doc's (possibly stale) copies.
 // Per-user fields (notes, tags, privacy, photos, ...) are untouched.
+// fetchGlobalSocialMap's projection: everything overlayVenueFields and
+// overlayVenuePhotos read, plus the social counts
+const SOCIAL_MAP_FIELDS = ['likes', 'commentsCount', 'photos', ...VENUE_TOP_FIELDS,
+  ...VENUE_GOOGLE_FIELDS.map(field => `googleData.${field}`)];
+
 const overlayVenueFields = (place, globalData) => {
   const merged = { ...place };
   VENUE_TOP_FIELDS.forEach(field => {
@@ -127,7 +132,12 @@ const fetchGlobalSocialMap = async (places) => {
   const ids = [...new Set(places.map(place => place.globalPlaceId).filter(Boolean))];
   const map = new Map();
   if (ids.length === 0) return map;
-  const docs = await db.getAll(...ids.map(id => db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(id)));
+  // Only what the overlays and counts read: the full venue records (reviews,
+  // followers, search tokens, Google payload) were 2.2 MB for Wes's ~900
+  // venues on every home load (2026-11-03). Callers needing more (followers,
+  // alerts) use getGlobalSocial.
+  const docs = await db.getAll(...ids.map(id => db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(id)),
+    { fieldMask: SOCIAL_MAP_FIELDS });
   docs.forEach(doc => {
     if (doc.exists) {
       const data = doc.data();

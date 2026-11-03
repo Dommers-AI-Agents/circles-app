@@ -115,7 +115,9 @@ describe('fetchGlobalSocialMap', () => {
       { globalPlaceId: 'g1' }, { globalPlaceId: 'g1' }, { globalPlaceId: 'g2' }
     ]);
     expect(mockGetAll).toHaveBeenCalledTimes(1);
-    expect(mockGetAll.mock.calls[0]).toHaveLength(2);
+    // the two unique refs, then the field mask (only what the overlays read)
+    expect(mockGetAll.mock.calls[0]).toHaveLength(3);
+    expect(mockGetAll.mock.calls[0][2].fieldMask).toEqual(expect.arrayContaining(['likes', 'commentsCount', 'photos', 'googleData.openingHours']));
     expect(map.get('g1')).toEqual({ likes: ['u1'], commentsCount: 2, venueData: { likes: ['u1'], commentsCount: 2, name: 'Cafe' } });
     expect(map.has('g2')).toBe(false);
   });

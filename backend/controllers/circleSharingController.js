@@ -18,6 +18,10 @@ const { visibleLocation } = require('../services/publicProjection');
 const { getInnerCircleGrantorIds } = require('../utils/networkAccess');
 const { buildViewerContext } = require('../services/viewerContext');
 const { normalizeUserId } = require('../services/idService');
+const { getDocsById } = require('../utils/batchGet');
+const { projectPublicUser, PUBLIC_USER_FIELDS } = require('../services/publicUserProjection');
+// A circle owner's card: the public fields plus what projectPublicUser reads
+const OWNER_CARD_FIELDS = [...PUBLIC_USER_FIELDS.filter(field => field !== '_id' && field !== 'id'), 'preferences'];
 
 const db = getFirestore();
 
@@ -479,21 +483,20 @@ const getCirclesSharedWithMe = async (req, res) => {
         .get()
     ));
 
-    // Build response with circle data
-    const circles = [];
-    for (const snap of circleSnaps) {
-      for (const doc of snap.docs) {
-        const circle = serializeDoc(doc);
-
-        // Get owner details
-        const ownerDoc = await db.collection(COLLECTIONS.USERS).doc(circle.owner).get();
-        if (ownerDoc.exists) {
-          circle.ownerDetails = serializeDoc(ownerDoc);
-        }
-
-        circles.push(circle);
+    // Build response with circle data. Owners: one batched read of their
+    // public card only (was a read per circle of the whole user doc: email,
+    // phone, device tokens, location went to every connection, 2026-11-03)
+    const circleDocs = circleSnaps.flatMap(snap => snap.docs);
+    const ownersById = await getDocsById(COLLECTIONS.USERS, [...new Set(circleDocs.map(doc => doc.data().owner).filter(Boolean))],
+      { fields: OWNER_CARD_FIELDS });
+    const circles = circleDocs.map(doc => {
+      const circle = serializeDoc(doc);
+      const ownerDoc = ownersById.get(circle.owner);
+      if (ownerDoc && ownerDoc.exists) {
+        circle.ownerDetails = projectPublicUser(serializeDoc(ownerDoc), [], { viewerId: userId });
       }
-    }
+      return circle;
+    });
 
     res.status(200).json({
       success: true,
@@ -608,26 +611,12 @@ const getMyNetworkCircles = async (req, res) => {
     
     let ownersMap = new Map();
     
-    // Firestore 'in' operator has a limit of 10 items, so we need to batch the requests
-    const ownerBatches = [];
-    for (let i = 0; i < uniqueOwnerIds.length; i += 10) {
-      ownerBatches.push(uniqueOwnerIds.slice(i, i + 10));
-    }
-    
-    // Fetch all owner details in parallel batches
-    const ownerResults = await Promise.all(
-      ownerBatches.map(batch => 
-        db.collection(COLLECTIONS.USERS)
-          .where('__name__', 'in', batch)
-          .get()
-      )
-    );
-    
-    // Combine all results into the map
-    ownerResults.forEach(snapshot => {
-      snapshot.docs.forEach(doc => {
-        ownersMap.set(doc.id, serializeDoc(doc));
-      });
+    // Owners' public cards only, in one batched read. The whole user doc
+    // (email, phone, device tokens, last location, subscription, Inner Circle
+    // lists) went to every viewer: 1.1 MB of Wes's 1.3 MB map load, 2026-11-03.
+    const ownerDocs = await getDocsById(COLLECTIONS.USERS, uniqueOwnerIds, { fields: OWNER_CARD_FIELDS });
+    ownerDocs.forEach((doc, id) => {
+      if (doc.exists) ownersMap.set(id, projectPublicUser(serializeDoc(doc), [], { viewerId: userId }));
     });
     
     // Enrich circles with owner details from map. A circle whose owner no
@@ -878,7 +867,6 @@ const getUserCircles = async (req, res) => {
 
     // Everyone else sees this person's PUBLIC card — the whole user doc
     // (email, phone, device tokens) used to ride along here and in data.user.
-    const { projectPublicUser } = require('../services/publicUserProjection');
     const publicUser = projectPublicUser(userData, ['isFollowing', 'followsYou', 'followRequested'], { viewerId: currentUserId });
 
     // Every viewable circle's places in chunked circleId-in reads (was one

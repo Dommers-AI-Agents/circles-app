@@ -3,7 +3,7 @@ const { getFirestore } = require('../config/firebase');
 const { sendServiceError } = require('../utils/serviceError');
 const { clampPagination } = require('../utils/pagination');
 const { isLiveConnection, onePerPerson } = require('../services/connectionMap');
-const { projectPublicUser } = require('../services/publicUserProjection');
+const { projectPublicUser, PUBLIC_USER_FIELDS } = require('../services/publicUserProjection');
 const { serializeDates } = require('../utils/wireDates');
 const { peopleRowStats } = require('../services/peopleRowStats');
 const { scorePerson } = require('../services/peopleRowScore');
@@ -110,6 +110,29 @@ const getConnectionById = async (req, res) => {
 // @desc    Get user connections
 // @route   GET /api/connections
 // @access  Private
+// Each person's live save count, kept two minutes per instance: the app
+// asks for the connections list more than once per launch, and the count
+// was a query per person every time (2026-11-03)
+const PLACE_COUNT_TTL_MS = 2 * 60 * 1000;
+const placeCountCache = new Map();
+const savedPlaceCount = async (userId) => {
+  const hit = placeCountCache.get(userId);
+  if (hit && Date.now() - hit.at < PLACE_COUNT_TTL_MS) return hit.count;
+  const snap = await db.collection(COLLECTIONS.PLACES)
+    .where('addedBy', '==', userId)
+    .where('deletedAt', '==', null)
+    .count()
+    .get();
+  const count = snap.data().count;
+  if (placeCountCache.size > 5000) placeCountCache.clear();
+  placeCountCache.set(userId, { count, at: Date.now() });
+  return count;
+};
+
+// A connection card's fields: the public card plus what projectPublicUser
+// reads to hide a location
+const CONNECTION_CARD_FIELDS = [...PUBLIC_USER_FIELDS.filter(field => field !== '_id' && field !== 'id'), 'preferences'];
+
 const getConnections = async (req, res) => {
   try {
     const userId = req.user.firebaseDocId || req.user.uid;
@@ -145,14 +168,18 @@ const getConnections = async (req, res) => {
       const raw = data.userId === userId ? data.connectedUserId : data.userId;
       return normalizeUserId(raw);
     }).filter(Boolean))];
-    const batchedDocs = await db.getAll(
-      db.collection(COLLECTIONS.USERS).doc(normalizeUserId(userId)),
-      ...otherUserIds.map(id => db.collection(COLLECTIONS.USERS).doc(id))
-    );
-    const callerDoc = batchedDocs[0];
+    // Only the fields used: the caller's followers, and each person's public
+    // card (whole user docs, follower arrays and all, were ~250 KB for Wes's
+    // 77 people, 2026-11-03)
+    const [[callerDoc], otherDocs] = await Promise.all([
+      db.getAll(db.collection(COLLECTIONS.USERS).doc(normalizeUserId(userId)), { fieldMask: ['followers'] }),
+      otherUserIds.length
+        ? db.getAll(...otherUserIds.map(id => db.collection(COLLECTIONS.USERS).doc(id)), { fieldMask: CONNECTION_CARD_FIELDS })
+        : Promise.resolve([])
+    ]);
     const callerFollowers = new Set((callerDoc.exists ? callerDoc.data().followers : null) || []);
     const otherUserDocMap = new Map();
-    batchedDocs.slice(1).forEach(doc => otherUserDocMap.set(doc.id, doc));
+    otherDocs.forEach(doc => otherUserDocMap.set(doc.id, doc));
 
     // Serialize and populate user data with activity stats
     const connections = await Promise.all(
@@ -185,12 +212,7 @@ const getConnections = async (req, res) => {
             // unbounded per-connection fan-out with a fixed cost.
             let totalPlaces = 0;
             try {
-              const countSnap = await db.collection(COLLECTIONS.PLACES)
-                .where('addedBy', '==', otherUserId)
-                .where('deletedAt', '==', null)
-                .count()
-                .get();
-              totalPlaces = countSnap.data().count;
+              totalPlaces = await savedPlaceCount(otherUserId);
             } catch (countError) {
               // An aggregation needs the composite index to exist; if it is
               // still building, fall back to zero rather than failing the list.
