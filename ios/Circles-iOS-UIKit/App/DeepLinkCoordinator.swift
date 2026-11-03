@@ -89,6 +89,16 @@ final class DeepLinkCoordinator: SceneCoordinator {
 
     /// Custom-scheme links (circles://…).
     func handleDeepLink(_ url: URL) {
+        // Our own https links handed over as an "open URL" — every Live
+        // Activity tap (workouts, FavRun, How Are You?, events) arrives this
+        // way, not as a universal link. They were dropped here, so the tap
+        // opened the app wherever it was (Wes, 2026-11-03).
+        if let host = url.host, url.scheme == "https", DeepLinkRouter.universalLinkHosts.contains(host) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.handleUniversalLink(url)
+            }
+            return
+        }
         guard url.scheme == DeepLinkRouter.customScheme else {
             Logger.debug("📱 SceneDelegate: URL scheme '\(url.scheme ?? "nil")' is not 'circles', returning")
             return
