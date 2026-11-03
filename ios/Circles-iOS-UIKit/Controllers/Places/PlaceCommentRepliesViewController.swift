@@ -374,25 +374,31 @@ extension PlaceCommentRepliesViewController: CommentCellDelegate {
         generator.prepare()
         generator.impactOccurred()
         
-        // Call API to toggle like for reply
+        // The heart flips now; the server's answer then settles it, and a
+        // failed tap puts it back (2026-11-03: the screen reloaded the old copy,
+        // so the heart never showed and repeat taps toggled it off again)
+        guard let index = replies.firstIndex(where: { $0.id == comment.id }) else { return }
+        let before = replies[index]
+        replies[index] = before.withLike(!before.isLikedByCurrentUser)
+        tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
         PlaceService.shared.likeComment(placeId: place.id, commentId: comment.id) { [weak self] result in
             DispatchQueue.main.async {
+                guard let self else { return }
+                let row = self.replies.firstIndex(where: { $0.id == comment.id })
                 switch result {
-                case .success(let (_, _, piggyBank)):
+                case .success(let (liked, likesCount, piggyBank)):
                     // FavCoins for the heart (leprechaun for the fraction)
                     PiggyBankDepositView.play(credit: piggyBank)
-                    // Reload the cell to show updated like state
-                    if let index = self?.replies.firstIndex(where: { $0.id == comment.id }) {
-                        self?.tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
-                    }
+                    if let row { self.replies[row] = self.replies[row].withLike(liked, count: likesCount) }
                 case .failure(let error):
-                    Logger.debug("Failed to like reply: \(error)")
-                    self?.showError("Failed to update like. Please try again.")
+                    Logger.debug("Failed to like comment: \(error)")
+                    if let row { self.replies[row] = before }
+                    self.showError("Failed to update like. Please try again.")
                 }
+                if let row { self.tableView.reloadRows(at: [IndexPath(row: row, section: 0)], with: .none) }
             }
         }
     }
-    
     func commentCell(_ cell: CommentCell, didTapReplyButton comment: PlaceComment) {
         // We don't allow replies to replies (single level nesting only)
         Logger.debug("Reply to reply not supported")

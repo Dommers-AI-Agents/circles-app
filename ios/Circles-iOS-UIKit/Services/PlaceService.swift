@@ -1814,8 +1814,8 @@ struct PlaceComment: Codable, Identifiable {
     let placeId: String
     let userId: String
     let text: String
-    let likes: [String]? // Array of user IDs who liked the comment
-    let likesCount: Int? // Count for efficient display
+    private(set) var likes: [String]? // Array of user IDs who liked the comment
+    private(set) var likesCount: Int? // Count for efficient display
     let parentCommentId: String? // For replies
     let replyCount: Int? // Number of replies to this comment
     let createdAt: Date
@@ -1838,6 +1838,21 @@ struct PlaceComment: Codable, Identifiable {
     
     var displayLikesCount: Int {
         return likesCount ?? likes?.count ?? 0
+    }
+
+    /// This person's heart on or off, with the count the server gave (or a
+    /// step up/down while the tap is in flight). A comment screen keeps the
+    /// result, so the heart shows (Wes, 2026-11-03: it reloaded the old copy).
+    func withLike(_ liked: Bool, count: Int? = nil) -> PlaceComment {
+        var copy = self
+        guard let me = AuthService.shared.getUserId() else { return copy }
+        var ids = (likes ?? []).filter { $0 != me }
+        if liked { ids.append(me) }
+        copy.likes = ids
+        let was = displayLikesCount
+        let wasLiked = isLikedByCurrentUser
+        copy.likesCount = count ?? max(0, was + (liked == wasLiked ? 0 : (liked ? 1 : -1)))
+        return copy
     }
     
     var isReply: Bool {

@@ -608,28 +608,31 @@ extension PlaceCommentsViewController: CommentCellDelegate {
         generator.impactOccurred()
         
         // Call API to toggle like
+        // The heart flips now; the server's answer then settles it, and a
+        // failed tap puts it back (2026-11-03: the screen reloaded the old copy,
+        // so the heart never showed and repeat taps toggled it off again)
+        guard let index = comments.firstIndex(where: { $0.id == comment.id }) else { return }
+        let before = comments[index]
+        comments[index] = before.withLike(!before.isLikedByCurrentUser)
+        tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
         PlaceService.shared.likeComment(placeId: place.id, commentId: comment.id) { [weak self] result in
             DispatchQueue.main.async {
+                guard let self else { return }
+                let row = self.comments.firstIndex(where: { $0.id == comment.id })
                 switch result {
                 case .success(let (liked, likesCount, piggyBank)):
                     // FavCoins for the heart (leprechaun for the fraction)
                     PiggyBankDepositView.play(credit: piggyBank)
-                    // Find the comment in our array and update it
-                    if let index = self?.comments.firstIndex(where: { $0.id == comment.id }) {
-                        // Update the comment in our array (we need to create a new comment with updated values)
-                        // Since PlaceComment is a struct, we can't modify it directly
-                        // So we'll just refresh the table view cell
-                        self?.tableView.reloadRows(at: [IndexPath(row: index, section: 0)], with: .none)
-                    }
-                    
+                    if let row { self.comments[row] = self.comments[row].withLike(liked, count: likesCount) }
                 case .failure(let error):
                     Logger.debug("Failed to like comment: \(error)")
-                    self?.showError("Failed to update like. Please try again.")
+                    if let row { self.comments[row] = before }
+                    self.showError("Failed to update like. Please try again.")
                 }
+                if let row { self.tableView.reloadRows(at: [IndexPath(row: row, section: 0)], with: .none) }
             }
         }
     }
-    
     func commentCell(_ cell: CommentCell, didTapReplyButton comment: PlaceComment) {
         // Present reply interface
         presentReplyInterface(for: comment)
