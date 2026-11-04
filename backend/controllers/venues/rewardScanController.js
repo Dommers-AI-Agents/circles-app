@@ -484,6 +484,22 @@ exports.getNearbyEvents = async (req, res) => {
   res.json({ success: true, data: { ...feed, source: 'ticketmaster' } });
 };
 
+// @desc    Search for the Locals tab: every Ticketmaster listing for the words
+//          (a year out, 100 miles; anywhere when nothing is near) plus
+//          matching store events and library programs.
+// @route   GET /api/rewards/nearby-events/search?q=&lat=&lng=
+// @access  Private
+exports.searchNearbyEvents = async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 80);
+  const lat = parseFloat(req.query.lat);
+  const lng = parseFloat(req.query.lng);
+  const result = await nearbyEventsService.searchLocalEvents(q, lat, lng).catch((error) => {
+    console.error('❌ Failed to search events:', error);
+    return { events: [], nearby: true, attribution: null };
+  });
+  res.json({ success: true, data: { query: q, ...result } });
+};
+
 // @desc    Rewards data for a place page: the venue's offers, announcements,
 //          the caller's balance/ownership, and claim eligibility. A place with
 //          no enrolled venue returns { venue: null } — that's the common case.

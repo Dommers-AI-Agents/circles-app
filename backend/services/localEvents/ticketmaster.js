@@ -31,6 +31,9 @@ function normalizeEvent(raw) {
   const lng = parseFloat(venue.location?.longitude);
   const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
   const classification = raw.classifications?.[0] || {};
+  // Club access, parking and other add-ons are listed as events of their
+  // own ("Reserve Access (Not A Game Ticket) - Broncos at Panthers")
+  if (classification.type?.name === 'Upsell') return null;
   const genre = classification.genre?.name;
   const segment = classification.segment?.name;
   const price = Array.isArray(raw.priceRanges) ? raw.priceRanges[0] : null;
@@ -88,4 +91,51 @@ async function eventsNear(lat, lng, { now = new Date(), apiKey = process.env.TIC
   });
 }
 
-module.exports = { eventsNear, normalizeEvents, normalizeEvent, pickImage };
+// The Locals tab's search (Wes, 2026-11-04: "Panthers football"): anything
+// Ticketmaster lists, not just the next two weeks' feed. Wider and longer
+// than the feed; nothing within reach → the same search anywhere, so a team
+// on the road still answers. Cached per query, ~40 km cell and day.
+const SEARCH_RADIUS_MILES = 100;
+const SEARCH_WINDOW_DAYS = 365;
+
+const normQuery = (q) => String(q || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+async function searchEvents(query, lat, lng, { now = new Date(), apiKey = process.env.TICKETMASTER_API_KEY } = {}) {
+  const q = normQuery(query);
+  if (!apiKey || q.length < 2) return { events: [], nearby: true };
+  const hasPoint = Number.isFinite(lat) && Number.isFinite(lng);
+  const cell = hasPoint ? geofire.geohashForLocation([lat, lng], 4) : 'any';
+  const slug = q.replace(/[^a-z0-9 ]/g, '').replace(/ /g, '-').slice(0, 60);
+  const key = `tmq_${cell}_${slug}_${now.toISOString().slice(0, 10)}`;
+  const ask = async (near) => {
+    const params = new URLSearchParams({
+      apikey: apiKey,
+      keyword: q,
+      startDateTime: tmTime(now),
+      endDateTime: tmTime(new Date(now.getTime() + SEARCH_WINDOW_DAYS * 86400000)),
+      sort: 'date,asc',
+      size: '40',
+      includeTBA: 'no',
+      includeTest: 'no',
+      locale: '*'
+    });
+    if (near) {
+      params.set('latlong', `${lat},${lng}`);
+      params.set('radius', String(SEARCH_RADIUS_MILES));
+      params.set('unit', 'miles');
+    }
+    const payload = await fetchJson(`${API_URL}?${params}`, { label: 'Ticketmaster search' });
+    return payload ? normalizeEvents(payload) : null;
+  };
+  return cached(key, { memoryMs: 30 * 60 * 1000, storeMs: 6 * 60 * 60 * 1000, now: now.getTime() }, async () => {
+    if (hasPoint) {
+      const near = await ask(true);
+      if (near === null) return null;
+      if (near.length) return { events: near, nearby: true };
+    }
+    const anywhere = await ask(false);
+    return anywhere === null ? null : { events: anywhere, nearby: !hasPoint };
+  }, { events: [], nearby: true });
+}
+
+module.exports = { eventsNear, searchEvents, normalizeEvents, normalizeEvent, pickImage };

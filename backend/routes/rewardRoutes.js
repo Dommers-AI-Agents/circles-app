@@ -10,6 +10,7 @@ const {
   redeemOffer,
   getOffers,
   getNearbyEvents,
+  searchNearbyEvents,
   getVenueByPlace,
   getMe
 } = require('../controllers/venues/rewardScanController');
@@ -102,6 +103,8 @@ router.get('/balance', getBalance);
 router.get('/venues/:venueId/wallet-pass', require('../controllers/wallet/walletController').downloadPass);
 router.get('/offers', getOffers);
 router.get('/nearby-events', getNearbyEvents);
+// The Locals tab's event search (Wes, 2026-11-04)
+router.get('/nearby-events/search', searchNearbyEvents);
 router.post('/redeem-offer', appAttestMonitor, redeemOffer);
 // Claiming rewards by name: share name, photo and email with the store once (2026-11-02)
 router.post('/venues/:venueId/share', require('../controllers/venues/rewardScanController').shareWithStore);

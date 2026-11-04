@@ -125,9 +125,48 @@ async function getLocalFeed(lat, lng, { now = new Date() } = {}) {
   return { events, markets: nearMarkets, attribution: attributionFor(events, nearMarkets) };
 }
 
+const MAX_SEARCH_RESULTS = 40;
+
+/** Every word of the query appears somewhere on the event (pure, tested). */
+function matchesQuery(event, query) {
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  const haystack = [event.name, event.venueName, event.sourceName, event.category, event.city, event.message]
+    .filter(Boolean).join(' ').toLowerCase();
+  return words.every((word) => haystack.includes(word));
+}
+
+/**
+ * The Locals tab's search (Wes, 2026-11-04): Ticketmaster's whole listing
+ * for the words (a year out, 100 miles, anywhere when nothing is near) plus
+ * the matching store events and library programs. Soonest first; stores on
+ * FavCircles lead. `nearby: false` = the Ticketmaster rows are from anywhere.
+ */
+async function searchLocalEvents(query, lat, lng, { now = new Date() } = {}) {
+  const q = String(query || '').trim();
+  if (q.length < 2) return { events: [], nearby: true, attribution: null };
+  const hasPoint = Number.isFinite(lat) && Number.isFinite(lng);
+  const [store, lib, tm] = await Promise.all([
+    hasPoint ? settle(storeEvents.eventsNear(lat, lng, { now }), 'store events') : [],
+    hasPoint ? settle(library.eventsNear(lat, lng, { now }), 'library') : [],
+    ticketmaster.searchEvents(q, lat, lng, { now }).catch((err) => {
+      console.warn('[nearbyEvents] Ticketmaster search failed:', err.message);
+      return { events: [], nearby: true };
+    })
+  ]);
+  const place = (list) => list.filter((e) => !isPast(e, now))
+    .map((e) => (hasPoint ? withDistance(e, lat, lng) : { ...e, distanceMeters: null }));
+  const storeRows = place(store.filter((e) => matchesQuery(e, q))).sort(bySoonest);
+  const libRows = dedupe(place(lib.filter((e) => matchesQuery(e, q))).sort(bySoonest), (e) => e.seriesId || programKey(e));
+  const tmRows = dedupe(place(tm.events || []).sort(bySoonest), (e) => `${normName(e.name)}|${normName(e.venueName)}|${e.startLocalDate}`);
+  const others = [...libRows, ...tmRows].sort(bySoonest).slice(0, Math.max(0, MAX_SEARCH_RESULTS - storeRows.length));
+  const events = [...storeRows, ...others].map(({ seriesId, ...event }) => event);
+  return { events, nearby: tm.nearby !== false, attribution: attributionFor(events, []) };
+}
+
 /** Events only (the 2026-10-15 builds read just this). */
 async function getNearbyEvents(lat, lng, options) {
   return (await getLocalFeed(lat, lng, options)).events;
 }
 
-module.exports = { getLocalFeed, getNearbyEvents, mergeEvents, attributionFor };
+module.exports = { getLocalFeed, getNearbyEvents, searchLocalEvents, matchesQuery, mergeEvents, attributionFor };

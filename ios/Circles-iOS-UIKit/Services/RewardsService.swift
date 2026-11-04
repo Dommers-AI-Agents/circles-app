@@ -245,6 +245,24 @@ class RewardsService {
         }
     }
 
+    /// The Locals tab's search: Ticketmaster's listing for the words plus
+    /// matching store events and library programs (2026-11-04)
+    func searchNearbyEvents(query: String, lat: Double, lng: Double,
+                            completion: @escaping (Result<NearbyEventSearchData, Error>) -> Void) {
+        let q = query.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        apiService.request(
+            endpoint: "rewards/nearby-events/search?q=\(q)&lat=\(lat)&lng=\(lng)",
+            method: .get,
+            body: nil,
+            requiresAuth: true
+        ) { (result: Result<RewardsEnvelope<NearbyEventSearchData>, APIError>) in
+            switch result {
+            case .success(let response): completion(.success(response.data))
+            case .failure(let error): completion(.failure(error))
+            }
+        }
+    }
+
     // MARK: - Place-page rewards (venue offers + announcements on a place)
 
     /// Rewards data for a place's detail page. `data.venue == nil` means the
@@ -1213,6 +1231,15 @@ struct NearbyEventsData: Codable {
     /// Nearest farmers markets (USDA directory); absent from older servers
     let markets: [FarmersMarket]?
     /// "Events from Ticketmaster and … · Farmers markets from …"
+    let attribution: String?
+}
+
+/// The Locals tab's search answer. `nearby == false`: nothing within
+/// 100 miles, so the Ticketmaster rows are from anywhere.
+struct NearbyEventSearchData: Codable {
+    let query: String?
+    let events: [NearbyEvent]
+    let nearby: Bool?
     let attribution: String?
 }
 

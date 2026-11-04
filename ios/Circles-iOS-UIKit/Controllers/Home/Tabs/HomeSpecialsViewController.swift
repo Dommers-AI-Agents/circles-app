@@ -19,7 +19,66 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     private var attribution: String?
     private var isLoadingSpecials = false
 
-    private enum Section: Int, CaseIterable { case specials, events, markets }
+    private enum Section: Int, CaseIterable { case searchNote, specials, events, markets }
+
+    // MARK: Search (Wes, 2026-11-04: "Panthers football")
+    /// The words in the box; empty = the normal tab
+    private var searchQuery = ""
+    private var isSearchActive: Bool { !LocalsSearch.words(searchQuery).isEmpty }
+    /// The server's answer for `remoteQuery` (nil while it's out or not asked)
+    private var remoteResults: [NearbyEvent]?
+    private var remoteQuery = ""
+    private var remoteNearby = true
+    private var remoteAttribution: String?
+    private var isSearchingRemote = false
+    private var searchWork: DispatchWorkItem?
+
+    private lazy var searchBar: UISearchBar = {
+        let bar = UISearchBar()
+        bar.placeholder = "Search events, teams, shows"
+        bar.searchBarStyle = .minimal
+        bar.autocapitalizationType = .none
+        bar.returnKeyType = .search
+        bar.delegate = self
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        return bar
+    }()
+
+    /// What the table draws: everything, or the matches for the box
+    var shownSpecials: [SpecialItem] {
+        guard isSearchActive else { return specials }
+        return specials.filter {
+            LocalsSearch.matches([$0.title, $0.venue.venueName, $0.venue.placeName, $0.venue.category], query: searchQuery)
+        }
+    }
+    var shownEvents: [NearbyEvent] {
+        guard isSearchActive else { return events }
+        let local = events.filter { LocalsSearch.matches($0, query: searchQuery) }
+        guard let remoteResults, remoteQuery == trimmedQuery else { return local }
+        return LocalsSearch.mergeEvents(local: local, remote: remoteResults)
+    }
+    var shownMarkets: [FarmersMarket] {
+        guard isSearchActive else { return markets }
+        return markets.filter { LocalsSearch.matches([$0.name, $0.address], query: searchQuery) }
+    }
+    private var trimmedQuery: String { searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// The one line over search results: still looking, nothing found, or
+    /// nothing near so these are from anywhere
+    var searchNoteText: String? {
+        guard isSearchActive else { return nil }
+        let nothing = shownSpecials.isEmpty && shownEvents.isEmpty && shownMarkets.isEmpty
+        if nothing {
+            if isSearchingRemote || (trimmedQuery.count >= LocalsSearch.minRemoteLength && remoteQuery != trimmedQuery) {
+                return "Searching events…"
+            }
+            return "Nothing matches “\(trimmedQuery)”. Try a team, artist or venue."
+        }
+        if remoteQuery == trimmedQuery, remoteResults?.isEmpty == false, !remoteNearby {
+            return "Nothing within 100 miles. These are happening elsewhere."
+        }
+        return nil
+    }
     /// A fetch finished since the last invalidate — an empty answer counts,
     /// so a quiet day doesn't refetch behind a spinner on every tap.
     private var hasLoaded = false
@@ -44,14 +103,18 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Constants.Colors.background
+        view.addSubview(searchBar)
         view.addSubview(tableView)
         view.addSubview(statusView)
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.topAnchor),
+            searchBar.topAnchor.constraint(equalTo: view.topAnchor),
+            searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 8),
+            searchBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -8),
+            tableView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            statusView.topAnchor.constraint(equalTo: view.topAnchor),
+            statusView.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
             statusView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             statusView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             statusView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -62,6 +125,7 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         tableView.register(NearbyEventCell.self, forCellReuseIdentifier: NearbyEventCell.identifier)
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "note")
         tableView.sectionHeaderTopPadding = 0
+        tableView.keyboardDismissMode = .onDrag
     }
 
     // MARK: - HomeContentTab
@@ -77,7 +141,9 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         fetchSpecials()
     }
 
-    func tabWillHide() {}
+    func tabWillHide() {
+        searchBar.resignFirstResponder()
+    }
 
     func refreshTab() {
         fetchSpecials(force: true)
@@ -169,7 +235,7 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     }
 
     private func updateStatusMessage(failed: Bool) {
-        guard specials.isEmpty && events.isEmpty && markets.isEmpty else {
+        guard !isSearchActive, specials.isEmpty && events.isEmpty && markets.isEmpty else {
             statusView.message = nil
             return
         }
@@ -350,13 +416,16 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
 
 extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource {
     /// No store deals but other things to show: one quiet line says so.
-    private var showsNoSpecialsNote: Bool { specials.isEmpty && (!events.isEmpty || !markets.isEmpty) }
+    private var showsNoSpecialsNote: Bool { !isSearchActive && shownSpecials.isEmpty && (!shownEvents.isEmpty || !shownMarkets.isEmpty) }
+
+    /// Search results credit what they show
+    private var shownAttribution: String? { isSearchActive ? (remoteAttribution ?? attribution) : attribution }
 
     /// The credits line sits under the last section with rows.
     private var attributionSection: Section? {
-        guard attribution != nil else { return nil }
-        if !markets.isEmpty { return .markets }
-        return events.isEmpty ? nil : .events
+        guard shownAttribution != nil else { return nil }
+        if !shownMarkets.isEmpty { return .markets }
+        return shownEvents.isEmpty ? nil : .events
     }
 
     func numberOfSections(in tableView: UITableView) -> Int {
@@ -365,22 +434,33 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch Section(rawValue: section) {
-        case .specials: return showsNoSpecialsNote ? 1 : specials.count
-        case .events: return events.count
-        case .markets: return markets.count
+        case .searchNote: return searchNoteText == nil ? 0 : 1
+        case .specials: return showsNoSpecialsNote ? 1 : shownSpecials.count
+        case .events: return shownEvents.count
+        case .markets: return shownMarkets.count
         case nil: return 0
         }
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         switch Section(rawValue: indexPath.section) {
+        case .searchNote:
+            let cell = tableView.dequeueReusableCell(withIdentifier: "note", for: indexPath)
+            var content = cell.defaultContentConfiguration()
+            content.text = searchNoteText
+            content.textProperties.font = .systemFont(ofSize: 14)
+            content.textProperties.color = Constants.Colors.secondaryLabel
+            cell.contentConfiguration = content
+            cell.backgroundColor = .clear
+            cell.selectionStyle = .none
+            return cell
         case .events:
             let cell = tableView.dequeueReusableCell(withIdentifier: NearbyEventCell.identifier, for: indexPath) as! NearbyEventCell
-            if indexPath.row < events.count { cell.configure(with: events[indexPath.row]) }
+            if indexPath.row < shownEvents.count { cell.configure(with: shownEvents[indexPath.row]) }
             return cell
         case .markets:
             let cell = tableView.dequeueReusableCell(withIdentifier: NearbyEventCell.identifier, for: indexPath) as! NearbyEventCell
-            if indexPath.row < markets.count { cell.configure(with: markets[indexPath.row]) }
+            if indexPath.row < shownMarkets.count { cell.configure(with: shownMarkets[indexPath.row]) }
             return cell
         default:
             break
@@ -388,7 +468,7 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
         if showsNoSpecialsNote {
             let cell = tableView.dequeueReusableCell(withIdentifier: "note", for: indexPath)
             var content = cell.defaultContentConfiguration()
-            content.text = "No store specials nearby right now."
+            content.text = "No store shownSpecials nearby right now."
             content.textProperties.font = .systemFont(ofSize: 14)
             content.textProperties.color = Constants.Colors.secondaryLabel
             cell.contentConfiguration = content
@@ -397,15 +477,15 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
             return cell
         }
         let cell = tableView.dequeueReusableCell(withIdentifier: SpecialItemCell.identifier, for: indexPath) as! SpecialItemCell
-        guard indexPath.row < specials.count else { return cell }
-        cell.configure(with: specials[indexPath.row])
+        guard indexPath.row < shownSpecials.count else { return cell }
+        cell.configure(with: shownSpecials[indexPath.row])
         return cell
     }
 
     private func headerTitle(_ section: Int) -> String? {
         switch Section(rawValue: section) {
-        case .events: return events.isEmpty ? nil : "Happening nearby"
-        case .markets: return markets.isEmpty ? nil : "Farmers markets"
+        case .events: return shownEvents.isEmpty ? nil : (isSearchActive ? "Events" : "Happening nearby")
+        case .markets: return shownMarkets.isEmpty ? nil : "Farmers markets"
         default: return nil
         }
     }
@@ -419,7 +499,7 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
         let container = UIView()
         label.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(label)
-        let isFirst = specials.isEmpty && !showsNoSpecialsNote && (section == Section.events.rawValue || events.isEmpty)
+        let isFirst = shownSpecials.isEmpty && !showsNoSpecialsNote && (section == Section.events.rawValue || shownEvents.isEmpty)
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
             label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
@@ -434,7 +514,7 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
     }
 
     func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
-        guard Section(rawValue: section) == attributionSection, let attribution else { return nil }
+        guard Section(rawValue: section) == attributionSection, let attribution = shownAttribution else { return nil }
         let label = UILabel()
         label.text = attribution
         label.font = .systemFont(ofSize: 11)
@@ -460,13 +540,15 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         switch Section(rawValue: indexPath.section) {
+        case .searchNote:
+            return
         case .events:
-            if indexPath.row < events.count { openEvent(events[indexPath.row]) }
+            if indexPath.row < shownEvents.count { openEvent(shownEvents[indexPath.row]) }
         case .markets:
-            if indexPath.row < markets.count { openMarket(markets[indexPath.row]) }
+            if indexPath.row < shownMarkets.count { openMarket(shownMarkets[indexPath.row]) }
         default:
-            guard !showsNoSpecialsNote, indexPath.row < specials.count else { return }
-            openSpecialPlace(specials[indexPath.row].venue)
+            guard !showsNoSpecialsNote, indexPath.row < shownSpecials.count else { return }
+            openSpecialPlace(shownSpecials[indexPath.row].venue)
         }
     }
 
@@ -474,9 +556,11 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
     // directions to an event or a market
     func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
         switch Section(rawValue: indexPath.section) {
+        case .searchNote:
+            return nil
         case .events:
-            guard indexPath.row < events.count else { return nil }
-            let event = events[indexPath.row]
+            guard indexPath.row < shownEvents.count else { return nil }
+            let event = shownEvents[indexPath.row]
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
                 var actions = [
                     UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
@@ -491,8 +575,8 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
                 return UIMenu(children: actions)
             }
         case .markets:
-            guard indexPath.row < markets.count else { return nil }
-            let market = markets[indexPath.row]
+            guard indexPath.row < shownMarkets.count else { return nil }
+            let market = shownMarkets[indexPath.row]
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
                 UIMenu(children: [
                     UIAction(title: "Directions", image: UIImage(systemName: "car.fill")) { [weak self] _ in
@@ -501,8 +585,8 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
                 ])
             }
         default:
-            guard !showsNoSpecialsNote, indexPath.row < specials.count else { return nil }
-            let item = specials[indexPath.row]
+            guard !showsNoSpecialsNote, indexPath.row < shownSpecials.count else { return nil }
+            let item = shownSpecials[indexPath.row]
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
                 let share = UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
                     self?.shareSpecial(item)
@@ -510,6 +594,75 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
                 return UIMenu(children: [share])
             }
         }
+    }
+}
+
+// MARK: - Search
+
+extension HomeSpecialsViewController: UISearchBarDelegate {
+    func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+        searchBar.setShowsCancelButton(true, animated: true)
+    }
+
+    func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+        searchBar.setShowsCancelButton(false, animated: true)
+    }
+
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        searchQuery = searchText
+        searchWork?.cancel()
+        let query = trimmedQuery
+        if query.count >= LocalsSearch.minRemoteLength, query != remoteQuery {
+            let work = DispatchWorkItem { [weak self] in self?.runRemoteSearch(query) }
+            searchWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + LocalsSearch.debounce, execute: work)
+        }
+        showSearchState()
+    }
+
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        searchWork?.cancel()
+        let query = trimmedQuery
+        if query.count >= LocalsSearch.minRemoteLength, query != remoteQuery { runRemoteSearch(query) }
+        searchBar.resignFirstResponder()
+    }
+
+    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        searchBar.text = ""
+        self.searchBar(searchBar, textDidChange: "")
+        searchBar.resignFirstResponder()
+    }
+
+    private func runRemoteSearch(_ query: String) {
+        isSearchingRemote = true
+        AnalyticsService.shared.logEvent("locals_search", parameters: ["length": "\(query.count)"])
+        LocationService.shared.recentLocation { [weak self] location in
+            let here = location?.coordinate ?? Constants.DefaultLocation.coordinate
+            RewardsService.shared.searchNearbyEvents(query: query, lat: here.latitude, lng: here.longitude) { result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    // A newer query owns the screen; this answer is stale
+                    guard query == self.trimmedQuery else { return }
+                    self.isSearchingRemote = false
+                    if case .success(let data) = result {
+                        self.remoteResults = data.events
+                        self.remoteNearby = data.nearby ?? true
+                        self.remoteAttribution = data.attribution
+                    } else {
+                        self.remoteResults = []
+                        self.remoteNearby = true
+                        self.remoteAttribution = nil
+                    }
+                    self.remoteQuery = query
+                    self.showSearchState()
+                }
+            }
+        }
+    }
+
+    private func showSearchState() {
+        if !isSearchActive { statusView.message = nil; updateStatusMessage(failed: false) } else { statusView.message = nil }
+        tableView.reloadData()
     }
 }
 
