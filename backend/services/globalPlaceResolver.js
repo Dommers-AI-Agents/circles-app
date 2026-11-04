@@ -376,6 +376,9 @@ const haversineMeters = (lat1, lng1, lat2, lng2) => {
 const similarNameMatchEnabled = () => process.env.VENUE_SIMILAR_NAME_MATCH === '1';
 
 const { words: searchWords } = require('../utils/searchTokens');
+const geofire = require('geofire-common');
+// A dense block holds a few dozen venues per cell; the cap bounds a bad cell
+const NEARBY_CANDIDATES_PER_CELL = 200;
 
 async function findCanonicalByNameAndLocation(name, location, excludeId = null, { googlePlaceId = null } = {}) {
   const normalized = normalizeVenueName(name);
@@ -389,19 +392,33 @@ async function findCanonicalByNameAndLocation(name, location, excludeId = null, 
   if (tokens.length === 0) return null;
   const longestToken = tokens.sort((a, b) => b.length - a.length)[0].slice(0, 20);
 
-  const snapshot = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
-    .where('searchTokens', 'array-contains', longestToken)
-    .limit(25)
-    .get();
+  // Candidates: every venue pinned near the point (geohash cells), plus the
+  // longest-word query for venues that predate geohash stamping. The word
+  // query alone missed "Fresh Monkee - Southend" → "Fresh Monkee": its longest
+  // word, "southend", isn't in the real venue's tokens, so Brittany's save
+  // minted a duplicate 2 m from the store (2026-11-04).
+  const bounds = geofire.geohashQueryBounds([lat, lng], NAME_MATCH_RADIUS_METERS);
+  const snapshots = await Promise.all([
+    db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+      .where('searchTokens', 'array-contains', longestToken)
+      .limit(25)
+      .get(),
+    ...bounds.map(([start, end]) => db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+      .orderBy('geohash').startAt(start).endAt(end)
+      .limit(NEARBY_CANDIDATES_PER_CELL)
+      .get())
+  ]);
+  const candidates = new Map();
+  snapshots.forEach((snap) => snap.forEach((doc) => candidates.set(doc.id, doc)));
 
   let best = null;
   let bestDistance = Infinity;
   let similar = null;
   let similarDistance = Infinity;
-  snapshot.forEach((doc) => {
+  candidates.forEach((doc) => {
     if (excludeId && doc.id === excludeId) return;
     const data = doc.data();
-    if (data.deletedAt) return;
+    if (data.deletedAt || data.mergedInto) return;
     const candidateCoords = data.location && data.location.coordinates;
     if (!Array.isArray(candidateCoords) || candidateCoords.length !== 2) return;
     const distance = haversineMeters(lat, lng, candidateCoords[1], candidateCoords[0]);

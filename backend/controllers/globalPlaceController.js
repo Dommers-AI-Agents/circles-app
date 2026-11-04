@@ -25,7 +25,7 @@ const { clampPagination } = require('../utils/pagination');
 
 const db = getFirestore();
 
-const { resolveGlobalPlace, createGlobalPlaceFromLegacy } = require('../services/globalPlaceResolver');
+const { resolveGlobalPlace, createGlobalPlaceFromLegacy, findCanonicalByNameAndLocation } = require('../services/globalPlaceResolver');
 const { normalizePrivacy, PRIVACY } = require('../services/visibility');
 const { isSameUser } = require('../services/idService');
 const { fetchUsersById, withCurrentUser, nameOf, photoOf } = require('../services/userLookup');
@@ -140,8 +140,16 @@ exports.matchGlobalPlace = async (req, res) => {
     const normalizeAddress = (a) => String(a || '').toLowerCase().trim().replace(/[^\w\s,]/g, '');
     const MAX_DISTANCE_METERS = 250;
 
+    // With a point, the same rule the save path links by (exact name within
+    // 150 m, or a similar name in the same building): an Apple name like
+    // "Fresh Monkee - Southend" must find "Fresh Monkee", or the form saves
+    // without the venue's Google id and mints a duplicate.
     let match = null;
-    for (const doc of snapshot.docs) {
+    if (hasCoords) {
+      const linked = await findCanonicalByNameAndLocation(name, { coordinates: [lng, lat] });
+      if (linked) match = { id: linked.id, ...linked.data() };
+    }
+    for (const doc of match ? [] : snapshot.docs) {
       const place = { id: doc.id, ...doc.data() };
       if (place.deletedAt) continue;
       if (normalizeName(place.name) !== normalizedQueryName) continue;
