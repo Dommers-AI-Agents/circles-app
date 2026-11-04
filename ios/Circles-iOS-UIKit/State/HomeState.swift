@@ -93,6 +93,9 @@ final class HomeState {
     /// pulled it down). Late async results must not re-expand it; editing the
     /// query or refocusing the bar does.
     var isSearchSheetCollapsed = false
+    /// The field's ⊗ was tapped with the keyboard down: that tap ends the
+    /// search, so the focus it would also bring is refused once
+    var refuseNextSearchFocus = false
     /// The handle chip picked (All | Places | People | Nearby)
     var searchScope: HomeSearchScope = .all
     /// The text the Apple candidates were fetched for

@@ -184,7 +184,9 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         // One ✕, not two: iOS 26 draws the bar's Cancel button as an ✕, so
         // the field's own clear (⊗) sat right beside it looking like a twin.
         // Cancel clears the text and ends the search (Wes, 2026-10-09).
-        searchBar.searchTextField.clearButtonMode = .never
+        // Cancel only shows while typing, so with the keyboard down and results
+        // up the field's ⊗ is the way out (Wes, 2026-11-03) — never both at once.
+        searchBar.searchTextField.clearButtonMode = .unlessEditing
         searchBar.translatesAutoresizingMaskIntoConstraints = false
         return searchBar
     }()

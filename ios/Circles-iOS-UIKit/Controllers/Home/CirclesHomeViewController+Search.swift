@@ -23,6 +23,14 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         isSearchSheetCollapsed = false
 
         guard !trimmed.isEmpty else {
+            // The ⊗ with the keyboard down: close the search outright, the
+            // same as Cancel, instead of reopening the keyboard on recents
+            if !searchBar.isFirstResponder {
+                state.refuseNextSearchFocus = true
+                DispatchQueue.main.async { [weak self] in self?.state.refuseNextSearchFocus = false }
+                resetSearch()
+                return
+            }
             endSearch(keepFocus: true)
             return
         }
@@ -94,6 +102,12 @@ extension CirclesHomeViewController: UISearchBarDelegate {
         recordRecentSearch()
         searchBar.resignFirstResponder()
         updateEmptyState()
+    }
+
+    func searchBarShouldBeginEditing(_ searchBar: UISearchBar) -> Bool {
+        guard state.refuseNextSearchFocus else { return true }
+        state.refuseNextSearchFocus = false
+        return false
     }
 
     func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
