@@ -120,7 +120,14 @@ const parsePlace = (body) => {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     throw new ServiceError(400, 'invalid_place', 'A place needs a location');
   }
+  // The venue it came from (our catalog via placeId + isGlobal, or a Google
+  // id), so saving it later lands on that ONE venue record
+  const venueId = (v) => (typeof v === 'string' && /^[A-Za-z0-9_-]{6,200}$/.test(v) ? v : null);
+  const globalPlaceId = b.isGlobal === true ? venueId(b.placeId) : venueId(b.globalPlaceId);
+  const googlePlaceId = venueId(b.googlePlaceId);
   return {
+    ...(globalPlaceId ? { globalPlaceId } : {}),
+    ...(googlePlaceId ? { googlePlaceId } : {}),
     name,
     address: clean(b.address, 200) || '',
     lat,
@@ -928,6 +935,8 @@ async function savePlaceToMyCircle(eventId, user, eventPlaceId) {
     address: p.address || `${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}`,
     location: { type: 'Point', coordinates: [p.lng, p.lat] },
     category: p.category || 'other',
+    ...(p.globalPlaceId ? { globalPlaceId: p.globalPlaceId } : {}),
+    ...(p.googlePlaceId ? { googlePlaceId: p.googlePlaceId } : {}),
     // Picked from Apple Maps on the phone: resolve it to Google here, like
     // the share extension and dog spots (canonical venue first, Google only
     // for venues new to FavCircles)

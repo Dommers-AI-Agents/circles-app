@@ -352,7 +352,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
     {
       title: "Save a place to a circle",
       description:
-        "Add a place to one of the user's circles. Use this when the user wants to save a restaurant, shop, or other spot to a circle. Requires coordinates — call discover_places first to find the exact address and latitude/longitude; only estimate coordinates if the place isn't in the community database.",
+        "Add a place to one of the user's circles. Use this when the user wants to save a restaurant, shop, or other spot to a circle. Requires coordinates — call discover_places first to find the exact address and latitude/longitude, and pass that result's id as placeId so the save links to that exact place; only estimate coordinates if the place isn't in the community database.",
       inputSchema: {
         circleId: z.string().describe("Target circle id (from list_circles)"),
         name: z.string().min(1).describe("Place name, e.g. 'Hey Peach Bakery'"),
@@ -361,6 +361,10 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
         latitude: z.number().min(-90).max(90).describe("Latitude"),
         longitude: z.number().min(-180).max(180).describe("Longitude"),
         notes: z.string().optional().describe("Optional note about the place (visible to people who can see it)"),
+        placeId: z
+          .string()
+          .optional()
+          .describe("The place's id from discover_places. Pass it whenever the place came from discover_places"),
       },
       outputSchema: { place: PLACE_OUT },
       annotations: { title: "Save a place to a circle", ...CREATE },

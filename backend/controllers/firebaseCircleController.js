@@ -1625,9 +1625,8 @@ exports.copyCircle = async (req, res, next) => {
           const newPlaceData = {
             name: sourcePlace.name,
             address: sourcePlace.address,
-            googlePlaceId: sourcePlace.googlePlaceId,
-            globalPlaceId: sourcePlace.globalPlaceId || null, // Same canonical venue
-            appleMapItemId: sourcePlace.appleMapItemId,
+            googlePlaceId: sourcePlace.googlePlaceId || null,
+            appleMapItemId: sourcePlace.appleMapItemId || null,
             category: sourcePlace.category,
             phone: sourcePlace.phone || null,
             website: sourcePlace.website || null,
@@ -1650,6 +1649,11 @@ exports.copyCircle = async (req, res, next) => {
           // Add the new place
           const newPlaceRef = await db.collection(COLLECTIONS.PLACES).add(newPlaceData);
           copiedPlaceIds.push(newPlaceRef.id);
+          // Same venue as the source save, linked the one way every save is
+          // (stamps the query cache and strips venue fields; a source that
+          // was never linked gets matched instead of staying unlinked)
+          await require('../services/globalPlaceResolver')
+            .ensureGlobalPlaceLink(await newPlaceRef.get(), { knownVenueId: sourcePlace.globalPlaceId || null });
           
           console.log(`📍 Copied place: ${sourcePlace.name}`);
         }

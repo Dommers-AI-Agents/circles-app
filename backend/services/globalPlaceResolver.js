@@ -263,7 +263,10 @@ async function createGlobalPlaceFromLegacy(legacyPlaceDoc) {
 // save doc required. Used by the store-owner "add & claim your business" flow,
 // where the owner's store may never have been saved by anyone. Callers should
 // try findCanonicalByNameAndLocation first; this always creates.
-async function createGlobalPlaceFromDetails({ name, address, location, category, phone, website, applePoiCategory }) {
+async function createGlobalPlaceFromDetails({ name, address, location, category, phone, website, applePoiCategory, googlePlaceId = null }) {
+  // One venue per Google id: the live holder is the venue, never a second one
+  const holder = await findVenueByGooglePlaceId(googlePlaceId);
+  if (holder) return { resolvedId: holder.id, resolvedData: holder.data() };
   const incomingCategory = category || 'other';
   let resolvedCategory = incomingCategory;
   let categoryMeta = { categorySource: incomingCategory === 'other' ? null : 'client' };
@@ -295,13 +298,14 @@ async function createGlobalPlaceFromDetails({ name, address, location, category,
         country: loc.country || null, countryCode: loc.countryCode || null
       };
 
-  let deduplicationKey = null;
-  if (name && address) {
+  let deduplicationKey = googlePlaceId ? `google:${googlePlaceId}` : null;
+  if (!deduplicationKey && name && address) {
     try { deduplicationKey = generatePlaceKey({ name, address }); } catch (e) { /* fine */ }
   }
 
   const globalPlaceData = createGlobalPlace({
     name,
+    googlePlaceId: googlePlaceId || null,
     address: address || '',
     location: location || null,
     phone: phone || null,
@@ -461,12 +465,52 @@ async function findVenueByGooglePlaceId(googlePlaceId) {
   return snap.docs.find((doc) => !doc.data().deletedAt && !doc.data().mergedInto) || null;
 }
 
-async function ensureGlobalPlaceLink(placeDoc) {
+/**
+ * A venue id a caller already knows (the place page, a store code, a catalog
+ * pick, another save of the venue), as the live record: merges followed,
+ * deleted or unknown ids → null.
+ */
+async function liveVenueDoc(venueId) {
+  if (!venueId || typeof venueId !== 'string') return null;
+  let doc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(venueId).get();
+  for (let hops = 0; doc.exists && doc.data().mergedInto && hops < 3; hops++) {
+    doc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(doc.data().mergedInto).get();
+  }
+  return doc.exists && !doc.data().deletedAt && !doc.data().mergedInto ? doc : null;
+}
+
+/**
+ * Link a save to its ONE venue record (Wes, 2026-11-04: one global copy per
+ * place). Order: a venue the caller already knows (knownVenueId), the
+ * save's own keys (doc id, dedup key, Google id), the live holder of its
+ * Google id, then name + proximity; only then mint a new venue.
+ */
+async function ensureGlobalPlaceLink(placeDoc, { knownVenueId = null } = {}) {
   try {
     const existing = placeDoc.data().globalPlaceId;
     if (existing) return existing;
 
-    const { globalPlaceDoc } = await resolveGlobalPlace(placeDoc.id);
+    const known = await liveVenueDoc(knownVenueId);
+    let globalPlaceDoc = known;
+    if (!globalPlaceDoc) {
+      ({ globalPlaceDoc } = await resolveGlobalPlace(placeDoc.id));
+      // A deleted record is not the venue (merges are already followed)
+      if (globalPlaceDoc && globalPlaceDoc.data().deletedAt) globalPlaceDoc = null;
+    }
+    if (!globalPlaceDoc && placeDoc.data().googlePlaceId) {
+      globalPlaceDoc = await findVenueByGooglePlaceId(placeDoc.data().googlePlaceId);
+    }
+    if (!globalPlaceDoc && placeDoc.data().applePlaceId) {
+      const byApple = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+        .where('applePlaceId', '==', String(placeDoc.data().applePlaceId)).limit(5).get();
+      globalPlaceDoc = byApple.docs.find((doc) => !doc.data().deletedAt && !doc.data().mergedInto) || null;
+    }
+    if (known) {
+      await known.ref.update({
+        legacyPlaceIds: admin.firestore.FieldValue.arrayUnion(placeDoc.id),
+        updatedAt: new Date().toISOString()
+      });
+    }
     let globalPlaceId = globalPlaceDoc ? globalPlaceDoc.id : null;
     // The canonical venue's data, whether we just created it or matched an
     // existing one. Both paths must stamp the save's query cache: a venue
@@ -588,5 +632,6 @@ module.exports = {
   createGlobalPlaceFromDetails,
   ensureGlobalPlaceLink,
   findCanonicalByNameAndLocation,
-  findVenueByGooglePlaceId
+  findVenueByGooglePlaceId,
+  liveVenueDoc
 };

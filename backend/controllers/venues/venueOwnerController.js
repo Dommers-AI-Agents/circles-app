@@ -413,8 +413,10 @@ exports.setVenueCoverPhoto = async (req, res) => {
     if (!url) {
       // "No cover": the place's first photo leads, as for any place
       const gpDoc = await gpRef.get();
-      const cover = placePhotos.coverUrl((gpDoc.exists && gpDoc.data().photos) || []);
-      await gpRef.set({ coverPhotoUrl: cover, updatedAt: new Date().toISOString() }, { merge: true });
+      // update, not set+merge: a stale link must not mint a stub venue record
+      if (!gpDoc.exists) return res.status(400).json({ success: false, error: 'This venue has no linked place record' });
+      const cover = placePhotos.coverUrl(gpDoc.data().photos || []);
+      await gpRef.update({ coverPhotoUrl: cover, updatedAt: new Date().toISOString() });
       appClipExperiences.syncVenueQuiet(venue);   // the card carries the cover
       return res.json({ success: true, data: { coverPhotoUrl: cover } });
     }

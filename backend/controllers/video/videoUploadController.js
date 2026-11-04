@@ -172,6 +172,7 @@ async function createPlaceInMyMoments(userId, circleId, placeData) {
       location,
       website: placeData.website || '',
       phone: placeData.phone || '',
+      googlePlaceId: placeData.googlePlaceId || null,
       category: placeData.category || 'other',
       privacy: 'private', // Default to private for My Moments
       addedViaCheckIn: false,
@@ -195,7 +196,7 @@ async function createPlaceInMyMoments(userId, circleId, placeData) {
 
     // Link the save to its canonical venue record (best-effort)
     const { ensureGlobalPlaceLink } = require('../../services/globalPlaceResolver');
-    const globalPlaceId = await ensureGlobalPlaceLink(await placeRef.get());
+    const globalPlaceId = await ensureGlobalPlaceLink(await placeRef.get(), { knownVenueId: placeData.knownVenueId || null });
 
     // Keep the browse location tree fresh (best-effort)
     const { indexSavedPlace } = require('../../services/circleLocationSummary');
@@ -458,7 +459,10 @@ exports.initiateVideoUpload = async (req, res) => {
           category: placeCategory || 'other',
           description: placeDescription,
           phone: placePhone,
-          website: placeWebsite
+          website: placeWebsite,
+          // A catalog pick's id is its venue record; anything else is ignored
+          knownVenueId: typeof placeId === 'string' ? placeId : null,
+          googlePlaceId: typeof req.body.placeGooglePlaceId === 'string' ? req.body.placeGooglePlaceId : null
         });
 
         finalPlaceId = newPlace.id;

@@ -203,25 +203,30 @@ exports.bulkAddToCircles = async (req, res) => {
             continue;
           }
 
-          // Create place from visit data
-          const placeData = {
-            name: visitData.placeName,
-            address: visitData.placeAddress,
-            location: visitData.location,
-            category: visitData.category,
-            notes: visitData.notes,
-            photos: visitData.photos,
-            ...visitData.placeData,
-            addedBy: userId,
-            addedAt: new Date().toISOString(),
-            fromVisit: visitId
-          };
-
-          // Add place to circle's places subcollection
-          const placeRef = await db.collection(COLLECTIONS.CIRCLES)
-            .doc(circleId)
-            .collection('places')
-            .add(placeData);
+          // Saved through the core save path like every other save (venue
+          // link, duplicate check, circle membership). This used to write a
+          // circles/{id}/places subcollection doc nothing ever reads.
+          const pd = visitData.placeData || {};
+          const geo = visitData.location;
+          const result = await require('../services/placeSaveService').savePlace(req.user, {
+            circleId,
+            name: pd.name || visitData.placeName,
+            address: pd.address || visitData.placeAddress || visitData.placeName,
+            ...(geo && typeof geo.latitude === 'number'
+              ? { location: { type: 'Point', coordinates: [geo.longitude, geo.latitude] } } : {}),
+            category: pd.category || visitData.category || 'other',
+            privateNotes: visitData.notes || undefined,
+            photos: Array.isArray(visitData.photos) ? visitData.photos : [],
+            ...(pd.googlePlaceId ? { googlePlaceId: pd.googlePlaceId } : {}),
+            ...(pd.globalPlaceId ? { globalPlaceId: pd.globalPlaceId } : {})
+          });
+          const saved = result.payload || {};
+          if (result.status >= 300 && saved.code !== 'DUPLICATE_PLACE') {
+            results.failed.push({ visitId, circleId, reason: saved.message || 'Save failed' });
+            continue;
+          }
+          if (result.afterResponse) result.afterResponse().catch(() => {});
+          const placeRef = { id: (saved.place && saved.place.id) || saved.existingPlaceId || null };
 
           results.added.push({
             visitId,

@@ -24,7 +24,14 @@ function parsePlace(body) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) {
     throw new ServiceError(400, 'invalid_place', 'A place needs a location');
   }
-  return { name, address: clean(b.address, 200) || '', lat, lng, category: clean(b.category, 40) || 'other' };
+  // The venue the person picked, when it came from our catalog (the widget
+  // sends placeId + isGlobal) or carries a Google id: saved to that ONE venue
+  const id = (v) => (typeof v === 'string' && /^[A-Za-z0-9_-]{6,200}$/.test(v) ? v : null);
+  return {
+    name, address: clean(b.address, 200) || '', lat, lng, category: clean(b.category, 40) || 'other',
+    globalPlaceId: b.isGlobal === true ? id(b.placeId) : id(b.globalPlaceId),
+    googlePlaceId: id(b.googlePlaceId)
+  };
 }
 
 /**
@@ -71,6 +78,8 @@ async function savePlace(user, body) {
     address: place.address || `${place.lat.toFixed(5)}, ${place.lng.toFixed(5)}`,
     location: { type: 'Point', coordinates: [place.lng, place.lat] },
     category: place.category,
+    ...(place.globalPlaceId ? { globalPlaceId: place.globalPlaceId } : {}),
+    ...(place.googlePlaceId ? { googlePlaceId: place.googlePlaceId } : {}),
     // Picked from Apple Maps on the phone: resolve it to Google here, like a
     // share-extension save (canonical venue first, Google only for new ones)
     enrichFromGoogle: true

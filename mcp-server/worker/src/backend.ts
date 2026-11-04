@@ -507,8 +507,12 @@ export class Backend {
     latitude: number;
     longitude: number;
     notes?: string;
+    placeId?: string;
   }): Promise<Place> {
     const body = {
+      // A community-database pick is linked to that one venue record, never
+      // re-matched by name (which could mint a duplicate)
+      ...(input.placeId ? { globalPlaceId: input.placeId } : {}),
       circleId: input.circleId,
       name: input.name,
       address: input.address,

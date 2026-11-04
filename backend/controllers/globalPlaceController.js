@@ -25,7 +25,7 @@ const { clampPagination } = require('../utils/pagination');
 
 const db = getFirestore();
 
-const { resolveGlobalPlace, createGlobalPlaceFromLegacy, findCanonicalByNameAndLocation } = require('../services/globalPlaceResolver');
+const { resolveGlobalPlace, findCanonicalByNameAndLocation, findVenueByGooglePlaceId, ensureGlobalPlaceLink } = require('../services/globalPlaceResolver');
 const { normalizePrivacy, PRIVACY } = require('../services/visibility');
 const { isSameUser } = require('../services/idService');
 const { fetchUsersById, withCurrentUser, nameOf, photoOf } = require('../services/userLookup');
@@ -381,18 +381,14 @@ exports.createOrGetGlobalPlace = async (req, res, next) => {
   try {
     const placeData = req.body;
     
-    // Check if place already exists by Google Place ID
+    // One venue per place: the live holder of the Google id, else the same
+    // name nearby (the save path's rules), before anything is created
     let existingPlace = null;
-    if (placeData.googlePlaceId) {
-      const existingQuery = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
-        .where('googlePlaceId', '==', placeData.googlePlaceId)
-        .limit(1)
-        .get();
-      
-      if (!existingQuery.empty) {
-        existingPlace = serializeDoc(existingQuery.docs[0]);
-      }
-    }
+    const holder = await findVenueByGooglePlaceId(placeData.googlePlaceId)
+      || (placeData.name && placeData.location
+        ? await findCanonicalByNameAndLocation(placeData.name, placeData.location, null, { googlePlaceId: placeData.googlePlaceId || null })
+        : null);
+    if (holder) existingPlace = serializeDoc(holder);
     
     if (existingPlace) {
       // Place already exists, return it
@@ -567,8 +563,13 @@ exports.uploadPlaceMedia = async (req, res, next) => {
       resolvedId = globalPlaceDoc.id;
       resolvedData = globalPlaceDoc.data();
     } else if (legacyPlaceDoc && legacyPlaceDoc.exists) {
-      ({ resolvedId, resolvedData } = await createGlobalPlaceFromLegacy(legacyPlaceDoc));
-    } else {
+      // The save's link, the one way every save gets one (matches an
+      // existing venue first and stamps globalPlaceId back on the save)
+      resolvedId = await ensureGlobalPlaceLink(legacyPlaceDoc);
+      const linked = resolvedId ? await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(resolvedId).get() : null;
+      resolvedData = linked && linked.exists ? linked.data() : null;
+    }
+    if (!resolvedId || !resolvedData) {
       return res.status(404).json({
         success: false,
         message: 'Place not found'

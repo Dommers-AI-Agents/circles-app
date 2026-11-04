@@ -292,7 +292,7 @@ async function savePlace(user, body) {
       // weak-signal hang, Wes 2026-10-04). The app offers View / Add Anyway.
       const { findOwnSaveForNewPlace } = require('./ownSaveOfVenue');
       const existing = await findOwnSaveForNewPlace({
-        userId: user.uid, googlePlaceId, name, location: body.location
+        userId: user.uid, globalPlaceId: body.globalPlaceId || null, googlePlaceId, name, location: body.location
       });
       if (existing) {
         const existingData = existing.data();
@@ -341,7 +341,8 @@ async function savePlace(user, body) {
     // when anyone on the platform already saved this venue), Google
     // enrichment only for venues new to the whole platform. Failure leaves a
     // bare-but-valid save — availability over completeness.
-    if (body.enrichFromGoogle === true && !placeData.googlePlaceId) {
+    // A known venue needs no lookup: the link takes its Google id and details
+    if (body.enrichFromGoogle === true && !placeData.googlePlaceId && !body.globalPlaceId) {
       await require('./googleEnrichment').enrichSaveFromGoogle(placeData);
     }
 
@@ -474,8 +475,10 @@ async function savePlace(user, body) {
     const createdPlace = await placeRef.get();
     const place = serializeDoc(createdPlace);
 
-    // Link the save to its canonical venue record (resolve-or-create)
-    const globalPlaceId = await ensureGlobalPlaceLink(createdPlace);
+    // Link the save to its canonical venue record (resolve-or-create). A
+    // venue the caller already knows (place page, store code, catalog pick)
+    // is used as-is: re-matching it by name minted duplicates.
+    const globalPlaceId = await ensureGlobalPlaceLink(createdPlace, { knownVenueId: body.globalPlaceId || null });
     if (globalPlaceId) {
       place.globalPlaceId = globalPlaceId;
       // The link stamps the venue's category onto the save (derived from the

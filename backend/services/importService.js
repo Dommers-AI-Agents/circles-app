@@ -582,6 +582,8 @@ async function executeImport(userId, payload) {
       ? await venuesByApplePlaceId((list.places || []).map((p) => p.applePlaceId))
       : new Map();
 
+    // Saves whose venue we already know by its Apple id: linked to it directly
+    const knownVenueByPlaceId = new Map();
     for (const place of list.places || []) {
       const sourceId = place.sourceExternalId || null;
       const applePlaceId = typeof place.applePlaceId === 'string' && place.applePlaceId ? place.applePlaceId : null;
@@ -659,6 +661,7 @@ async function executeImport(userId, payload) {
       batch.set(placeRef, placeData);
       newPlaceIds.push(placeRef.id);
       if (hasCoordinates) linkablePlaceIds.push(placeRef.id);
+      if (knownVenue) knownVenueByPlaceId.set(placeRef.id, knownVenue);
 
       // Keep the in-memory index current so duplicates within this request
       // (and across its lists) are caught too.
@@ -720,7 +723,7 @@ async function executeImport(userId, payload) {
       await mapWithConcurrency(linkablePlaceIds, 4, async (placeId) => {
         try {
           const snap = await db.collection(COLLECTIONS.PLACES).doc(placeId).get();
-          const linked = await ensureGlobalPlaceLink(snap);
+          const linked = await ensureGlobalPlaceLink(snap, { knownVenueId: knownVenueByPlaceId.get(placeId) || null });
           await stampApplePlaceId(placeId, linked);
         } catch (linkError) {
           console.error(`⚠️ Import: global-place link failed for ${placeId} (non-fatal):`, linkError.message);
@@ -752,9 +755,11 @@ async function stampApplePlaceId(placeId, linkedGlobalId) {
   if (!save.applePlaceId || !globalId) return;
   const ref = db.collection('globalPlaces').doc(globalId);
   const venue = await ref.get();
-  if (venue.exists && !venue.data().applePlaceId) {
-    await ref.update({ applePlaceId: save.applePlaceId });
-  }
+  if (!venue.exists || venue.data().applePlaceId) return;
+  // One venue per Apple id, as with Google ids: never a second holder
+  const holders = await db.collection('globalPlaces').where('applePlaceId', '==', save.applePlaceId).limit(5).get();
+  if (holders.docs.some((doc) => doc.id !== globalId && !doc.data().deletedAt && !doc.data().mergedInto)) return;
+  await ref.update({ applePlaceId: save.applePlaceId });
 }
 
 // Fields a Google enrichment may fill on a photo save (venue fields; the

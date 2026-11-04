@@ -78,9 +78,9 @@ async function findExistingSaveOfVenue({ userId, globalPlaceId, googlePlaceId, p
  * (the canonical record's name + proximity rules). Never throws: a failed
  * lookup must not block a save.
  */
-async function findOwnSaveForNewPlace({ userId, googlePlaceId, name, location }) {
+async function findOwnSaveForNewPlace({ userId, globalPlaceId = null, googlePlaceId, name, location }) {
   try {
-    const direct = await findExistingSaveOfVenue({ userId, googlePlaceId, placeName: name, location });
+    const direct = await findExistingSaveOfVenue({ userId, globalPlaceId, googlePlaceId, placeName: name, location });
     if (direct) return direct;
     if (name && location) {
       const venue = await findCanonicalByNameAndLocation(name, location, null, { googlePlaceId: googlePlaceId || null });

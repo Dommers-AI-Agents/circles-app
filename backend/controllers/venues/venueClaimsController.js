@@ -269,7 +269,8 @@ exports.claimBusinessByDetails = async (req, res) => {
         category: req.body.category || 'other',
         phone: req.body.phone || null,
         website: req.body.website || null,
-        applePoiCategory: req.body.applePoiCategory || null
+        applePoiCategory: req.body.applePoiCategory || null,
+        googlePlaceId: typeof req.body.googlePlaceId === 'string' ? req.body.googlePlaceId : null
       });
       globalPlaceId = created.resolvedId;
     }

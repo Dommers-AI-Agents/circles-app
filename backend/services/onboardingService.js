@@ -78,6 +78,7 @@ class OnboardingService {
 
       // Create default circles and sample place in a transaction
       console.log(`🔄 Starting transaction for user ${userId}`);
+      let samplePlaceRefId = null;
       const result = await db.runTransaction(async (transaction) => {
         console.log(`📝 Inside transaction for user ${userId}`);
         const circleRefs = [];
@@ -117,6 +118,7 @@ class OnboardingService {
 
           // Create sample place
           const placeRef = db.collection(COLLECTIONS.PLACES).doc();
+          samplePlaceRefId = placeRef.id;
           const placeData = createPlace({
             name: samplePlaceData.name,
             description: samplePlaceData.description,
@@ -154,8 +156,18 @@ class OnboardingService {
           updatedAt: new Date().toISOString()
         });
         
-        return { circleIds, samplePlace: samplePlaceData };
+        return { circleIds, samplePlace: samplePlaceData, samplePlaceId: samplePlaceRefId };
       });
+      // Every save is linked to its one venue record (a transaction can't run
+      // the resolver's queries, so after it; best-effort like every link)
+      if (result.samplePlaceId) {
+        try {
+          const { ensureGlobalPlaceLink } = require('./globalPlaceResolver');
+          await ensureGlobalPlaceLink(await db.collection(COLLECTIONS.PLACES).doc(result.samplePlaceId).get());
+        } catch (linkError) {
+          console.error('⚠️ Sample place link failed (non-fatal):', linkError.message);
+        }
+      }
       
       console.log(`✅ Onboarding completed for user ${userId}`);
       console.log(`📁 Created ${result.circleIds.length} default circles`);

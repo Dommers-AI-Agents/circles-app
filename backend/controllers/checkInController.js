@@ -393,8 +393,9 @@ exports.createCheckIn = async (req, res) => {
           const placeRef = await db.collection(COLLECTIONS.PLACES).add(place);
           finalPlaceId = placeRef.id;
 
-          // Link the save to its canonical venue record (best-effort)
-          globalPlaceId = await ensureGlobalPlaceLink(await placeRef.get());
+          // Link the save to its canonical venue record (best-effort); the
+          // venue of the save they checked in from, when there was one
+          globalPlaceId = await ensureGlobalPlaceLink(await placeRef.get(), { knownVenueId: checkInVenueHint || null });
 
           // Keep the browse location tree fresh (best-effort)
           indexSavedPlace(checkInCircle.id, placeData);
