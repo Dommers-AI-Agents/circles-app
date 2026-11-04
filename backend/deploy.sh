@@ -262,9 +262,9 @@ gcloud run deploy $SERVICE_NAME \
     --set-env-vars="$ENV_VARS" \
     --project=$PROJECT_ID \
     --memory=512Mi \
-    --min-instances=1 \
+    --min-instances=2 \
     --max-instances=100 \
-    --concurrency=80 \
+    --concurrency=20 \
     --port=8080 \
     --quiet
 
