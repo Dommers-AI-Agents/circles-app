@@ -428,7 +428,12 @@ async function findCanonicalByNameAndLocation(name, location, excludeId = null, 
     // Market" and is not the same venue (found during the 2026-08-12 dedup
     // migration).
     if (candidateName === normalized) {
-      if (distance <= NAME_MATCH_RADIUS_METERS && distance < bestDistance) {
+      // Of equal names, the record with a Google id is the venue (a bare
+      // twin is a duplicate waiting to be merged), then the nearest
+      const better = !best
+        || (!!data.googlePlaceId && !best.data().googlePlaceId)
+        || (!!data.googlePlaceId === !!best.data().googlePlaceId && distance < bestDistance);
+      if (distance <= NAME_MATCH_RADIUS_METERS && better) {
         best = doc;
         bestDistance = distance;
       }
@@ -446,6 +451,14 @@ async function findCanonicalByNameAndLocation(name, location, excludeId = null, 
     }
   });
   return best || similar;
+}
+
+/** The live venue record holding this Google id, or null. */
+async function findVenueByGooglePlaceId(googlePlaceId) {
+  if (!googlePlaceId) return null;
+  const snap = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES)
+    .where('googlePlaceId', '==', String(googlePlaceId)).limit(5).get();
+  return snap.docs.find((doc) => !doc.data().deletedAt && !doc.data().mergedInto) || null;
 }
 
 async function ensureGlobalPlaceLink(placeDoc) {
@@ -574,5 +587,6 @@ module.exports = {
   createGlobalPlaceFromLegacy,
   createGlobalPlaceFromDetails,
   ensureGlobalPlaceLink,
-  findCanonicalByNameAndLocation
+  findCanonicalByNameAndLocation,
+  findVenueByGooglePlaceId
 };

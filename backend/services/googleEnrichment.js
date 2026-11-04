@@ -188,6 +188,16 @@ async function enrichSaveFromGoogle(placeData) {
         // ensureGlobalPlaceLink matches the save to the bare record,
         // strips the enriched fields off the save, and every read
         // overlays bare data — the enrichment would vanish.
+        // One venue per Google id: when another record already holds this id,
+        // the save links to that one (by googlePlaceId) and the bare record is
+        // left alone. Stamping the id here made a second Goldie's (2026-10-17).
+        if (canonicalDoc) {
+          const holder = await require('./globalPlaceResolver').findVenueByGooglePlaceId(googleData.googlePlaceId);
+          if (holder && holder.id !== canonicalDoc.id) {
+            console.warn(`⚠️ Bare venue ${canonicalDoc.id} duplicates ${holder.id} (${googleData.googlePlaceId}) — linking the save to ${holder.id}; merge ${canonicalDoc.id} into it`);
+            canonicalDoc = null;
+          }
+        }
         if (canonicalDoc) {
           const { createAttributedPhoto } = require('../models/GlobalPlace');
           const upgradedName = googleData.name || canonicalData.name;

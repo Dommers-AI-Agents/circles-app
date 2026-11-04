@@ -25,8 +25,11 @@ jest.mock('@googlemaps/google-maps-services-js', () => ({
     }
   }
 }));
-const mockCanonical = { doc: null };
-jest.mock('../globalPlaceResolver', () => ({ findCanonicalByNameAndLocation: async () => mockCanonical.doc }));
+const mockCanonical = { doc: null, googleHolder: null };
+jest.mock('../globalPlaceResolver', () => ({
+  findCanonicalByNameAndLocation: async () => mockCanonical.doc,
+  findVenueByGooglePlaceId: async () => mockCanonical.googleHolder
+}));
 jest.mock('../storage', () => ({ downloadAndUploadMultipleImages: async () => ({ uploadedUrls: [] }) }));
 jest.mock('../categoryClassifier', () => ({ isEnabled: () => false, MODEL: 'none' }));
 
@@ -71,6 +74,21 @@ test('Google hours still fill a venue whose hours did not come from its owner', 
   mockCanonical.doc = await mockDb.collection('globalPlaces').doc('g1').get();
   await enrichSaveFromGoogle({ name: 'Test Bakery', location: { type: 'Point', coordinates: [-80.86, 35.21] } });
   expect(row('globalPlaces', 'g1')['googleData.openingHours']).toEqual([{ day: 1, hours: 'Monday: 7 AM – 3 PM' }]);
+});
+
+test('a bare venue never takes a Google id another venue already holds', async () => {
+  mockCanonical.doc = await mockDb.collection('globalPlaces').doc('g1').get();
+  mockCanonical.googleHolder = { id: 'gSal' };
+  const save = { name: 'Test Bakery', location: { type: 'Point', coordinates: [-80.86, 35.21] } };
+  try {
+    expect(await enrichSaveFromGoogle(save)).toBe(true);
+  } finally {
+    mockCanonical.googleHolder = null;
+  }
+  // The save carries the id, so linking lands on the venue that holds it
+  expect(save.googlePlaceId).toBe('ChIJsal');
+  expect(row('globalPlaces', 'g1').googlePlaceId).toBeUndefined();
+  expect(row('globalPlaces', 'g1').name).toBe('Test Bakery');
 });
 
 test('a Google category change reaches every save and the store', async () => {
