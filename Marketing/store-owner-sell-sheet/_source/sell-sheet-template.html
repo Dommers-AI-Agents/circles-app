@@ -1,6 +1,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Founding Store Sell Sheet</title>
+<title>Store Owner Sell Sheet</title>
 <style>
   @page { size: letter; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -17,17 +17,18 @@
     font-family:"Helvetica Neue", Helvetica, Arial, sans-serif;
     color:var(--body);
     -webkit-print-color-adjust:exact; print-color-adjust:exact;
-    display:flex; justify-content:center; padding:32px 8px;
+    display:flex; flex-direction:column; align-items:center; gap:32px; padding:32px 8px;
   }
   .sheet{
     width:8.5in; height:11in; background:var(--paper);
-    display:flex; flex-direction:column;
+    display:flex; flex-direction:column; overflow:hidden;
     box-shadow:0 18px 60px rgba(21,23,28,.28);
     flex:0 0 auto;
   }
   @media print{
-    body{ padding:0; background:var(--paper); }
-    .sheet{ box-shadow:none; }
+    body{ padding:0; gap:0; background:var(--paper); display:block; }
+    .sheet{ box-shadow:none; break-after:page; }
+    .sheet:last-child{ break-after:auto; }
   }
 
   .serif{ font-family:Georgia, "Times New Roman", serif; }
@@ -58,14 +59,19 @@
     padding:7px 14px; border-radius:999px;
   }
 
+  /* slim header for the back */
+  .hero.slim{ padding:20px 44px 20px; }
+  .hero.slim .hero-top{ margin-bottom:12px; }
+  .hero.slim h1{ font-size:25px; margin-bottom:0; }
+
   /* ---------- SECTIONS ---------- */
-  .main{ flex:1; display:flex; flex-direction:column; justify-content:space-evenly; padding:16px 44px 0; }
+  .main{ flex:1; display:flex; flex-direction:column; justify-content:space-evenly; padding:14px 44px 0; }
   .sec-label{ color:var(--violet); margin-bottom:10px; }
 
   .benefits{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px; }
   .benefit h3{ font-size:14px; color:var(--ink); line-height:1.25; margin-bottom:6px; }
   .benefit p{ font-size:10.5px; line-height:1.5; }
-  .benefit .tick{
+  .tick{
     display:inline-flex; width:20px; height:20px; border-radius:50%;
     background:var(--panel); color:var(--violet); font-size:11px; font-weight:700;
     align-items:center; justify-content:center; margin-bottom:8px;
@@ -78,15 +84,35 @@
     padding:14px 18px 15px;
   }
   .strip-steps{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
-  .sstep{ position:relative; padding-left:0; }
   .sstep b{ display:block; font-size:11px; color:var(--ink); margin-bottom:3px; }
   .sstep > span{ font-size:10px; line-height:1.45; color:var(--body); display:block; }
-  .pts{ color:var(--gold-deep); font-weight:700; white-space:nowrap; display:inline; }
+  .pts{ color:var(--gold-deep); font-weight:700; }
   .strip-note{ font-size:9px; color:var(--muted); margin-top:10px; }
+
+  /* keep-them-coming-back grid */
+  .keep{ display:grid; grid-template-columns:1fr 1fr; gap:12px 22px; }
+  .kitem{ display:flex; gap:10px; }
+  .kicon{
+    flex:0 0 26px; height:26px; border-radius:7px; background:var(--panel);
+    border:1px solid var(--line); display:flex; align-items:center; justify-content:center;
+    font-size:13px;
+  }
+  .kitem b{ display:block; font-size:11px; color:var(--ink); margin-bottom:2px; }
+  .kitem div span{ font-size:10px; line-height:1.45; display:block; }
+
+  /* back: feature blocks */
+  .feature{ display:grid; grid-template-columns:1fr 1.05fr; gap:22px; align-items:start; }
+  .feature h3{ font-size:16px; color:var(--ink); line-height:1.25; margin-bottom:6px; }
+  .feature p{ font-size:10.5px; line-height:1.5; }
+  .feature ul{ list-style:none; }
+  .feature li{ font-size:10.5px; line-height:1.45; padding-left:16px; position:relative; margin-bottom:5px; }
+  .feature li::before{ content:"✓"; position:absolute; left:0; color:var(--violet); font-weight:700; }
+  .url{ font-family:Menlo, Monaco, monospace; font-size:9.5px; color:var(--violet);
+        background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
+  .rule{ border:0; border-top:1px solid var(--line); }
 
   /* math + signup row */
   .row2{ display:grid; grid-template-columns:1.15fr 1fr; gap:20px; }
-
   .math{
     border:1.5px solid var(--violet); border-radius:10px; padding:16px 18px;
   }
@@ -113,10 +139,11 @@
 
   /* ---------- FOOTER ---------- */
   .footer{
-    margin-top:22px;
+    margin-top:18px;
     background:linear-gradient(135deg, var(--gunmetal) 0%, var(--ink) 100%);
     color:#fff; padding:20px 44px; display:flex; align-items:center; gap:22px;
   }
+  .footer.slim{ padding:14px 44px; }
   .qr{ flex:0 0 auto; background:#fff; border-radius:8px; padding:6px; width:92px; height:92px; }
   .qr svg{ display:block; width:80px; height:80px; }
   .cta h2{ font-size:17px; font-weight:700; margin-bottom:5px; text-wrap:balance; }
@@ -125,21 +152,46 @@
   .foot-right{ margin-left:auto; text-align:right; font-size:9.5px; color:rgba(255,255,255,.65);
                line-height:1.8; white-space:nowrap; }
   .foot-right b{ color:#fff; font-size:11px; display:block; }
+  /* front: larger type to fill the page */
+  .front .hero{ padding:34px 44px 32px; }
+  .front .hero h1{ font-size:38px; margin-bottom:14px; }
+  .front .hero p{ font-size:14px; max-width:7in; margin-bottom:18px; }
+  .front .badge{ font-size:13px; padding:8px 16px; }
+  .front .main{ padding-top:10px; }
+  .front .sec-label{ font-size:11px; margin-bottom:12px; }
+  .front .benefits{ gap:22px; }
+  .front .tick{ width:24px; height:24px; font-size:13px; }
+  .front .benefit h3{ font-size:17px; margin-bottom:7px; }
+  .front .benefit p{ font-size:12.5px; line-height:1.5; }
+  .front .strip{ padding:18px 22px 18px; }
+  .front .strip-steps{ gap:20px; }
+  .front .sstep b{ font-size:13px; margin-bottom:5px; }
+  .front .sstep > span{ font-size:12px; line-height:1.5; }
+  .front .strip-note{ font-size:10.5px; margin-top:12px; }
+  .front .keep{ gap:16px 26px; }
+  .front .kicon{ flex-basis:34px; height:34px; font-size:17px; border-radius:9px; }
+  .front .kitem{ gap:12px; }
+  .front .kitem b{ font-size:13.5px; margin-bottom:3px; }
+  .front .kitem div span{ font-size:12px; line-height:1.5; }
+  .front .footer.slim{ padding:18px 44px; }
+  .front .cta h2{ font-size:19px; margin-bottom:0; }
+  .front .foot-right b{ font-size:13px; }
 </style>
 
-<div class="sheet">
+<!-- ================= FRONT ================= -->
+<div class="sheet front">
 
   <header class="hero">
     <div class="hero-top">
       <img src="data:image/png;base64,__ICON_B64__" alt="FavCircles app icon">
       <span class="wordmark serif">FavCircles</span>
-      <span class="eyebrow">Founding Store Program</span>
+      <span class="eyebrow">For store owners</span>
     </div>
     <h1 class="serif">Turn your regulars into your best&nbsp;marketing.</h1>
     <p>FavCircles is where people save and share the places they love — so a recommendation
-       for your store comes from a friend, not an ad. Claim your store and every loyal customer
-       becomes a walking referral, backed by a loyalty program you run entirely from your phone.</p>
-    <span class="badge">First 3 months free&ensp;·&ensp;Limited-time offer for early adopters</span>
+       for your store comes from a friend, not an ad. Claim your store and get loyalty rewards,
+       local promotion, and order ahead in one app you run entirely from your phone.</p>
+    <span class="badge">First 3 months free&ensp;·&ensp;then $49.99 / month</span>
   </header>
 
   <main class="main">
@@ -150,23 +202,23 @@
         <div class="benefit">
           <span class="tick">✓</span>
           <h3 class="serif">New faces find you — free</h3>
-          <p>Your offers and announcements appear in the app's <b>Specials feed</b>, shown to
-             people right around your neighborhood. Post happy hour, live music, a seasonal
-             menu — no ad spend, no algorithm to fight.</p>
+          <p>Your offers, announcements, and events show in the app's <b>Locals</b> tab to
+             people right around your neighborhood. Post happy hour, live music, a tasting
+             night — no ad spend, no algorithm to fight.</p>
         </div>
         <div class="benefit">
           <span class="tick">✓</span>
           <h3 class="serif">Word of mouth you can see</h3>
-          <p>When a customer saves your store, their whole circle of friends sees it — and
-             they earn points when a friend saves it too. Sharing you isn't a favor,
-             it's part of the deal.</p>
+          <p>When a customer saves your store, their friends see it. Your dashboard shows
+             who follows and saves you, scans and rewards used, and how each month compares
+             to the last.</p>
         </div>
         <div class="benefit">
           <span class="tick">✓</span>
-          <h3 class="serif">Loyalty with zero overhead</h3>
-          <p>Two stickers replace punch cards and pricey platforms. No hardware, no POS
-             integration, nothing to install. You set the points and the rewards — and
-             change them anytime.</p>
+          <h3 class="serif">Loyalty with zero hardware</h3>
+          <p>Your codes replace punch cards and pricey platforms. No POS integration,
+             nothing to install. You set the points and the rewards — and change them
+             anytime.</p>
         </div>
       </div>
     </section>
@@ -176,21 +228,121 @@
       <div class="strip-steps">
         <div class="sstep">
           <b>1 &nbsp;They scan your window sticker</b>
-          <span>New customers join FavCircles and save your store. <span class="pts">+100 pts</span> to
-          join, <span class="pts">+50</span> for the save.</span>
+          <span>It opens right on their phone, no download needed. They join and save your
+          store, and earn the <span class="pts">welcome points you choose</span>.</span>
         </div>
         <div class="sstep">
-          <b>2 &nbsp;They scan the register sticker</b>
-          <span>Every purchase earns points on their own phone — <span class="pts">you choose how
-          many</span>, up to 500 per visit.</span>
+          <b>2 &nbsp;They scan your register card</b>
+          <span>Every purchase earns points on their own phone — <span class="pts">you choose
+          how many</span>.</span>
         </div>
         <div class="sstep">
           <b>3 &nbsp;They redeem, you honor it</b>
-          <span>A single-use voucher appears on their screen, valid 5 minutes.
-          Nothing to install, nothing to reconcile.</span>
+          <span>A reward ticket appears on their screen for 15 minutes. Your staff tap
+          <strong>Given</strong> — nothing to install, nothing to reconcile.</span>
         </div>
       </div>
-      <div class="strip-note">New-member bonus applies to accounts created within 7 days of first scan. Friends who save your store from a share earn +50 pts too.</div>
+      <div class="strip-note">If a ticket expires before it's used, the points go back to the customer automatically.</div>
+    </section>
+
+    <section>
+      <div class="eyebrow sec-label">Keep them coming back</div>
+      <div class="keep">
+        <div class="kitem">
+          <span class="kicon">💳</span>
+          <div><b>Your card in their Apple Wallet</b>
+          <span>Their points balance for your store, updated the moment they earn.</span></div>
+        </div>
+        <div class="kitem">
+          <span class="kicon">🔔</span>
+          <div><b>Your news reaches your followers</b>
+          <span>New offers and events land in followers' feeds, with an alert for anyone
+          who turns them on.</span></div>
+        </div>
+        <div class="kitem">
+          <span class="kicon">🎟️</span>
+          <div><b>One-time codes</b>
+          <span>Hand out or email single-use reward codes for events, apologies, or VIPs.</span></div>
+        </div>
+        <div class="kitem">
+          <span class="kicon">📈</span>
+          <div><b>A monthly report in your inbox</b>
+          <span>New saves, scans, and rewards — so you know what's working.</span></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer slim">
+    <div class="cta">
+      <h2 class="serif">Ordering, menus, and more on the back&nbsp;→</h2>
+    </div>
+    <div class="foot-right">
+      <b>FavCircles.com</b>
+    </div>
+  </footer>
+
+</div>
+
+<!-- ================= BACK ================= -->
+<div class="sheet">
+
+  <header class="hero slim">
+    <div class="hero-top">
+      <img src="data:image/png;base64,__ICON_B64__" alt="FavCircles app icon">
+      <span class="wordmark serif">FavCircles</span>
+      <span class="eyebrow">For store owners</span>
+    </div>
+    <h1 class="serif">Sell more, with less work.</h1>
+  </header>
+
+  <main class="main">
+
+    <section class="feature">
+      <div>
+        <div class="eyebrow sec-label">Order ahead</div>
+        <h3 class="serif">Take orders in the app and online.</h3>
+        <p>Customers order from your menu in FavCircles — or on your own ordering page, no
+           account needed. They pay when they pick up, so there are no card fees and no
+           commission.</p>
+      </div>
+      <ul>
+        <li>Your ordering page: <span class="url">order.favcircles.com/your-store</span> — link it from Instagram, Google, or your website.</li>
+        <li>Your team gets a push notification and an email for every order.</li>
+        <li>Turn ordering on or off and set your prep time, anytime.</li>
+      </ul>
+    </section>
+
+    <hr class="rule">
+
+    <section class="feature">
+      <div>
+        <div class="eyebrow sec-label">Your menu in a minute</div>
+        <h3 class="serif">Snap a photo. We build the menu.</h3>
+        <p>Photograph your printed menu and FavCircles fills in every item, price, and
+           section for you. Nothing to type.</p>
+      </div>
+      <ul>
+        <li><b>Hours:</b> photograph your door sign and your hours are set.</li>
+        <li><b>Events:</b> photograph a flyer and it becomes a post with the date filled in.</li>
+        <li>Everything arrives as a draft — you check it and publish.</li>
+      </ul>
+    </section>
+
+    <hr class="rule">
+
+    <section class="feature">
+      <div>
+        <div class="eyebrow sec-label">Your storefront</div>
+        <h3 class="serif">Your page, your team.</h3>
+        <p>Photos, hours, featured items, and buttons for Reserve, Order, or Book — all on
+           your store's page in FavCircles.</p>
+      </div>
+      <ul>
+        <li>Add up to 10 managers so your staff can post and check orders.</li>
+        <li>Run everything from your phone — no laptop, no dashboard login.</li>
+      </ul>
     </section>
 
     <div class="row2">
@@ -205,12 +357,16 @@
             <span class="who">Local ads to reach nearby customers</span>
             <span class="cost">$300+ / mo, no loyalty</span>
           </div>
+          <div class="mrow">
+            <span class="who">Online ordering apps</span>
+            <span class="cost">A cut of every order</span>
+          </div>
           <div class="mrow fav">
-            <span class="who">FavCircles — loyalty + promotion + discovery</span>
+            <span class="who">FavCircles — loyalty, promotion, and ordering</span>
             <span class="cost">$49.99 / mo</span>
           </div>
         </div>
-        <div class="free">Your first 3 months are free — a limited-time offer for early adopters.</div>
+        <div class="free">Your first 3 months are free.</div>
       </section>
 
       <section>
@@ -218,8 +374,8 @@
         <ul class="signup">
           <li><span class="n">1</span><span><b>Download FavCircles</b> and find your store — not on the map yet? Add it in seconds.</span></li>
           <li><span class="n">2</span><span>Tap <b>"Is this your store?"</b> and claim it.</span></li>
-          <li><span class="n">3</span><span>We verify you and <b>mail your two stickers</b>.</span></li>
-          <li><span class="n">4</span><span><b>Set your rewards</b> and post your first special.</span></li>
+          <li><span class="n">3</span><span>Start <b>FavCircles Business</b> — free for 3 months.</span></li>
+          <li><span class="n">4</span><span>We send your <b>window sticker, register card, and table tents</b> (print more anytime). Set your rewards and post your first special.</span></li>
         </ul>
       </section>
     </div>

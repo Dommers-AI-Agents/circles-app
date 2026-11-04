@@ -60,6 +60,10 @@
   tbody tr:hover{background:var(--soft)}
   .scroll{overflow-x:auto}
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+  .print-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+  .print-item img{width:100%;border-radius:8px;border:1px solid var(--line);display:block;margin-bottom:12px}
+  .print-item .actions{display:flex;gap:10px;margin-top:12px}
+  .print-item .actions a{padding:8px 14px;border-radius:8px;font-weight:700;text-decoration:none;background:var(--navy);color:#fff}
   .ig-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
   .ig-post img{width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:8px;display:block}
   .ig-post .row{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap}
@@ -142,6 +146,7 @@
         <button data-tab="money">Money &amp; partners</button>
         <button data-tab="messaging">Email &amp; push</button>
         <button data-tab="instagram">Instagram</button>
+        <button data-tab="print">Print</button>
       </nav>
       <div class="spacer"></div>
       <select id="range" aria-label="Date range">
@@ -222,6 +227,12 @@
           <span class="muted" id="igMsg"></span>
         </div>
         <div class="ig-grid" id="igPosts"></div>
+      </section>
+    </div>
+    <div id="tab-print" class="hidden">
+      <section class="card">
+        <h2>Print materials <span class="muted">(open the PDF, then print it from your browser)</span></h2>
+        <div class="print-grid" id="printItems"></div>
       </section>
     </div>
   </main>

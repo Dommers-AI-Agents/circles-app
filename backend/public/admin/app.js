@@ -159,13 +159,33 @@
     }
   });
 
+  const TABS = ['overview', 'people', 'money', 'messaging', 'instagram', 'print'];
+
+  // Print tab: files hosted on favcircles.com (website/favcircles.com), so a
+  // new version is an upload there, not a deploy or an app build.
+  const PRINT_MATERIALS = [{
+    title: 'Store sell sheet',
+    sub: 'For store owners · two-sided US Letter. Print double-sided (long edge), actual size, background graphics on.',
+    pdf: 'https://favcircles.com/FavCircles-Founding-Store-Sell-Sheet.pdf',
+    thumb: 'https://favcircles.com/img/sell-sheet-thumb.png'
+  }];
+
+  function renderPrint() {
+    $('#printItems').innerHTML = PRINT_MATERIALS.map((m) => `<div class="card print-item">
+        <a href="${esc(m.pdf)}" target="_blank" rel="noopener"><img src="${esc(m.thumb)}" alt="${esc(m.title)} preview" loading="lazy"></a>
+        <b>${esc(m.title)}</b>
+        <div class="sub muted" style="white-space:normal">${esc(m.sub)}</div>
+        <div class="actions"><a href="${esc(m.pdf)}" target="_blank" rel="noopener">Open PDF to print</a></div>
+      </div>`).join('');
+  }
+
   $('#signOut').addEventListener('click', () => signOut());
   $('#range').addEventListener('change', () => load());
   $('#refresh').addEventListener('click', () => load(true));
   document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => {
     tab = b.dataset.tab;
     document.querySelectorAll('nav button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
-    ['overview', 'people', 'money', 'messaging', 'instagram'].forEach((t) => $(`#tab-${t}`).classList.toggle('hidden', t !== tab));
+    TABS.forEach((t) => $(`#tab-${t}`).classList.toggle('hidden', t !== tab));
     load();
   }));
 
@@ -186,6 +206,7 @@
         renderMessaging(msg);
         renderEmailHealth(eh);
       }
+      if (tab === 'print') renderPrint();
       if (tab === 'instagram') renderInstagram(await api('/admin/dashboard/instagram'));
     } catch (err) {
       if (err.message !== 'not admin') console.warn(err);
@@ -458,10 +479,10 @@
 
   // /admin#people (or #money, #messaging) opens that tab
   const fromHash = location.hash.slice(1);
-  if (['overview', 'people', 'money', 'messaging', 'instagram'].includes(fromHash)) {
+  if (TABS.includes(fromHash)) {
     tab = fromHash;
     document.querySelectorAll('nav button').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.tab === tab)));
-    ['overview', 'people', 'money', 'messaging', 'instagram'].forEach((t) => $(`#tab-${t}`).classList.toggle('hidden', t !== tab));
+    TABS.forEach((t) => $(`#tab-${t}`).classList.toggle('hidden', t !== tab));
   }
 
   if (token) {

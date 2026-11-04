@@ -32,7 +32,15 @@ class SettingsViewController: BaseTableViewController {
             }
         }
     }
-    
+
+    private enum AdminRow: Int, CaseIterable {
+        case dashboard
+        case sellSheet      // the printable store-owner sell sheet, hosted on the website
+    }
+
+    /// Lives on favcircles.com so a new sheet never needs an app build.
+    private static let sellSheetURL = URL(string: "https://favcircles.com/FavCircles-Founding-Store-Sell-Sheet.pdf")!
+
     private enum SubscriptionRow: Int, CaseIterable {
         case status
         case manage
@@ -599,7 +607,7 @@ extension SettingsViewController {
         guard let sectionType = Section(rawValue: section) else { return 0 }
         
         switch sectionType {
-        case .admin: return isAdmin ? 1 : 0
+        case .admin: return isAdmin ? AdminRow.allCases.count : 0
         case .subscription: return SubscriptionRow.allCases.count
         case .data: return DataRow.allCases.count
         case .account: return AccountRow.allCases.count
@@ -900,10 +908,16 @@ extension SettingsViewController {
             
         case .admin:
             var config = cell.defaultContentConfiguration()
-            config.text = "Admin Dashboard"
-            config.secondaryText = "Growth, people, money, email & push"
+            if AdminRow(rawValue: indexPath.row) == .sellSheet {
+                config.text = "Store Sell Sheet"
+                config.secondaryText = "Open the PDF to print or share"
+                config.image = UIImage(systemName: "printer")
+            } else {
+                config.text = "Admin Dashboard"
+                config.secondaryText = "Growth, people, money, email & push"
+                config.image = UIImage(systemName: "chart.bar.xaxis")
+            }
             config.secondaryTextProperties.color = Constants.Colors.secondaryLabel
-            config.image = UIImage(systemName: "chart.bar.xaxis")
             config.imageProperties.tintColor = Constants.Colors.primary
             cell.contentConfiguration = config
             cell.accessoryType = .disclosureIndicator
@@ -947,7 +961,14 @@ extension SettingsViewController {
         
         switch section {
         case .admin:
-            openAdminDashboard()
+            if AdminRow(rawValue: indexPath.row) == .sellSheet {
+                // Safari's share button has Print
+                let safari = SFSafariViewController(url: Self.sellSheetURL)
+                safari.preferredControlTintColor = Constants.Colors.primary
+                present(safari, animated: true)
+            } else {
+                openAdminDashboard()
+            }
 
         case .subscription:
             if let row = SubscriptionRow(rawValue: indexPath.row) {
