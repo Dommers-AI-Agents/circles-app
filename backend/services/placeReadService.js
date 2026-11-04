@@ -78,7 +78,7 @@ const AUTHORITATIVE_GOOGLE_FIELDS = ['website', 'phone', 'openingHours'];
 // Per-user fields (notes, tags, privacy, photos, ...) are untouched.
 // fetchGlobalSocialMap's projection: everything overlayVenueFields and
 // overlayVenuePhotos read, plus the social counts
-const SOCIAL_MAP_FIELDS = ['likes', 'commentsCount', 'photos', ...VENUE_TOP_FIELDS,
+const SOCIAL_MAP_FIELDS = ['likes', 'commentsCount', 'photos', 'googlePlaceId', ...VENUE_TOP_FIELDS,
   ...VENUE_GOOGLE_FIELDS.map(field => `googleData.${field}`)];
 
 const overlayVenueFields = (place, globalData) => {
@@ -91,6 +91,10 @@ const overlayVenueFields = (place, globalData) => {
       merged[field] = null;
     }
   });
+  // The venue's Google id, read-only: enrichment keys on it, and a re-save
+  // from the place page (Add to My Circle) must carry it or it mints a
+  // duplicate venue. Not in VENUE_TOP_FIELDS — edits never rewrite it.
+  if (globalData.googlePlaceId) merged.googlePlaceId = globalData.googlePlaceId;
   const googleData = globalData.googleData || {};
   VENUE_GOOGLE_FIELDS.forEach(field => {
     const value = googleData[field];
