@@ -896,6 +896,10 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             body["placeDescription"] = place.description ?? ""
             body["placePhone"] = place.phone ?? ""
             body["placeWebsite"] = place.website ?? ""
+            // The venue's Google id, so the new save links to its one venue
+            if let googlePlaceId = place.googlePlaceId, !googlePlaceId.isEmpty {
+                body["placeGooglePlaceId"] = googlePlaceId
+            }
         }
         
         // Initiate upload
@@ -1011,6 +1015,10 @@ extension ContentUploadViewController: PlaceSearchDelegate {
             body["placeDescription"] = place.description ?? ""
             body["placePhone"] = place.phone ?? ""
             body["placeWebsite"] = place.website ?? ""
+            // The venue's Google id, so the new save links to its one venue
+            if let googlePlaceId = place.googlePlaceId, !googlePlaceId.isEmpty {
+                body["placeGooglePlaceId"] = googlePlaceId
+            }
         }
         
         // Initiate upload

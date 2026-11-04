@@ -332,15 +332,21 @@ extension AddPlaceViewController {
         // A known venue keeps its identity. Re-finding it in Apple Maps saved
         // Apple's name ("Fresh Monkee - Southend") with no Google id, and the
         // server minted a duplicate venue (2026-11-04). The save path sends
-        // this Google id, so the save links to the one venue record.
-        if let googlePlaceId = place.googlePlaceId, !googlePlaceId.isEmpty,
+        // this venue record id and Google id, so the save links to the one
+        // venue record — Apple-only and manual venues (no Google id) too.
+        let googlePlaceId = place.googlePlaceId.flatMap { $0.isEmpty ? nil : $0 }
+        let globalPlaceId = place.globalPlaceId.flatMap { $0.isEmpty ? nil : $0 }
+        if googlePlaceId != nil || globalPlaceId != nil,
            let coordinate = place.location?.clLocation?.coordinate {
-            selectedGooglePlaceDetails = GooglePlaceDetails(
-                placeID: googlePlaceId,
-                name: place.name,
-                address: place.address,
-                coordinate: coordinate
-            )
+            knownGlobalPlaceId = globalPlaceId
+            if let googlePlaceId = googlePlaceId {
+                selectedGooglePlaceDetails = GooglePlaceDetails(
+                    placeID: googlePlaceId,
+                    name: place.name,
+                    address: place.address,
+                    coordinate: coordinate
+                )
+            }
             selectedLocation = coordinate
             enableManualEntry()
             nameTextField.text = place.name

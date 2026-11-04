@@ -10,6 +10,7 @@ import CoreLocation
 struct PlaceAssetLoaderTests {
     final class RecordingForm: PlaceAssetLoaderDelegate {
         var selectedGooglePlaceDetails: GooglePlaceDetails?
+        var knownGlobalPlaceId: String?
         var uploadedPhotoUrls: [String] = []
         var downloadedGoogleImage: UIImage?
         var downloadedLookAroundImage: UIImage?

@@ -189,6 +189,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
                     
                     // Store additional data for later use when saving
                     self?.currentPOIData = poiData
+                    self?.knownGlobalPlaceId = nil
                     
                     // Update location
                     self?.selectedLocation = coordinate

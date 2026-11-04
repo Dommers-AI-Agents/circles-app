@@ -425,7 +425,7 @@ class PlaceService {
         )
     }
     
-    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, privateNotes: String? = nil, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, globalPlaceId: String? = nil, privateNotes: String? = nil, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Use provided location or geocode the address
         if let providedLocation = location {
@@ -444,6 +444,7 @@ class PlaceService {
                     circleId: circleId,
                     notes: privateNotes,
                     googlePlaceId: googlePlaceId,
+                    globalPlaceId: globalPlaceId,
                     preUploadedPhotoUrls: photoUrls,
                     userRating: userRating,
                     force: force,
@@ -473,6 +474,8 @@ class PlaceService {
                 neighborhood: neighborhood,
                 applePoiCategory: applePoiCategory,
                 userRating: userRating,
+                googlePlaceId: googlePlaceId,
+                globalPlaceId: globalPlaceId,
                 force: force,
                 offersPostSaveNudges: offersPostSaveNudges,
                 completion: completion
@@ -501,6 +504,8 @@ class PlaceService {
                         neighborhood: neighborhood,
                         applePoiCategory: applePoiCategory,
                         userRating: userRating,
+                        googlePlaceId: googlePlaceId,
+                        globalPlaceId: globalPlaceId,
                         force: force,
                         offersPostSaveNudges: offersPostSaveNudges,
                         completion: completion
@@ -512,7 +517,7 @@ class PlaceService {
         }
     }
     
-    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, googlePlaceId: String? = nil, globalPlaceId: String? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         // If we already have photo URLs, use them directly
         if let urls = photoUrls, !urls.isEmpty {
             Logger.debug("Using \(urls.count) pre-uploaded photo URLs")
@@ -534,6 +539,8 @@ class PlaceService {
                 neighborhood: neighborhood,
                 applePoiCategory: applePoiCategory,
                 userRating: userRating,
+                googlePlaceId: googlePlaceId,
+                globalPlaceId: globalPlaceId,
                 force: force,
                 offersPostSaveNudges: offersPostSaveNudges,
                 completion: completion
@@ -564,6 +571,8 @@ class PlaceService {
                         neighborhood: neighborhood,
                         applePoiCategory: applePoiCategory,
                         userRating: userRating,
+                        googlePlaceId: googlePlaceId,
+                        globalPlaceId: globalPlaceId,
                         force: force,
                         offersPostSaveNudges: offersPostSaveNudges,
                         completion: completion
@@ -590,6 +599,8 @@ class PlaceService {
                         neighborhood: neighborhood,
                         applePoiCategory: applePoiCategory,
                         userRating: userRating,
+                        googlePlaceId: googlePlaceId,
+                        globalPlaceId: globalPlaceId,
                         force: force,
                         offersPostSaveNudges: offersPostSaveNudges,
                         completion: completion
@@ -617,6 +628,8 @@ class PlaceService {
                 neighborhood: neighborhood,
                 applePoiCategory: applePoiCategory,
                 userRating: userRating,
+                googlePlaceId: googlePlaceId,
+                globalPlaceId: globalPlaceId,
                 force: force,
                 offersPostSaveNudges: offersPostSaveNudges,
                 completion: completion
@@ -624,7 +637,7 @@ class PlaceService {
         }
     }
     
-    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, googlePlaceId: String? = nil, globalPlaceId: String? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Validate coordinates before sending to backend
         guard location.latitude >= -90 && location.latitude <= 90 &&
@@ -708,6 +721,15 @@ class PlaceService {
 
         if let userRating = userRating {
             body["userRating"] = userRating
+        }
+
+        // The venue's identity, so the save links to its one venue record
+        // (this body used to drop the Google id → duplicate venues, 2026-11-04)
+        if let googlePlaceId = googlePlaceId, !googlePlaceId.isEmpty {
+            body["googlePlaceId"] = googlePlaceId
+        }
+        if let globalPlaceId = globalPlaceId, !globalPlaceId.isEmpty {
+            body["globalPlaceId"] = globalPlaceId
         }
 
         // Add force flag if provided (for "Add Anyway" functionality)
@@ -794,7 +816,7 @@ class PlaceService {
     
     // MARK: - Add Place from POI
     
-    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, googlePlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    func addPlaceFromPOI(name: String, address: String, location: GeoLocation?, category: PlaceCategory, website: String? = nil, phone: String? = nil, description: String? = nil, circleId: String, notes: String?, googlePlaceId: String? = nil, globalPlaceId: String? = nil, preUploadedPhotoUrls: [String]? = nil, rating: Double? = nil, userRatingsTotal: Int? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         Logger.debug("PlaceService.addPlaceFromPOI called with name: \(name), googlePlaceId: \(googlePlaceId ?? "nil"), photos: \(preUploadedPhotoUrls?.count ?? 0)")
         
         var body: [String: Any] = [
@@ -842,6 +864,10 @@ class PlaceService {
             body["description"] = description
         }
         
+        // The venue the caller already knows: the server links to it as-is
+        if let globalPlaceId = globalPlaceId, !globalPlaceId.isEmpty {
+            body["globalPlaceId"] = globalPlaceId
+        }
         if let googlePlaceId = googlePlaceId {
             body["googlePlaceId"] = googlePlaceId
         }

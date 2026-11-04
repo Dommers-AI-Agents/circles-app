@@ -290,6 +290,7 @@ extension AddPlaceViewController {
                 circleId: selectedCircleId,
                 notes: privateNotes,
                 googlePlaceId: nil,
+                globalPlaceId: knownGlobalPlaceId,
                 preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
                 force: force,
                 offersPostSaveNudges: true
@@ -434,6 +435,7 @@ extension AddPlaceViewController {
             photoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
             location: location,
             googlePlaceId: nil,
+            globalPlaceId: knownGlobalPlaceId,
             privateNotes: privateNotes.isEmpty ? nil : privateNotes,
             neighborhood: selectedNeighborhood,
             applePoiCategory: selectedApplePoiCategory,
@@ -512,6 +514,7 @@ extension AddPlaceViewController {
             circleId: selectedCircleId,
             notes: privateNotes,
             googlePlaceId: googleDetails.placeID.isEmpty ? nil : googleDetails.placeID,
+            globalPlaceId: knownGlobalPlaceId,
             preUploadedPhotoUrls: self.uploadedPhotoUrls.isEmpty ? nil : self.uploadedPhotoUrls,
             rating: googleDetails.rating,
             userRatingsTotal: googleDetails.userRatingsTotal,

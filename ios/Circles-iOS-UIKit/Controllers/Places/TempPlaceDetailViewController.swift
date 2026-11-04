@@ -10,6 +10,9 @@ class TempPlaceDetailViewController: BaseViewController {
     private var latitude: Double?
     private var longitude: Double?
     private var photoURL: String?
+    /// The venue record of the place (activity metadata), so Add to My
+    /// Circle links to that one venue (2026-11-04)
+    private var globalPlaceId: String?
     
     // MARK: - UI Elements
     private let scrollView: UIScrollView = {
@@ -86,8 +89,9 @@ class TempPlaceDetailViewController: BaseViewController {
     }
     
     // MARK: - Configuration
-    func configure(placeId: String, name: String, address: String, latitude: Double? = nil, longitude: Double? = nil, photo: String? = nil) {
+    func configure(placeId: String, name: String, address: String, latitude: Double? = nil, longitude: Double? = nil, photo: String? = nil, globalPlaceId: String? = nil) {
         self.placeId = placeId
+        self.globalPlaceId = globalPlaceId
         self.placeName = name
         self.placeAddress = address
         self.latitude = latitude
@@ -200,7 +204,8 @@ class TempPlaceDetailViewController: BaseViewController {
             address: placeAddress,
             latitude: latitude,
             longitude: longitude,
-            photoURL: photoURL
+            photoURL: photoURL,
+            globalPlaceId: globalPlaceId
         )
         let navController = UINavigationController(rootViewController: addToCircleVC)
         present(navController, animated: true)

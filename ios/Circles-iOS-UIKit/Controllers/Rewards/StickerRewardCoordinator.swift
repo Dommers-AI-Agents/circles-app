@@ -353,7 +353,9 @@ final class StickerRewardCoordinator: NSObject {
             category: category,
             circleId: circle.id,
             notes: nil,
-            googlePlaceId: venue.googlePlaceId
+            googlePlaceId: venue.googlePlaceId,
+            // The store's venue record: stores with no Google id link too
+            globalPlaceId: venue.globalPlaceId
         ) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {

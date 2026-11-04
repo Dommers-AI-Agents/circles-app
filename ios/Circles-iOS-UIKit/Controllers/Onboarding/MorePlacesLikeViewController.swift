@@ -23,6 +23,9 @@ final class MorePlacesLikeViewController: BaseViewController, UICollectionViewDa
         let category: PlaceCategory
         let coordinate: CLLocationCoordinate2D?
         let googlePlaceId: String?
+        /// The venue record a catalog pick came from: the save links to it
+        /// (2026-11-04)
+        var globalPlaceId: String? = nil
 
         static func == (a: Pick, b: Pick) -> Bool { a.key == b.key }
         func hash(into hasher: inout Hasher) { hasher.combine(key) }
@@ -193,7 +196,7 @@ final class MorePlacesLikeViewController: BaseViewController, UICollectionViewDa
         let coordinate = place.location?.clLocation?.coordinate
         return Pick(key: "g:\(place.id)", name: place.name, detail: distanceText(to: coordinate) ?? place.category.displayName,
                     address: place.address, photoURL: photo, category: place.category,
-                    coordinate: coordinate, googlePlaceId: place.googlePlaceId)
+                    coordinate: coordinate, googlePlaceId: place.googlePlaceId, globalPlaceId: place.id)
     }
 
     private func pick(from place: Place) -> Pick {
@@ -201,7 +204,7 @@ final class MorePlacesLikeViewController: BaseViewController, UICollectionViewDa
         return Pick(key: "a:\(place.name.lowercased())|\(place.address.lowercased())", name: place.name,
                     detail: distanceText(to: coordinate) ?? place.address, address: place.address,
                     photoURL: place.photos?.first, category: place.category, coordinate: coordinate,
-                    googlePlaceId: place.googlePlaceId)
+                    googlePlaceId: place.googlePlaceId, globalPlaceId: place.globalPlaceId)
     }
 
     private func distanceText(to coordinate: CLLocationCoordinate2D?) -> String? {
@@ -292,7 +295,7 @@ final class MorePlacesLikeViewController: BaseViewController, UICollectionViewDa
             group.enter()
             PlaceService.shared.createPlace(name: pick.name, description: nil, address: pick.address, category: pick.category,
                                             circleId: circle.id, location: pick.coordinate,
-                                            googlePlaceId: pick.googlePlaceId) { result in
+                                            googlePlaceId: pick.googlePlaceId, globalPlaceId: pick.globalPlaceId) { result in
                 if case .success = result { added += 1 }
                 group.leave()
             }

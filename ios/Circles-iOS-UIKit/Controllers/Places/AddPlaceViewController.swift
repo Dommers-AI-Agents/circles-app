@@ -26,6 +26,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     var selectedGooglePlaceDetails: GooglePlaceDetails? {
         didSet { applyVenueSourceLockIfNeeded() }
     }
+    /// The one venue record this form is saving (from the place page it was
+    /// opened from, or our own database's match), sent as globalPlaceId so
+    /// the save never mints a duplicate venue (2026-11-04). Cleared whenever
+    /// the person picks a different place.
+    var knownGlobalPlaceId: String?
     /// Canonical-match → Google → photo upload pipeline, with the request
     /// token that makes stale responses from a previous selection harmless.
     lazy var placeAssetLoader: PlaceAssetLoader = {
@@ -1569,6 +1574,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
 
     func selectSearchResult(_ result: MKLocalSearchCompletion) {
+        knownGlobalPlaceId = nil
         // Hide search results
         searchResultsTableView.isHidden = true
         searchBar.resignFirstResponder()
@@ -1768,6 +1774,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         selectedMapItem = mapItem
         selectedGooglePlaceDetails = nil // Clear Google details
+        knownGlobalPlaceId = nil // A new pick; the asset match sets it again
         
         // Enable form first
         enableManualEntry()
@@ -2086,6 +2093,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     func fillFormWithGooglePlace(_ placeDetails: GooglePlaceDetails) {
         // Store the Google Place details
         self.selectedGooglePlaceDetails = placeDetails
+        // A different venue than any earlier pick; its Google id links it
+        self.knownGlobalPlaceId = nil
         
         // Enable form first
         enableManualEntry()

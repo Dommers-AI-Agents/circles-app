@@ -10,6 +10,7 @@ class AddPlaceToCircleViewController: BaseViewController {
     private var latitude: Double?
     private var longitude: Double?
     private var photoURL: String?
+    private var globalPlaceId: String?
     private var circles: [Circle] = []
     private var selectedCircleId: String?
     
@@ -65,8 +66,9 @@ class AddPlaceToCircleViewController: BaseViewController {
     }
     
     // MARK: - Configuration
-    func configureForCheckInPlace(placeId: String, name: String, address: String, latitude: Double? = nil, longitude: Double? = nil, photoURL: String? = nil) {
+    func configureForCheckInPlace(placeId: String, name: String, address: String, latitude: Double? = nil, longitude: Double? = nil, photoURL: String? = nil, globalPlaceId: String? = nil) {
         self.placeId = placeId
+        self.globalPlaceId = globalPlaceId
         self.placeName = name
         self.placeAddress = address
         self.latitude = latitude
@@ -180,7 +182,9 @@ class AddPlaceToCircleViewController: BaseViewController {
                 photos: nil,
                 photoUrls: photoURL != nil ? [photoURL!] : nil,
                 location: location,
-                googlePlaceId: placeId,
+                // placeId is our save's id, not Google's; the venue record
+                // id links the new save to the same venue (2026-11-04)
+                globalPlaceId: globalPlaceId,
                 completion: { [weak self] result in
                     DispatchQueue.main.async {
                         self?.saveButton.setLoading(false)
@@ -220,7 +224,7 @@ class AddPlaceToCircleViewController: BaseViewController {
                                 photos: nil,
                                 photoUrls: self?.photoURL != nil ? [self!.photoURL!] : nil,
                                 location: nil,
-                                googlePlaceId: placeId,
+                                globalPlaceId: self?.globalPlaceId,
                                 completion: { result in
                                     DispatchQueue.main.async {
                                         self?.saveButton.setLoading(false)

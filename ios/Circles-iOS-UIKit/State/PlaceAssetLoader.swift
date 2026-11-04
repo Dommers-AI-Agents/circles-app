@@ -7,6 +7,9 @@ import CoreLocation
 /// it through these accessors at exactly the points the inline code did.
 protocol PlaceAssetLoaderDelegate: AnyObject {
     var selectedGooglePlaceDetails: GooglePlaceDetails? { get set }
+    /// The venue record our own database matched, sent with the save so it
+    /// links to that one venue (2026-11-04).
+    var knownGlobalPlaceId: String? { get set }
     var uploadedPhotoUrls: [String] { get set }
     var downloadedGoogleImage: UIImage? { get set }
     var downloadedLookAroundImage: UIImage? { get set }
@@ -69,6 +72,9 @@ final class PlaceAssetLoader {
             DispatchQueue.main.async {
                 guard let self = self, let delegate = self.delegate else { return }
                 guard self.requestToken == token else { return }
+
+                // Known to us even without a Google id: the save links to it
+                if case .success(let match?) = result { delegate.knownGlobalPlaceId = match.globalPlaceId }
 
                 if case .success(let match?) = result, let googlePlaceId = match.googlePlaceId, !googlePlaceId.isEmpty {
                     Logger.debug("✅ Venue already in our database (\(match.globalPlaceId)) — skipping Google Places")

@@ -639,7 +639,8 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
                             address: activity.metadata?.placeAddress ?? "",
                             latitude: activity.metadata?.latitude,
                             longitude: activity.metadata?.longitude,
-                            photo: activity.metadata?.placePhoto
+                            photo: activity.metadata?.placePhoto,
+                            globalPlaceId: activity.metadata?.globalPlaceId
                         )
                         self?.navigationController?.pushViewController(tempPlaceVC, animated: true)
                     } else {
