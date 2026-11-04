@@ -17,12 +17,15 @@ enum HomeSearchStatus: Equatable {
     case offline
     /// A lookup failed for another reason; tap to retry
     case failed
+    /// Every lookup answered and nothing matched
+    case noMatches
 
     var text: String {
         switch self {
         case .searching: return "Searching nearby…"
         case .offline: return "You're offline. Showing places saved on this phone."
         case .failed: return "Nearby results didn't load. Tap to try again."
+        case .noMatches: return "No matches. Try another spelling or a different word."
         }
     }
 }
@@ -142,6 +145,16 @@ struct HomeSearchPlan: Equatable {
         case .nearby: plan.suggestedRows = nearby
         case .widgets: plan.widgetRows = widgetCount
         }
+        return plan
+    }
+
+    /// A typed query that found nothing keeps the sheet up and says so
+    /// (Wes, 2026-11-03: the sheet used to vanish, leaving the home screen's
+    /// "no circles yet" view, buttons and all, over the map).
+    func sayingNoMatches() -> HomeSearchPlan {
+        guard status == nil, !hasResults else { return self }
+        var plan = self
+        plan.status = .noMatches
         return plan
     }
 

@@ -104,4 +104,15 @@ struct HomeSearchPlanTests {
         #expect(plan.morePeople)
         #expect(plan.peopleSectionRows == HomeSearchPlan.maxPeopleRows + 1)
     }
+
+    @Test func aQueryThatFoundNothingSaysSoInTheSheet() {
+        let plan = HomeSearchPlan.make(matchedPlaces: 0, suggestedPlaces: 0, people: 0).sayingNoMatches()
+        #expect(plan.status == .noMatches)
+        #expect(plan.hasRows)
+        #expect(!plan.hasResults)
+        #expect(plan.handleTitle == "No matches")
+        // Still looking, offline, or something found: unchanged
+        #expect(HomeSearchPlan.make(matchedPlaces: 0, suggestedPlaces: 0, people: 0, status: .searching).sayingNoMatches().status == .searching)
+        #expect(HomeSearchPlan.make(matchedPlaces: 1, suggestedPlaces: 0, people: 0).sayingNoMatches().status == nil)
+    }
 }

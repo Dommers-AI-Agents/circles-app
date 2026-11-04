@@ -81,6 +81,9 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
                 case .failed:
                     cell.accessoryView = nil
                     content.image = UIImage(systemName: "arrow.clockwise")
+                case .noMatches:
+                    cell.accessoryView = nil
+                    content.image = UIImage(systemName: "magnifyingglass")
                 }
                 content.imageProperties.tintColor = Constants.Colors.secondaryLabel
                 cell.accessoryType = .none

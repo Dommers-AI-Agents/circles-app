@@ -2533,10 +2533,10 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         }
         
         if isSearching {
-            // The sheet shows results; only surface the empty state when it
-            // has nothing at all (no places, no nearby venues, no people).
-            emptyStateView.isHidden = searchPlan.hasRows
-            emptyStateLabel.text = "No results found"
+            // The sheet answers every query, "No matches" included; the
+            // no-circles view (Add Your Places / Find Friends) never shows
+            // over a search (Wes, 2026-11-03)
+            emptyStateView.isHidden = true
         } else {
             // "No circles yet" only once the server said so; a failed load
             // used to show it (with "Add Your Places") to a 900-place account

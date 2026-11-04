@@ -82,7 +82,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
             widgets: matchedWidgetsCache.count,
             status: state.searchStatus,
             scope: state.searchScope
-        )
+        ).sayingNoMatches()
     }
 
     /// Widgets the query names ("postcard" → Postcard), every widget the
