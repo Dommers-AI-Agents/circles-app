@@ -20,3 +20,11 @@ test('the app reads limits, amounts and the App Store link from the server confi
   // JSON-safe: no Infinity sneaks through
   expect(JSON.parse(JSON.stringify(c))).toEqual(c);
 });
+
+test('the "Did you know" tips are the weekly email\'s list, emoji and text only', () => {
+  const tips = require('../../config/weeklyTips');
+  const c = buildClientConfig();
+  expect(c.tips).toHaveLength(tips.length);
+  expect(c.tips[0]).toEqual({ emoji: tips[0].emoji, text: tips[0].text });
+  c.tips.forEach((tip) => expect(tip.text.length).toBeLessThan(140));
+});

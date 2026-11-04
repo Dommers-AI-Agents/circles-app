@@ -112,38 +112,11 @@ final class OrganizeCirclesViewController: BaseViewController {
         view.sendSubviewToBack(tableView)
     }
 
-    /// Shown in the table's background while the advisor reads the circles.
-    private lazy var progressView: UIView = {
-        let spinner = UIActivityIndicatorView(style: .large)
-        spinner.startAnimating()
-
-        let title = UILabel()
-        title.text = "Reading your circles…"
-        title.font = .preferredFont(forTextStyle: .headline)
-        title.textAlignment = .center
-
-        let detail = UILabel()
-        detail.text = "Sorting each circle by place, type, person or trip and looking for overlaps. This usually takes about 30 seconds."
-        detail.font = .preferredFont(forTextStyle: .subheadline)
-        detail.textColor = .secondaryLabel
-        detail.textAlignment = .center
-        detail.numberOfLines = 0
-
-        let stack = UIStackView(arrangedSubviews: [spinner, title, detail])
-        stack.axis = .vertical
-        stack.spacing = 12
-        stack.alignment = .center
-        stack.translatesAutoresizingMaskIntoConstraints = false
-
-        let container = UIView()
-        container.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 32),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -32)
-        ])
-        return container
-    }()
+    /// Shown in the table's background while the advisor reads the circles:
+    /// what it's doing and "Did you know?" tips for the wait (2026-11-04).
+    private lazy var progressView: UIView = OrganizeProgressView(
+        circleCount: circles.count,
+        tips: ClientConfigService.shared.config.tips ?? [])
 
     private func setProgressVisible(_ visible: Bool) {
         tableView.backgroundView = visible ? progressView : nil

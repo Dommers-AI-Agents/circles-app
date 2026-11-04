@@ -1,4 +1,8 @@
-/** One tip a week in the weekly email, rotating. Plain, true, and short. */
+/**
+ * "Did you know" tips: one a week in the weekly email, rotating, and the
+ * lines the app shows while it waits (the circle organizer; served in
+ * /api/config/client as `tips`). Plain, true, and short.
+ */
 module.exports = [
   { emoji: '👆', text: 'Long-press the FavCircles icon on your Home Screen for one-tap Check In and Add a Place.' },
   { emoji: '🗺️', text: 'On the map, the My Places menu lets you hide imported places so only the ones you picked show.' },
@@ -11,5 +15,8 @@ module.exports = [
   { emoji: '💬', text: 'Send a place straight to a friend from its page with the paper-plane button.' },
   { emoji: '📍', text: 'Turn on Alert Me at Saved Places and FavCircles nudges you to check in when you walk into a favorite.' },
   { emoji: '👪', text: 'How Are You? lets Mom or Dad answer a quick check-in from their Lock Screen with one tap.' },
-  { emoji: '🎉', text: 'Planning a night out? The Events widget gives everyone one link to join and share photos only the group sees.' }
+  { emoji: '🎉', text: 'Planning a night out? The Events widget gives everyone one link to join and share photos only the group sees.' },
+  { emoji: '🎟️', text: 'Search the Locals tab for a team, artist or show, and FavCircles finds tickets on Ticketmaster near you.' },
+  { emoji: '🎁', text: 'Scan the FavCircles code at a store\'s register after you buy something to earn points toward free stuff there.' },
+  { emoji: '🎬', text: 'Post a Moment, a quick photo or 15-second video, to show friends what a place is like right now.' }
 ];

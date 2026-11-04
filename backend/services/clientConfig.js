@@ -8,6 +8,7 @@
 const { SUBSCRIPTION_LIMITS } = require('../config/subscriptionLimits');
 const piggy = require('../config/piggyBankConfig');
 const rewards = require('../config/rewardConfig');
+const TIPS = require('../config/weeklyTips');
 
 const finite = (n) => (Number.isFinite(n) ? n : null);
 
@@ -41,7 +42,10 @@ function buildClientConfig() {
     // step off; Wes, 2026-10-31)
     onboarding: {
       firstFavorite: process.env.ONBOARDING_FIRST_FAVORITE !== 'false'
-    }
+    },
+    // "Did you know" lines the app shows while it waits (the circle
+    // organizer's ~30 s run; Wes, 2026-11-04). Same list as the weekly email.
+    tips: TIPS.map(({ emoji, text }) => ({ emoji, text }))
   };
 }
 
