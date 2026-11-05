@@ -1,6 +1,7 @@
 import UIKit
 import UserNotifications
 import FavWidgetsCore
+import FavWidgets
 
 /// Every notification category the app registers, with its Lock Screen
 /// actions. One place to look when a push type gains a button; the
@@ -174,6 +175,15 @@ enum NotificationCategoryRegistry {
 
         // Water reminder (a local notification the Water widget schedules):
         // "Log a cup" writes today's cup without opening the app.
+        // Sleep Sounds bedtime (local, from the Sleep Sounds widget): Play
+        // opens Sleep Sounds and starts the bedtime mix (2026-11-05)
+        let sleepBedtimeCategory = UNNotificationCategory(
+            identifier: SleepSoundsBedtime.categoryIdentifier,
+            actions: [UNNotificationAction(identifier: SleepSoundsBedtime.playAction, title: "Play 🌙", options: [.foreground])],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+
         let waterCategory = UNNotificationCategory(
             identifier: WaterQuickLog.categoryIdentifier,
             actions: [UNNotificationAction(identifier: WaterQuickLog.logCupAction, title: "Log a cup 💧", options: [])],
@@ -219,6 +229,7 @@ enum NotificationCategoryRegistry {
             careScaleCategory,
             careTextCategory,
             waterCategory,
+            sleepBedtimeCategory,
             medCategory,
             motivationCategory
         ]

@@ -7,6 +7,7 @@
 
 import UIKit
 import FavWidgetsCore
+import FavWidgets
 import AuthenticationServices
 import GoogleSignIn
 import FacebookCore
@@ -652,6 +653,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             center.post(name: .navigateToConversation, object: id)
         case .messages:
             center.post(name: .navigateToMessages, object: nil)
+        case .sleepSoundsPlay:
+            // Sleep Sounds plays as soon as it shows (the flag outlives a cold
+            // start: the stashed link opens the same process's widget)
+            SleepSoundsBedtime.requestPlayOnOpen()
+            postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "widget:sleepsounds", object: "sleepsounds")
         case .homeWidget(let id):
             // A reminder tapped with the app closed arrives before the tab
             // bar exists; a bare post then reached nobody and the tap just

@@ -8,6 +8,8 @@ enum NotificationDestination: Equatable {
     case conversation(id: String)
     case messages
     case homeWidget(id: String)
+    /// The bedtime reminder: Sleep Sounds opened and playing (2026-11-05)
+    case sleepSoundsPlay
     /// "Your postcard is printing": the postcard page opened on that card's detail.
     case postcardOrder(id: String)
     /// The quote of the day: the Quotes page opened on that quote in the reel.
@@ -117,6 +119,7 @@ enum NotificationTapRouter {
             if let orderId = string("orderId", in: userInfo) { return .postcardOrder(id: orderId) }
             return .homeWidget(id: "postcard")
         case "water_reminder": return .homeWidget(id: "water")
+        case "sleep_bedtime": return .sleepSoundsPlay
         case "motivation_reminder": return .homeWidget(id: "motivation")
         case "club_invite":
             if let token = string("clubToken", in: userInfo) { return .clubJoin(token: token) }

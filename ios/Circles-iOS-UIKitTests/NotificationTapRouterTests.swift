@@ -27,6 +27,7 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "postcard_order", "data": ["orderId": "o2"]]) == .postcardOrder(id: "o2"))
         #expect(route(["type": "postcard_order", "orderId": ""]) == .homeWidget(id: "postcard"))
         #expect(route(["type": "water_reminder"]) == .homeWidget(id: "water"))
+        #expect(route(["type": "sleep_bedtime"]) == .sleepSoundsPlay)
         #expect(route(["type": "motivation_reminder"]) == .homeWidget(id: "motivation"))
         #expect(route(["type": "event_invite", "eventToken": "tok"]) == .eventInvite(token: "tok"))
         #expect(route(["type": "event_photos", "eventId": "e1"]) == .eventOpen(id: "e1"))

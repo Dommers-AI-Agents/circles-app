@@ -152,6 +152,12 @@ final class NotificationActionHandler {
             turnOffCheckInRemindersOnServer(completion: completion)
             return
 
+        case SleepSoundsBedtime.playAction:
+            // Opens the app (a foreground action): Sleep Sounds plays as soon
+            // as it shows
+            SleepSoundsBedtime.requestPlayOnOpen()
+            NotificationCenter.default.post(name: .navigateToHomeWidget, object: "sleepsounds")
+
         case WaterQuickLog.logCupAction:
             // Held until the write lands, like the care answers.
             Task {
