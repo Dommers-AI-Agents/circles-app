@@ -184,6 +184,16 @@ class BaseViewController: UIViewController {
     
     // MARK: - Loading States
     
+    /// Laid out after a subclass added its own views (its table, in its
+    /// viewDidLoad after ours): put the spinner and empty message back on
+    /// top. The first load starts inside our viewDidLoad, before the subclass
+    /// has added anything, so viewWillAppear alone was too late for a child
+    /// tab (Wes, 2026-11-05: Popular showed an empty list, no spinner).
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if loadingIndicator.isAnimating || !emptyStateLabel.isHidden { bringStateViewsToFront() }
+    }
+
     /// A subclass adds its table/list after `setupBaseUI`, which buried the
     /// spinner and empty message under it: a blank screen while loading
     /// (Wes, 2026-11-03, Comments). Keep them on top.

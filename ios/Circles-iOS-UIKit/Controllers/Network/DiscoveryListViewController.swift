@@ -10,7 +10,7 @@ import CoreLocation
 class DiscoveryListViewController: BaseViewController {
 
     /// A group of suggestions that share a reason.
-    private struct SuggestionSection {
+    private struct SuggestionSection: Codable {
         let type: String          // the API's `type` query value
         let title: String
         let blurb: String?
@@ -181,6 +181,8 @@ class DiscoveryListViewController: BaseViewController {
     }()
 
     override var enablesPullToRefresh: Bool { true }
+
+    private var snapshotKey: String { "network.discoverList.\(mode)" }
     override var emptyStateMessage: String? {
         guard searchQuery.isEmpty else { return "Nobody matching \"\(searchQuery)\"" }
         switch mode {
@@ -205,6 +207,13 @@ class DiscoveryListViewController: BaseViewController {
         }
         setupUI()
         setupTableView()
+        // Last visit's list at once; the load in flight refreshes it
+        // (2026-11-05: Popular flashed an empty list)
+        if let saved = ScreenSnapshot.load([SuggestionSection].self, key: snapshotKey), !saved.isEmpty {
+            sections = saved
+            tableView.reloadData()
+            hideLoadingState()
+        }
         // Location only powers the "Near you" section, which is a Discover
         // concern — the Popular leaderboard needs no permission banner.
         if mode == .discover {
@@ -292,11 +301,15 @@ class DiscoveryListViewController: BaseViewController {
             // Someone should appear under their strongest reason only, so once
             // a person shows up in an earlier section later ones skip them.
             var alreadyShown = Set<String>()
-            self.sections = sectionPlan.compactMap { plan in
+            let fresh = sectionPlan.compactMap { plan -> SuggestionSection? in
                 let users = (loaded[plan.type] ?? []).filter { alreadyShown.insert($0.id).inserted }
                 guard !users.isEmpty else { return nil }
                 return SuggestionSection(type: plan.type, title: plan.title, blurb: plan.blurb, users: users)
             }
+            // Every request failing (no signal) mustn't wipe what's showing
+            if loaded.isEmpty && !self.sections.isEmpty { return }
+            self.sections = fresh
+            if self.searchQuery.isEmpty { ScreenSnapshot.save(fresh, key: self.snapshotKey) }
 
             self.tableView.reloadData()
             self.updateEmptyState()
