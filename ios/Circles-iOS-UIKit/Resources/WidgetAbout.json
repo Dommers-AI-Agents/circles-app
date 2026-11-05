@@ -196,6 +196,18 @@
    "Private: your Health data stays on your phone"
   ]
  },
+ "wakeup": {
+  "name": "Wake Up",
+  "tagline": "An alarm that wakes you up to your Pandora, Spotify or Apple Music station.",
+  "features": [
+   "Real alarms that ring like the Clock app's, even on silent or in a Focus",
+   "Pick a station for each alarm: paste its link from Pandora, Spotify, Apple Music or any music app",
+   "Stop opens your station; Snooze rings again after 5 to 20 minutes, your choice per alarm",
+   "Repeat on the days you pick, or ring once",
+   "\"Ring in a minute\" to try it out",
+   "Needs iOS 26 or later"
+  ]
+ },
  "weather": {
   "name": "Weather",
   "tagline": "Right now, the next hours and 10 days.",
@@ -230,6 +242,7 @@
    "Real recordings of rain, thunder, ocean waves, a stream, wind, crickets, a campfire and a heartbeat, plus white, pink and brown noise and a fan",
    "Mix sounds into your own blend",
    "A timer that fades out gently, with controls on the Lock Screen",
+   "Bedtime: pick a time and days (weekdays by default) and get a reminder with a Play button, or let the Shortcuts app start it with no tap",
    "Works offline: the sounds are in the app"
   ]
  },
