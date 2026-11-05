@@ -2330,14 +2330,11 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         filterContainer.isHidden = false
         mapExpandButton.isHidden = false
         
-        // Show place count now that loading is complete with animation.
-        // (Only the home's own pill — the embedded map's internal pill stays
-        // hidden so two counts never stack in the same corner.)
-        mapPlaceCountLabel.alpha = 0
-        mapPlaceCountLabel.isHidden = false
-        UIView.animate(withDuration: 0.3) {
-            self.mapPlaceCountLabel.alpha = 1
-        }
+        // The place count is the embedded map's own pill (pins in view, after
+        // every filter). The home's old pill is retired and has no number:
+        // revealing it here put an empty blue circle in the map's corner
+        // (Wes, 2026-11-05).
+        mapPlaceCountLabel.isHidden = true
         
         // Activities and moments are already loaded in performInitialDataLoad
         // No need to fetch again here
