@@ -114,7 +114,10 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         let widgetHost = AppWidgetHost(userId: userId)
         widgetHost.presenter = self
         let model = WidgetsTabModel(host: widgetHost, theme: AppWidgetHost.makeTheme())
-        model.onOpen = { [weak self] widget, context in self?.open(widget, context: context) }
+        model.onOpen = { [weak self] widget, context in
+            context.openedForLaunch = false
+            self?.open(widget, context: context)
+        }
         model.onManage = { [weak self] in self?.presentManage() }
 
         let hosting = UIHostingController(rootView: WidgetsTabRootView(model: model))
@@ -221,8 +224,12 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
             context.launchMotivationLineId = motivationLineId
             context.launchMotivationSend = motivationSend
         }
+        // A push or link with something to open: the page goes in without its
+        // slide so the tap lands on the thing itself (Wes, 2026-11-05). Set on
+        // every open: contexts are reused, and a list tap should still slide.
+        context.openedForLaunch = context.hasLaunchTarget
         Task { await widget.refresh(context: context) }
-        open(widget, context: context)
+        open(widget, context: context, animated: !context.openedForLaunch)
     }
 
     /// Moments → postcard: open the postcard page with `photo` already chosen
@@ -242,6 +249,7 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         }
         let context = model.context(for: descriptor)
         context.launchPhoto = WidgetLaunchPhoto(image: photo, place: place)
+        context.openedForLaunch = false
         open(widget, context: context)
     }
 
@@ -263,13 +271,13 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         present(sheet, animated: true)
     }
 
-    private func open(_ widget: any FavWidget, context: WidgetContext) {
+    private func open(_ widget: any FavWidget, context: WidgetContext, animated: Bool = true) {
         guard let model else { return }
         let detail = HomeWidgetDetailViewController(widget: widget, context: context, model: model)
         context.closeFullView = { [weak detail] in
             detail?.navigationController?.popViewController(animated: true)
         }
-        navigationController?.pushViewController(detail, animated: true)
+        navigationController?.pushViewController(detail, animated: animated)
     }
 
     private func presentManage() {
