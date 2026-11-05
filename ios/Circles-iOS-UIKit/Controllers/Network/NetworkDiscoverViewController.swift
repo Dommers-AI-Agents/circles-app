@@ -215,10 +215,22 @@ final class NetworkDiscoverViewController: BaseViewController {
     }
 }
 
-/// Every place two or more of your people saved
-final class LovedPlacesListViewController: BaseViewController, UITableViewDataSource, UITableViewDelegate {
+/// Every place two or more of your people saved: the carousel's cards in a
+/// two-column grid (Wes, 2026-11-05: "an ugly list")
+final class LovedPlacesListViewController: BaseViewController, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
     private let places: [NetworkDiscoverService.LovedPlace]
-    private let tableView = UITableView(frame: .zero, style: .insetGrouped)
+    private lazy var collectionView: UICollectionView = {
+        let layout = UICollectionViewFlowLayout()
+        layout.minimumLineSpacing = 14
+        layout.minimumInteritemSpacing = 12
+        layout.sectionInset = UIEdgeInsets(top: 12, left: 16, bottom: 24, right: 16)
+        let view = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        view.backgroundColor = .clear
+        view.alwaysBounceVertical = true
+        view.register(LovedPlaceCell.self, forCellWithReuseIdentifier: LovedPlaceCell.reuseId)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
 
     override var loadsDataOnViewDidLoad: Bool { false }
     override var showsLoadingIndicator: Bool { false }
@@ -232,38 +244,42 @@ final class LovedPlacesListViewController: BaseViewController, UITableViewDataSo
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Places your people love"
-        tableView.dataSource = self
-        tableView.delegate = self
-        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Loved")
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(tableView)
+        collectionView.dataSource = self
+        collectionView.delegate = self
+        view.addSubview(collectionView)
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            collectionView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
     }
 
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { places.count }
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { places.count }
 
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "Loved", for: indexPath)
-        let place = places[indexPath.row]
-        var config = cell.defaultContentConfiguration()
-        config.text = place.name + (place.viewerSaved ? "  ✓" : "")
-        config.secondaryText = NetworkDiscoverLayout.savedByLine(names: place.savers.map(\.displayName), total: place.saverCount)
-        config.secondaryTextProperties.color = .secondaryLabel
-        config.image = UIImage(systemName: "heart.fill")
-        config.imageProperties.tintColor = Constants.Colors.primary
-        cell.contentConfiguration = config
-        cell.accessoryType = .disclosureIndicator
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: LovedPlaceCell.reuseId, for: indexPath)
+        (cell as? LovedPlaceCell)?.configure(places[indexPath.item])
         return cell
     }
 
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
-        let id = places[indexPath.row].globalPlaceId
+    /// Two columns on a phone, more on wider screens; the carousel card's height
+    func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout,
+                        sizeForItemAt indexPath: IndexPath) -> CGSize {
+        let insets: CGFloat = 32, spacing: CGFloat = 12
+        let width = collectionView.bounds.width - insets
+        let columns = max(2, Int((width + spacing) / (196 + spacing)))
+        let itemWidth = floor((width - spacing * CGFloat(columns - 1)) / CGFloat(columns))
+        return CGSize(width: itemWidth, height: 262)
+    }
+
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: { _ in self.collectionView.collectionViewLayout.invalidateLayout() })
+    }
+
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let id = places[indexPath.item].globalPlaceId
         let loading = AlertPresenter.showLoading(message: "Loading...", from: self)
         GlobalPlaceService.shared.getGlobalPlace(id: id) { [weak self] result in
             DispatchQueue.main.async {
