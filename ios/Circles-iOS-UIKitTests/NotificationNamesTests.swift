@@ -47,10 +47,11 @@ struct NotificationNamesTests {
     }
 
     /// No inline `Notification.Name("…")` outside the definitions file.
-    /// RunLiveActivity.swift is the one exception: it also compiles into the
-    /// widget extension, which doesn't include NotificationNames.swift.
+    /// RunLiveActivity.swift and WakeAlarmLiveActivity.swift are the
+    /// exceptions: they also compile into the widget extension, which doesn't
+    /// include NotificationNames.swift.
     @Test func noInlineLiteralsElsewhere() throws {
-        let allowed: Set<String> = ["NotificationNames.swift", "RunLiveActivity.swift"]
+        let allowed: Set<String> = ["NotificationNames.swift", "RunLiveActivity.swift", "WakeAlarmLiveActivity.swift"]
         guard let enumerator = FileManager.default.enumerator(at: Self.appRoot, includingPropertiesForKeys: nil) else {
             Issue.record("could not read \(Self.appRoot.path)"); return
         }
