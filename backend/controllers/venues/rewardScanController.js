@@ -416,7 +416,7 @@ exports.getOffers = async (req, res) => {
     // (listLiveVenues) and it has something to show — a redeemable offer or
     // an announcement.
     const liveVenues = (await listLiveVenues())
-      .filter((venue) => isBrowsableBy(venue, userId))
+      .filter((venue) => isBrowsableBy(venue, userId, { isSuperUser: req.user.isSuperUser === true }))
       .filter((venue) => activeOffers(venue).length > 0 || announcementsFor(venue).length > 0);
 
     const savedVenueIds = await rewardService.getSavedVenueIds(userId, liveVenues);
@@ -477,7 +477,9 @@ exports.getOffers = async (req, res) => {
 exports.getNearbyEvents = async (req, res) => {
   const lat = parseFloat(req.query.lat);
   const lng = parseFloat(req.query.lng);
-  const feed = await nearbyEventsService.getLocalFeed(lat, lng).catch((error) => {
+  // Test stores' events reach their own team and super-users only
+  const viewer = { uid: req.user.uid, isSuperUser: req.user.isSuperUser === true };
+  const feed = await nearbyEventsService.getLocalFeed(lat, lng, { viewer }).catch((error) => {
     console.error('❌ Failed to load nearby events:', error);
     return { events: [], markets: [], attribution: null };
   });
@@ -493,7 +495,8 @@ exports.searchNearbyEvents = async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 80);
   const lat = parseFloat(req.query.lat);
   const lng = parseFloat(req.query.lng);
-  const result = await nearbyEventsService.searchLocalEvents(q, lat, lng).catch((error) => {
+  const viewer = { uid: req.user.uid, isSuperUser: req.user.isSuperUser === true };
+  const result = await nearbyEventsService.searchLocalEvents(q, lat, lng, { viewer }).catch((error) => {
     console.error('❌ Failed to search events:', error);
     return { events: [], nearby: true, attribution: null };
   });

@@ -22,7 +22,10 @@ const isVenueTeamMember = (venue, uid) => {
 // Browse lists (Store Points offers, the Locals tab's store events) hide a
 // store flagged isTestStore from everyone but its own team, so a demo store
 // never shows up as a real "nearby offer" for customers (Wes, 2026-10-27).
-const isBrowsableBy = (venue, uid) => !venue?.isTestStore || isVenueTeamMember(venue, uid);
+// Super-users see test stores too, to check demo promos without signing in
+// as the demo owner (Wes, 2026-11-05).
+const isBrowsableBy = (venue, uid, { isSuperUser = false } = {}) =>
+  !venue?.isTestStore || isSuperUser === true || isVenueTeamMember(venue, uid);
 
 const publicVenueInfo = (venue) => ({
   venueId: venue.venueId,

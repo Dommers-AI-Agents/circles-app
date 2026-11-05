@@ -20,3 +20,11 @@ describe('isBrowsableBy: demo stores stay out of customer browse lists', () => {
     expect(isBrowsableBy(testStore, 'mgr')).toBe(true);
   });
 });
+
+test('a super-user sees test stores (to check demo promos); everyone else still does not', () => {
+  const { isBrowsableBy } = require('../venueHelpers');
+  const testStore = { venueId: 'v1', isTestStore: true, ownerUserId: 'owner', managerUserIds: [] };
+  expect(isBrowsableBy(testStore, 'wes', { isSuperUser: true })).toBe(true);
+  expect(isBrowsableBy(testStore, 'customer', { isSuperUser: false })).toBe(false);
+  expect(isBrowsableBy(testStore, 'customer')).toBe(false);
+});

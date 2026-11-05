@@ -104,11 +104,11 @@ const settle = (promise, label) => promise.catch((err) => {
 });
 
 /** Everything for the Locals tab's "Happening nearby" around (lat, lng). */
-async function getLocalFeed(lat, lng, { now = new Date() } = {}) {
+async function getLocalFeed(lat, lng, { now = new Date(), viewer = null } = {}) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { events: [], markets: [], attribution: null };
   const cell = geofire.geohashForLocation([lat, lng], 5);
   const [store, tm, lib, markets] = await Promise.all([
-    settle(storeEvents.eventsNear(lat, lng, { now }), 'store events'),
+    settle(storeEvents.eventsNear(lat, lng, { now, viewer }), 'store events'),
     settle(ticketmaster.eventsNear(lat, lng, { now }), 'Ticketmaster'),
     settle(library.eventsNear(lat, lng, { now }), 'library'),
     settle(cached(`fm4_${cell}`, { memoryMs: 6 * 3600000, storeMs: 24 * 3600000, now: now.getTime() },
@@ -142,12 +142,12 @@ function matchesQuery(event, query) {
  * the matching store events and library programs. Soonest first; stores on
  * FavCircles lead. `nearby: false` = the Ticketmaster rows are from anywhere.
  */
-async function searchLocalEvents(query, lat, lng, { now = new Date() } = {}) {
+async function searchLocalEvents(query, lat, lng, { now = new Date(), viewer = null } = {}) {
   const q = String(query || '').trim();
   if (q.length < 2) return { events: [], nearby: true, attribution: null };
   const hasPoint = Number.isFinite(lat) && Number.isFinite(lng);
   const [store, lib, tm] = await Promise.all([
-    hasPoint ? settle(storeEvents.eventsNear(lat, lng, { now }), 'store events') : [],
+    hasPoint ? settle(storeEvents.eventsNear(lat, lng, { now, viewer }), 'store events') : [],
     hasPoint ? settle(library.eventsNear(lat, lng, { now }), 'library') : [],
     ticketmaster.searchEvents(q, lat, lng, { now }).catch((err) => {
       console.warn('[nearbyEvents] Ticketmaster search failed:', err.message);
