@@ -66,6 +66,9 @@ final class NetworkDiscoverViewController: BaseViewController {
         month = ScreenSnapshot.load(MilestoneMonthViewController.Month.self, key: "discover.month")
         people = ScreenSnapshot.load([User].self, key: "discover.people") ?? []
         render()
+        // Showing last visit's copy: refresh behind it without a spinner over
+        // the content (the base started one for the first load)
+        if !loved.isEmpty || month != nil || !people.isEmpty { hideLoadingState() }
     }
 
     override func loadData(completion: (() -> Void)? = nil) {
