@@ -72,6 +72,8 @@ class DiscoveryListViewController: BaseViewController {
     }
 
     private var sections: [SuggestionSection] = []
+    /// The server has answered at least once (until then it isn't "empty")
+    private var hasAnswer = false
     private var searchQuery: String = ""
     /// The People screen's own search. Discover and Popular are embedded in
     /// My Network, whose search field already drives updateSearchQuery.
@@ -306,6 +308,7 @@ class DiscoveryListViewController: BaseViewController {
                 guard !users.isEmpty else { return nil }
                 return SuggestionSection(type: plan.type, title: plan.title, blurb: plan.blurb, users: users)
             }
+            self.hasAnswer = true
             // Every request failing (no signal) mustn't wipe what's showing
             if loaded.isEmpty && !self.sections.isEmpty { return }
             self.sections = fresh
@@ -320,6 +323,10 @@ class DiscoveryListViewController: BaseViewController {
     /// invite CTA — "you know everyone; bring your friends" — instead of a
     /// dead-end message. Search misses and the Popular tab keep plain text.
     private func updateEmptyState() {
+        // Nothing to judge until the first answer (or a saved copy) is in:
+        // switching to this tab re-runs the search filter, which used to call
+        // a still-loading list empty ("No rankings yet" flashed, 2026-11-05)
+        guard hasAnswer || !sections.isEmpty else { return }
         let showInvite = visibleSections.isEmpty && searchQuery.isEmpty && mode == .discover
         inviteEmptyView.isHidden = !showInvite
         if showInvite {
