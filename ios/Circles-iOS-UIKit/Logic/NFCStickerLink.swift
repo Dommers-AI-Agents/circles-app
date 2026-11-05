@@ -19,13 +19,16 @@ enum NFCStickerMatch: Equatable {
 
 enum NFCStickerLink {
 
-    static func match(_ link: String, windowUrl: String?, knownTags: Set<String>,
+    static func match(_ link: String, windowUrl: String?, registerUrl: String? = nil, knownTags: Set<String>,
                       router: DeepLinkRouter = DeepLinkRouter()) -> NFCStickerMatch {
         guard let url = URL(string: link.trimmingCharacters(in: .whitespacesAndNewlines)), url.scheme != nil,
               case .sticker(let code, let tag)? = router.destination(for: url) else { return .other }
-        guard let windowUrl, let window = URL(string: windowUrl),
-              case .sticker(let windowCode, _)? = router.destination(for: window),
-              code.caseInsensitiveCompare(windowCode) == .orderedSame else { return .otherStore }
+        // This store's window link, or its register link (register stickers)
+        let ownCodes = [windowUrl, registerUrl].compactMap { $0.flatMap(URL.init(string:)) }.compactMap { link -> String? in
+            if case .sticker(let own, _)? = router.destination(for: link) { return own }
+            return nil
+        }
+        guard ownCodes.contains(where: { code.caseInsensitiveCompare($0) == .orderedSame }) else { return .otherStore }
         guard let tag, !tag.isEmpty else { return .windowLink }
         return knownTags.contains(tag) ? .sticker(tag: tag) : .removedTag(tag)
     }

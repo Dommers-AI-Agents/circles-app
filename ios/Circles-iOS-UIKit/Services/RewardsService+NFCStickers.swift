@@ -13,12 +13,20 @@ struct NFCSticker: Codable, Equatable {
     let writtenAt: String?
     let writes: Int?
     let locked: Bool?
+    /// "window" (save the store) or "register" (earn points); nil = window
+    let kind: String?
+    /// Written with a code the store has since replaced
+    let needsRewrite: Bool?
+
+    var isRegister: Bool { kind == "register" }
 }
 
 struct NFCStickerListData: Codable {
     let stickers: [NFCSticker]
     /// The untagged window link, to recognise this store's stickers
     let windowUrl: String?
+    /// The register link (register stickers, 2026-11-05)
+    let registerUrl: String?
 }
 
 private struct NFCStickerAck: Codable { let success: Bool }
@@ -32,9 +40,10 @@ extension RewardsService {
         }
     }
 
-    func createNFCSticker(venueId: String, label: String, completion: @escaping (Result<NFCSticker, Error>) -> Void) {
+    func createNFCSticker(venueId: String, label: String, register: Bool = false,
+                          completion: @escaping (Result<NFCSticker, Error>) -> Void) {
         APIService.shared.request(endpoint: "rewards/venues/\(venueId)/nfc-stickers", method: .post,
-                                  body: ["label": label], requiresAuth: true) {
+                                  body: ["label": label, "kind": register ? "register" : "window"], requiresAuth: true) {
             (result: Result<RewardsEnvelope<NFCSticker>, APIError>) in
             completion(result.map(\.data).mapError { $0 as Error })
         }

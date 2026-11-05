@@ -75,3 +75,28 @@ test('listStickers is oldest first with links and defaults', () => {
   expect(list[0]).toMatchObject({ taps: 4, locked: true, url: 'https://api.favcircles.com/s/WIN123?t=a' });
   expect(list[1]).toMatchObject({ taps: 0, locked: false, writes: 0 });
 });
+
+// Wes, 2026-11-05: window AND register stickers
+describe('register stickers', () => {
+  test('a register sticker carries the register link and counts register taps only', async () => {
+    const made = await svc.createSticker(venue(), 'Counter', 'register');
+    expect(made.kind).toBe('register');
+    expect(made.url).toContain('REG456?t=counter');
+    const v = venue({ counter: { label: 'Counter', kind: 'register' } });
+    expect(await svc.recordTap(v, 'REG456', 'counter')).toBe(true);
+    expect(await svc.recordTap(v, 'WIN123', 'counter')).toBe(false);
+  });
+
+  test('window stays the default and keeps its window link', async () => {
+    const made = await svc.createSticker(venue(), 'Table 7');
+    expect(made.kind).toBe('window');
+    expect(made.url).toContain('WIN123?t=table-7');
+  });
+
+  test('a register sticker can\'t be locked, and needs a rewrite after the code is replaced', async () => {
+    const v = venue({ counter: { label: 'Counter', kind: 'register', writtenCode: 'REG456' } });
+    await expect(svc.markWritten(v, 'counter', { locked: true })).rejects.toMatchObject({ status: 400 });
+    expect(svc.listStickers(v)[0].needsRewrite).toBe(false);
+    expect(svc.listStickers({ ...v, registerCode: 'NEW789' })[0].needsRewrite).toBe(true);
+  });
+});

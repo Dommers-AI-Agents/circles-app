@@ -11,7 +11,9 @@ const { sendServiceError } = require('../../utils/serviceError');
 const listData = (venue) => ({
   venueId: venue.venueId,
   stickers: nfcStickers.listStickers(venue),
-  windowUrl: venue.windowCode ? rewardService.stickerUrl(venue.windowCode) : null
+  windowUrl: venue.windowCode ? rewardService.stickerUrl(venue.windowCode) : null,
+  // Register stickers too (2026-11-05): the counter link, for Check a sticker
+  registerUrl: venue.registerCode ? rewardService.stickerUrl(venue.registerCode) : null
 });
 
 // @route   GET /api/rewards/venues/:venueId/nfc-stickers
@@ -19,10 +21,10 @@ exports.listStickers = async (req, res) => {
   res.json({ success: true, data: listData(req.venue) });
 };
 
-// @route   POST /api/rewards/venues/:venueId/nfc-stickers  { label }
+// @route   POST /api/rewards/venues/:venueId/nfc-stickers  { label, kind: window|register }
 exports.createSticker = async (req, res) => {
   try {
-    const sticker = await nfcStickers.createSticker(req.venue, req.body?.label);
+    const sticker = await nfcStickers.createSticker(req.venue, req.body?.label, req.body?.kind);
     res.status(201).json({ success: true, data: sticker });
   } catch (error) {
     sendServiceError(res, error, { log: 'NFC sticker create', fallbackCode: 'STICKER_FAILED', fallbackMessage: 'Could not add the sticker' });

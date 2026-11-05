@@ -5,12 +5,14 @@
 // the store's own App Clip card (Apple matches the /s/<code> prefix) and the
 // store sees which sticker gets tapped.
 //
-// Window code only, never the register code: a register card is proof of a
-// purchase at the counter and rotating it kills the old link, which would
-// leave a locked sticker dead on a table.
+// Two kinds (Wes, 2026-11-05: "both window and register"): a WINDOW sticker
+// (Love it here? Save us — table tents, coasters, the window) and a REGISTER
+// sticker (earn points — the counter only, like the printed register card).
+// A register sticker is never locked: replacing the register code changes its
+// link, and a locked one would be dead. It shows as needing a rewrite then.
 //
 // Record on the venue: nfcStickers.<tag> =
-//   { label, createdAt, taps, lastTapAt, writtenAt, writes, locked }
+//   { label, kind, createdAt, taps, lastTapAt, writtenAt, writtenCode, writes, locked }
 
 const { getFirestore, FieldValue } = require('../config/firebase');
 const { STICKER_COLLECTIONS } = require('../models/StickerModels');
@@ -34,9 +36,13 @@ function tagKey(raw) {
   return tag || null;
 }
 
-/// The link written onto the sticker
-function stickerLink(venue, tag) {
-  return `${rewardService.stickerUrl(venue.windowCode)}?t=${tag}`;
+const KINDS = ['window', 'register'];
+const kindOf = (record) => (record && record.kind === 'register' ? 'register' : 'window');
+const codeFor = (venue, kind) => (kind === 'register' ? venue.registerCode : venue.windowCode);
+
+/// The link written onto the sticker: its kind's code, plus its tag
+function stickerLink(venue, tag, kind = 'window') {
+  return `${rewardService.stickerUrl(codeFor(venue, kind))}?t=${tag}`;
 }
 
 /// A tag not yet used on this venue: "table-7", then "table-7-2", …
@@ -54,7 +60,10 @@ function listStickers(venue) {
     .map(([tag, s]) => ({
       tag,
       label: s.label || tag,
-      url: stickerLink(venue, tag),
+      kind: kindOf(s),
+      url: stickerLink(venue, tag, kindOf(s)),
+      // Written with a code the store has since replaced: write it again
+      needsRewrite: !!(s.writtenCode && String(s.writtenCode).toUpperCase() !== String(codeFor(venue, kindOf(s)) || '').toUpperCase()),
       taps: s.taps || 0,
       lastTapAt: s.lastTapAt || null,
       createdAt: s.createdAt || null,
@@ -67,8 +76,12 @@ function listStickers(venue) {
 
 const venueRef = (venueId) => getFirestore().collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(venueId);
 
-async function createSticker(venue, rawLabel) {
-  if (!venue.windowCode) throw new ServiceError(400, 'NO_WINDOW_CODE', 'This store has no window code yet');
+async function createSticker(venue, rawLabel, rawKind = 'window') {
+  const kind = KINDS.includes(rawKind) ? rawKind : 'window';
+  if (!codeFor(venue, kind)) {
+    throw new ServiceError(400, kind === 'register' ? 'NO_REGISTER_CODE' : 'NO_WINDOW_CODE',
+      `This store has no ${kind} code yet`);
+  }
   const label = clean(rawLabel, LABEL_MAX);
   if (!label) throw new ServiceError(400, 'LABEL_REQUIRED', 'Name the sticker, like "Table 7"');
   const existing = venue.nfcStickers || {};
@@ -76,7 +89,7 @@ async function createSticker(venue, rawLabel) {
     throw new ServiceError(400, 'TOO_MANY_STICKERS', `A store can have up to ${MAX_STICKERS} stickers`);
   }
   const tag = uniqueTag(tagKey(label) || 'sticker', new Set(Object.keys(existing)));
-  const record = { label, createdAt: new Date().toISOString(), taps: 0 };
+  const record = { label, kind, createdAt: new Date().toISOString(), taps: 0 };
   await venueRef(venue.venueId).update({ [`nfcStickers.${tag}`]: record });
   return listStickers({ ...venue, nfcStickers: { ...existing, [tag]: record } }).find((s) => s.tag === tag);
 }
@@ -90,8 +103,13 @@ function requireSticker(venue, rawTag) {
 /// The phone wrote (and maybe locked) a sticker with this tag's link
 async function markWritten(venue, rawTag, { locked = false } = {}) {
   const tag = requireSticker(venue, rawTag);
+  const kind = kindOf(venue.nfcStickers[tag]);
+  if (locked && kind === 'register') {
+    throw new ServiceError(400, 'REGISTER_NOT_LOCKABLE', 'Register stickers stay rewritable: replacing the register code changes their link');
+  }
   const update = {
     [`nfcStickers.${tag}.writtenAt`]: new Date().toISOString(),
+    [`nfcStickers.${tag}.writtenCode`]: codeFor(venue, kind) || null,
     [`nfcStickers.${tag}.writes`]: FieldValue.increment(1)
   };
   if (locked) update[`nfcStickers.${tag}.locked`] = true;
@@ -105,20 +123,21 @@ async function renameSticker(venue, rawTag, rawLabel) {
   await venueRef(venue.venueId).update({ [`nfcStickers.${tag}.label`]: label });
 }
 
-/// Stops counting it. The sticker itself still opens the store: the link is
-/// the window code's.
+/// Stops counting it. The sticker itself still opens the store: its link is
+/// the store's window (or register) code.
 async function deleteSticker(venue, rawTag) {
   const tag = requireSticker(venue, rawTag);
   await venueRef(venue.venueId).update({ [`nfcStickers.${tag}`]: FieldValue.delete() });
 }
 
-/// One tap on a sticker: `code` is the code the link carried. Only the
-/// window link counts, and only tags the store made, so a typed URL can't
-/// fill the venue doc with junk. Never throws.
+/// One tap on a sticker: `code` is the code the link carried. It counts only
+/// for a tag the store made, carrying that sticker's own kind of code (a
+/// typed URL can't fill the venue doc with junk). Never throws.
 async function recordTap(venue, code, rawTag) {
   const tag = tagKey(rawTag);
   if (!venue || !tag || !(venue.nfcStickers || {})[tag]) return false;
-  if (String(code || '').toUpperCase() !== String(venue.windowCode || '').toUpperCase()) return false;
+  const expected = codeFor(venue, kindOf(venue.nfcStickers[tag]));
+  if (String(code || '').toUpperCase() !== String(expected || '').toUpperCase()) return false;
   try {
     await venueRef(venue.venueId).update({
       [`nfcStickers.${tag}.taps`]: FieldValue.increment(1),
@@ -134,6 +153,6 @@ async function recordTap(venue, code, rawTag) {
 
 module.exports = {
   MAX_STICKERS, TAG_MAX, LABEL_MAX,
-  tagKey, uniqueTag, stickerLink, listStickers,
+  KINDS, tagKey, uniqueTag, stickerLink, listStickers,
   createSticker, markWritten, renameSticker, deleteSticker, recordTap
 };

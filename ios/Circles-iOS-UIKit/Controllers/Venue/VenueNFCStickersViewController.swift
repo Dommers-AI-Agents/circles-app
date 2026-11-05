@@ -11,6 +11,7 @@ class VenueNFCStickersViewController: BaseViewController {
     private let venueName: String
     private var stickers: [NFCSticker] = []
     private var windowUrl: String?
+    private var registerUrl: String?
 
     override var enablesPullToRefresh: Bool { true }
     override var emptyStateMessage: String? {
@@ -78,6 +79,7 @@ class VenueNFCStickersViewController: BaseViewController {
                 case .success(let data):
                     self.stickers = data.stickers
                     self.windowUrl = data.windowUrl
+                    self.registerUrl = data.registerUrl
                     self.tableView.reloadData()
                     self.stickers.isEmpty ? self.showEmptyState() : self.hideEmptyState()
                 case .failure(let error):
@@ -89,26 +91,42 @@ class VenueNFCStickersViewController: BaseViewController {
 
     // MARK: - Add + write
 
+    /// Window (save the store: tables, tents, the window) or Register (earn
+    /// points: the counter only), then its name (Wes, 2026-11-05)
     @objc private func addTapped() {
         guard NFCStickerSession.isAvailable else { return showError(NFCStickerSession.Failure.unavailable) }
+        AlertPresenter.showActionSheet(
+            title: "Which sticker?",
+            message: "Window stickers open \(venueName)'s card so people can save it (tables, table tents, the window). Register stickers earn points for a purchase, like the register card, so keep them at the counter.",
+            actions: [
+                ("Window: \u{201C}Love it here? Save us\u{201D}", .default, { [weak self] in self?.askName(register: false) }),
+                ("Register: earn points", .default, { [weak self] in self?.askName(register: true) })
+            ],
+            from: self,
+            sourceView: nil)
+    }
+
+    private func askName(register: Bool) {
+        let windowCount = stickers.filter { !$0.isRegister }.count
+        let registerCount = stickers.filter(\.isRegister).count
         AlertPresenter.showTextInput(
             title: "Name this sticker",
             message: "Where will it go? You'll see its taps under this name.",
-            placeholder: "Table 7",
-            initialText: "Table \(stickers.count + 1)",
+            placeholder: register ? "Counter" : "Table 7",
+            initialText: register ? (registerCount == 0 ? "Counter" : "Counter \(registerCount + 1)") : "Table \(windowCount + 1)",
             autocapitalization: .words,
             confirmTitle: "Next",
             from: self
         ) { [weak self] text in
             let label = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard let self, !label.isEmpty else { return }
-            self.create(label: label)
+            self.create(label: label, register: register)
         }
     }
 
-    private func create(label: String) {
+    private func create(label: String, register: Bool) {
         let loading = AlertPresenter.showLoading(from: self)
-        RewardsService.shared.createNFCSticker(venueId: venueId, label: label) { [weak self] result in
+        RewardsService.shared.createNFCSticker(venueId: venueId, label: label, register: register) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     guard let self else { return }
@@ -195,12 +213,14 @@ class VenueNFCStickersViewController: BaseViewController {
             return AlertPresenter.showInfo(title: "Blank sticker", message: "Nothing is written on it yet. Tap + to write one.", from: self)
         }
         let known = Set(stickers.map(\.tag))
-        switch NFCStickerLink.match(link, windowUrl: windowUrl, knownTags: known) {
+        switch NFCStickerLink.match(link, windowUrl: windowUrl, registerUrl: registerUrl, knownTags: known) {
         case .sticker(let tag):
             let sticker = stickers.first { $0.tag == tag }
             AlertPresenter.showInfo(
                 title: "\u{201C}\(sticker?.label ?? tag)\u{201D}",
-                message: "This is your sticker. Taps open \(venueName)'s card and count here.", from: self)
+                message: sticker?.isRegister == true
+                    ? "This is your register sticker. A tap at the counter earns points at \(venueName), and it counts here."
+                    : "This is your sticker. Taps open \(venueName)'s card and count here.", from: self)
         case .removedTag:
             AlertPresenter.showInfo(
                 title: "A removed sticker",
@@ -222,7 +242,9 @@ class VenueNFCStickersViewController: BaseViewController {
         var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
             ("Write another sticker like this", .default, { [weak self] in self?.write(sticker) })
         ]
-        if sticker.writtenAt != nil {
+        // Register stickers stay rewritable: replacing the register code
+        // changes their link, and a locked one would be dead
+        if sticker.writtenAt != nil && !sticker.isRegister {
             actions.append(("Lock a sticker\u{2026}", .default, { [weak self] in self?.lock(sticker) }))
         }
         actions += [
@@ -284,13 +306,20 @@ extension VenueNFCStickersViewController: UITableViewDataSource, UITableViewDele
         let sticker = stickers[indexPath.row]
         var config = cell.defaultContentConfiguration()
         config.text = sticker.label
-        config.secondaryText = NFCStickerLink.tapsLine(
+        let taps = NFCStickerLink.tapsLine(
             taps: sticker.taps,
             lastTap: sticker.lastTapAt.flatMap { Self.isoFormatter.date(from: $0) },
             written: sticker.writtenAt != nil,
             locked: sticker.locked == true)
-        config.secondaryTextProperties.color = .secondaryLabel
-        config.image = UIImage(systemName: sticker.locked == true ? "lock.circle" : "wave.3.right.circle")
+        if sticker.needsRewrite == true {
+            config.secondaryText = "Register code changed: tap, then Write another sticker like this, and hold it to this one"
+            config.secondaryTextProperties.color = .systemRed
+        } else {
+            config.secondaryText = "\(sticker.isRegister ? "Register" : "Window") \u{00B7} \(taps)"
+            config.secondaryTextProperties.color = .secondaryLabel
+        }
+        config.image = UIImage(systemName: sticker.locked == true ? "lock.circle"
+            : sticker.isRegister ? "dollarsign.circle" : "wave.3.right.circle")
         cell.contentConfiguration = config
         cell.accessoryType = .disclosureIndicator
         return cell

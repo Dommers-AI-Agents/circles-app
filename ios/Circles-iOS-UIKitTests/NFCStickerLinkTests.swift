@@ -18,6 +18,16 @@ struct NFCStickerLinkTests {
         #expect(match("https://api.favcircles.com/s/WIN123") == .windowLink)
     }
 
+    /// Register stickers carry the register link (2026-11-05)
+    @Test func recognisesRegisterStickers() {
+        let register = "https://api.favcircles.com/s/REG456"
+        #expect(NFCStickerLink.match("https://api.favcircles.com/s/REG456?t=counter", windowUrl: window, registerUrl: register,
+                                     knownTags: ["counter"]) == .sticker(tag: "counter"))
+        // Without the register link, it isn't recognised as this store's
+        #expect(NFCStickerLink.match("https://api.favcircles.com/s/REG456?t=counter", windowUrl: window,
+                                     knownTags: ["counter"]) == .otherStore)
+    }
+
     @Test func otherLinks() {
         #expect(match("https://api.favcircles.com/s/OTHER9?t=table-7") == .otherStore)
         #expect(match("https://example.com/menu") == .other)
