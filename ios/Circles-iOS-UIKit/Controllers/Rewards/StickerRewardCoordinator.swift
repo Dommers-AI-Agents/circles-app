@@ -285,15 +285,7 @@ final class StickerRewardCoordinator: NSObject {
         guard let presenter = presenter else { return }
         let name = scan.venue.venueName
         if scan.alreadySaved == true {
-            var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = []
-            // Show me: the circle it's saved in, scrolled to it (2026-10-30)
-            if let saved = scan.savedPlace, let circleId = saved.circleId {
-                actions.append((title: "Show me", style: .default, handler: { [weak self] in
-                    self?.openSavedCircle(circleId: circleId, placeId: saved.placeId)
-                }))
-            }
-            actions.append((title: "OK", style: .cancel, handler: {}))
-            AlertPresenter.showAlert(title: "Welcome back!", message: "\(name) is already in your circles.", actions: actions, from: presenter)
+            showWelcomeBack(scan, from: presenter)
             return
         }
         AlertPresenter.showConfirmation(
@@ -305,6 +297,44 @@ final class StickerRewardCoordinator: NSObject {
         ) { [weak self] in
             self?.startSaveFlow(venue: scan.venue, code: code)
         }
+    }
+
+    /// A saved store's window QR: lead with something worth tapping (Wes,
+    /// 2026-11-05: "something more exciting… not just show me where it's
+    /// saved"). Live rewards first (points here, the next reward), then who
+    /// else saved it, then the circle it's in. Stores whose rewards aren't
+    /// live get no rewards wording.
+    private func showWelcomeBack(_ scan: RewardScanData, from presenter: UIViewController) {
+        let name = scan.venue.venueName
+        let rewardsLive = scan.loyaltyLive == true
+        let line = rewardsLive ? RewardsAvailability.welcomeBackLine(scan.rewardDetails) : nil
+        let canRedeem = rewardsLive && RewardsAvailability.nextReward(scan.rewardDetails)?.canRedeem == true
+
+        var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = []
+        if rewardsLive {
+            actions.append((title: canRedeem ? "Use my reward" : "See my rewards", style: .default, handler: { [weak self] in
+                self?.openStoreRewards(highlight: scan.venue.venueId)
+            }))
+        }
+        if let saved = scan.savedPlace {
+            actions.append((title: "Who else saved it", style: .default, handler: { [weak self] in
+                let savers = PlaceSaversViewController()
+                savers.placeId = saved.placeId
+                savers.placeName = name
+                self?.push(savers)
+            }))
+            // The circle it's saved in, scrolled to it (2026-10-30)
+            if let circleId = saved.circleId {
+                actions.append((title: "Where it's saved", style: .default, handler: { [weak self] in
+                    self?.openSavedCircle(circleId: circleId, placeId: saved.placeId)
+                }))
+            }
+        }
+        actions.append((title: "OK", style: .cancel, handler: {}))
+
+        var message = "\(name) is already in your circles."
+        if let line { message += "\n\n\(line)" }
+        AlertPresenter.showAlert(title: "Welcome back!", message: message, actions: actions, from: presenter)
     }
 
     /// "Save this store?" after a register scan, into the circle they pick
@@ -524,12 +554,7 @@ final class StickerRewardCoordinator: NSObject {
                 }
                 let detail = CircleDetailViewController(circle: circle)
                 detail.highlightPlaceId = placeId
-                let tabNav = (self.presenter as? UITabBarController)?.selectedViewController as? UINavigationController
-                if let nav = tabNav ?? self.presenter?.navigationController ?? (self.presenter as? UINavigationController) {
-                    nav.pushViewController(detail, animated: true)
-                } else if let presenter = self.presenter {
-                    presenter.present(UINavigationController(rootViewController: detail), animated: true)
-                }
+                self.push(detail)
             }
         }
     }
@@ -542,13 +567,17 @@ final class StickerRewardCoordinator: NSObject {
         // The store just earned at leads, outlined, with "+25 just now"
         hub.highlightVenueId = venueId
         hub.justEarnedPoints = earned
-        // Usually the tab bar: push onto the current tab, after the store page,
-        // so Back returns to the store
+        push(hub)
+    }
+
+    /// Usually the tab bar: push onto the current tab, after the store page,
+    /// so Back returns to the store
+    private func push(_ controller: UIViewController) {
         let tabNav = (presenter as? UITabBarController)?.selectedViewController as? UINavigationController
         if let nav = tabNav ?? presenter?.navigationController ?? (presenter as? UINavigationController) {
-            nav.pushViewController(hub, animated: true)
+            nav.pushViewController(controller, animated: true)
         } else if let presenter {
-            presenter.present(UINavigationController(rootViewController: hub), animated: true)
+            presenter.present(UINavigationController(rootViewController: controller), animated: true)
         }
     }
 

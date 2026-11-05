@@ -51,6 +51,21 @@ struct RewardsAvailabilityTests {
                 == "Pasta & Provisions gives 10 points per purchase. Scan the QR code at the register to collect them.")
     }
 
+    @Test func welcomeBackLeadsWithTheReward() throws {
+        // 30 points, offers at 20 and 50: one is ready now
+        let ready = try #require(RewardsAvailability(try data()).details)
+        #expect(RewardsAvailability.welcomeBackLine(ready) == "You've got enough points for a free coffee here!")
+        // 5 points: the next one, in the store's own terms
+        let short = RewardsAvailability.Details(venueName: "P", earnRate: 10, venueBalance: 5,
+                                                offers: [.init(title: "Free coffee", pointsCost: 20)])
+        #expect(RewardsAvailability.welcomeBackLine(short) == "15 more points for a free coffee · about 2 more purchases.")
+        // No offers yet: how to earn
+        let noOffers = RewardsAvailability.Details(venueName: "P", earnRate: 10, venueBalance: 0, offers: [])
+        #expect(RewardsAvailability.welcomeBackLine(noOffers) == "Scan the code at the register to earn 10 points every purchase.")
+        let nothing = RewardsAvailability.Details(venueName: "P", earnRate: nil, venueBalance: 0, offers: [])
+        #expect(RewardsAvailability.welcomeBackLine(nothing) == nil)
+    }
+
     @Test func storeCardSaysRewardsOnlyWhileTheyAreLive() {
         // Enrolled, no owner yet (or Business lapsed): the store by name, no earn line
         let unowned = RewardsAvailability.storeCardHeader(venueName: "Pasta & Provisions", isOwner: false, rewardsLive: false)

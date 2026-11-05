@@ -125,6 +125,20 @@ enum RewardsAvailability: Equatable {
         return line
     }
 
+    /// The rewards line under "Welcome back!" when a saved store's window QR
+    /// is scanned: what's ready, how far the next reward is, or how to earn.
+    /// nil when the store has nothing to offer yet.
+    static func welcomeBackLine(_ details: Details) -> String? {
+        if let next = nextReward(details) {
+            if next.canRedeem { return "You've got enough points for \(article(next.title)) here!" }
+            return nextRewardLine(next).prefix(1).uppercased() + nextRewardLine(next).dropFirst() + "."
+        }
+        if let rate = details.earnRate, rate > 0 {
+            return "Scan the code at the register to earn \(rate) \(rate == 1 ? "point" : "points") every purchase."
+        }
+        return nil
+    }
+
     /// "Free drip coffee" → "a free drip coffee"; titles that already start with a/an/the/your keep theirs.
     private static func article(_ title: String) -> String {
         let t = title.trimmingCharacters(in: .whitespaces)
