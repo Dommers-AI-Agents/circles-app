@@ -1954,23 +1954,21 @@ class PlaceDetailViewController: BaseViewController {
         refreshPlaceFromServer()
     }
 
+    /// Directions show the place by name and address, so you can see where
+    /// you're headed (Wes, 2026-11-05: a bare pin read as coordinates).
+    /// Apple Maps routes to the exact pin, labelled with the name and
+    /// address; Google Maps gets "name, address" and finds the place itself.
     @objc private func directionsButtonTapped() {
-        // Open directions to the place in Maps app
-        if let location = place.location?.clLocation {
-            // Try Google Maps first
-            let googleMapsURL = URL(string: "comgooglemaps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&directionsmode=driving")
-            
-            if let url = googleMapsURL, UIApplication.shared.canOpenURL(url) {
-                UIApplication.shared.open(url)
-            } else {
-                // Fallback to Apple Maps
-                let appleMapsURL = URL(string: "maps://?daddr=\(location.coordinate.latitude),\(location.coordinate.longitude)&dirflg=d")
-                if let url = appleMapsURL {
-                    UIApplication.shared.open(url)
-                }
-            }
+        let address = place.address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let coordinate = place.location?.clLocation?.coordinate
+        guard coordinate != nil || !address.isEmpty else {
+            return showError("Location information is not available for this place.")
+        }
+        let destination = DirectionsDestination(name: place.name, address: address, coordinate: coordinate)
+        if let google = destination.googleMapsURL, UIApplication.shared.canOpenURL(google) {
+            UIApplication.shared.open(google)
         } else {
-            showError("Location information is not available for this place.")
+            destination.openInAppleMaps()
         }
     }
     
@@ -2024,12 +2022,9 @@ class PlaceDetailViewController: BaseViewController {
                 self?.moveToCircleButtonTapped()
             }))
         }
-        // Owners change the address in Manage Store → Store details
-        if canEditDetails && !ownerEdit.isVenueOwner && place.location?.clLocation != nil {
-            actions.append((title: "Update Address", style: .default, handler: { [weak self] in
-                self?.updateAddressButtonTapped()
-            }))
-        }
+        // Address and photos live in Edit Place (its address fields, "from
+        // the pin", and the photo library) — no separate menu rows for them
+        // (Wes, 2026-11-05). Owners use Manage Store.
         if !canEditDetails {
             actions.append((title: "Flag Incorrect Info", style: .default, handler: { [weak self] in
                 self?.flagPlaceInfoTapped()
@@ -2056,11 +2051,6 @@ class PlaceDetailViewController: BaseViewController {
             }))
         }
 
-        if canEditDetails && !ownerEdit.isVenueOwner {
-            actions.append((title: "Arrange Photos", style: .default, handler: { [weak self] in
-                self?.openPhotoGallery(arranging: true)
-            }))
-        }
         // Super-user: the store's codes (window sign, table tent, counter
         // card) from any place, claimed or not. A store nobody enrolled is
         // set up on the way; the Store page opens either way.

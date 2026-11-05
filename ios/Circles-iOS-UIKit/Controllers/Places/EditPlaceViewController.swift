@@ -469,8 +469,10 @@ class EditPlaceViewController: BaseViewController {
     // MARK: - Photos (the place's one library)
 
     private func openPhotoLibrary() {
+        // Opens ready to remove or make a cover (press and hold); Arrange is
+        // a tap away (Wes, 2026-11-05: it opened in Arrange, which blocks both)
         let gallery = PlaceGalleryViewController(placeId: globalPlaceId ?? place.globalPlaceId ?? place.id,
-                                                 placeName: place.name, arranging: true)
+                                                 placeName: place.name, arranging: false)
         gallery.onAddPhoto = { [weak self] in
             self?.navigationController?.popViewController(animated: true)
             self?.presentPhotoPicker()
