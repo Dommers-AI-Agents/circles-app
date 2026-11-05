@@ -1,6 +1,6 @@
 {
   "_readme": "Source for favcircles.com/widgets.html. Edit here, then run: node website/tools/build-widgets-page.js — and upload widgets.html (see the website SFTP notes). Keep in step with the favcircles-widgets registry: every widget in FavWidgetRegistry.all appears here, new features get a line.",
-  "updated": "2026-11-02",
+  "updated": "2026-11-05",
   "groups": [
     {
       "title": "Family & friends",
@@ -53,7 +53,9 @@
         { "id": "meds", "emoji": "💊", "name": "Medications", "tagline": "A reminder for every dose, and one tap to log it.",
           "features": ["Add each medication with its dose and the times you take it", "A reminder at each time; tap Took it right from the notification, or snooze 10 minutes", "Today's doses at a glance, with anything missed flagged after two hours", "How many doses you took over the last 7 days and this month", "Private: only you see it"] },
         { "id": "sleep", "emoji": "😴", "name": "Sleep Score", "tagline": "How well you slept, scored every morning from Apple Health.",
-          "features": ["A nightly score out of 100 from how long you slept, time asleep in bed, consistency and sleep stages", "Reads your sleep from Apple Health (your Apple Watch or any sleep app), or log a night by hand", "Your recent nights at a glance, with 7-night averages", "Private: your Health data stays on your phone"] }
+          "features": ["A nightly score out of 100 from how long you slept, time asleep in bed, consistency and sleep stages", "Reads your sleep from Apple Health (your Apple Watch or any sleep app), or log a night by hand", "Your recent nights at a glance, with 7-night averages", "Private: your Health data stays on your phone"] },
+        { "id": "wakeup", "emoji": "⏰", "name": "Wake Up", "tagline": "An alarm that wakes you up to your Pandora, Spotify or Apple Music station.",
+          "features": ["Real alarms that ring like the Clock app's, even on silent or in a Focus", "Pick a station for each alarm: paste its link from Pandora, Spotify, Apple Music or any music app", "Stop opens your station; Snooze rings again after 5 to 20 minutes, your choice per alarm", "Repeat on the days you pick, or ring once", "\"Ring in a minute\" to try it out", "Needs iOS 26 or later"] }
       ]
     },
     {

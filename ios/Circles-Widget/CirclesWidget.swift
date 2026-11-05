@@ -183,5 +183,8 @@ struct CirclesWidgetBundle: WidgetBundle {
         EventLiveActivityWidget()
         WorkoutLiveActivityWidget()
         CareQuestionLiveActivityWidget()
+        if #available(iOS 26.0, *) {
+            WakeAlarmLiveActivityWidget()
+        }
     }
 }

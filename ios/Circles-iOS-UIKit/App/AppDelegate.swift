@@ -48,6 +48,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // Initialize Analytics Service
         AnalyticsService.shared.initialize(withConsent: true)
         AnalyticsService.shared.startSession()
+
+        // A Wake Up alarm's Stop opens its station once the app is in front
+        WakeAlarmHandoff.shared.start()
         
         // Configure Firebase Messaging
         Messaging.messaging().delegate = self

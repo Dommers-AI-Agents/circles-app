@@ -120,6 +120,8 @@
 	</array>
 	<key>LinkedInClientID</key>
 	<string>86rx0d8w7xn8rq</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>Wake Up rings your alarms, even on silent, and opens your station when you stop it.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

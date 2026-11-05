@@ -94,6 +94,11 @@
   "blurb": "How well you slept, scored every morning from Apple Health.",
   "emoji": "😴"
  },
+ "wakeup": {
+  "title": "Wake Up",
+  "blurb": "An alarm that wakes you up to your Pandora, Spotify or Apple Music station.",
+  "emoji": "⏰"
+ },
  "weather": {
   "title": "Weather",
   "blurb": "Right now, the next hours and 10 days.",
