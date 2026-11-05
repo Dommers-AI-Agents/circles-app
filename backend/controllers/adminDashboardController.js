@@ -44,3 +44,16 @@ exports.instagramPostNow = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Places saved without a Google or Apple Maps match wait here
+// (services/placeApproval): approve to make them public, reject to keep them
+// private to the people who saved them
+exports.placeApprovals = handle(async () => ({ places: await require('../services/placeApproval').listPending() }));
+exports.placeDecision = async (req, res) => {
+  try {
+    const decision = (req.body || {}).decision === 'approve' ? 'approved' : (req.body || {}).decision === 'reject' ? 'rejected' : null;
+    res.json({ success: true, ...(await require('../services/placeApproval').decide(req.params.id, decision, req.user.uid)) });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Place approval failed', fallbackMessage: 'Could not update the place' });
+  }
+};

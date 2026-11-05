@@ -62,5 +62,7 @@ router.get('/email-health', c.emailHealth);
 router.get('/instagram', c.instagram);
 router.post('/instagram/post-now', express.json(), c.instagramPostNow);
 router.post('/instagram/:id/status', express.json(), c.instagramStatus);
+router.get('/place-approvals', c.placeApprovals);
+router.post('/place-approvals/:id', express.json(), c.placeDecision);
 
 module.exports = router;

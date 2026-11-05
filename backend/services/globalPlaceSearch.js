@@ -36,7 +36,9 @@ const distanceKm = (place, lat, lng) => {
 };
 
 /** Merged-away and deleted venues keep their tokens; search must not show them. */
-const isLive = (place) => !place.deletedAt && !place.mergedInto;
+// A place waiting for (or refused) approval shows only to its savers
+const isLive = (place) => !place.deletedAt && !place.mergedInto
+  && !require('./placeApproval').isHiddenVenue(place);
 
 const stripInternal = ({ searchTokens, nameLower, geohash, ...rest }) => rest; // eslint-disable-line no-unused-vars
 

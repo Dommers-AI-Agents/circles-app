@@ -89,6 +89,9 @@ struct Place: Codable, Identifiable {
     /// The example place onboarding adds to a new account's first circle;
     /// doesn't count as one of theirs (the "Start your map" card)
     var isSamplePlace: Bool? = nil
+    /// "pending" on the save reply when no map knows this place: it was saved
+    /// private and waits for the admin to approve it (backend placeApproval)
+    var approvalStatus: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -105,6 +108,7 @@ struct Place: Codable, Identifiable {
         case importSource
         case needsResolution
         case isSamplePlace
+        case approvalStatus
     }
 
     /// Human-readable origin for imported saves ("Google import"), nil for
@@ -242,6 +246,7 @@ struct Place: Codable, Identifiable {
         self.importSource = try container.decodeIfPresent(String.self, forKey: .importSource)
         self.needsResolution = try container.decodeIfPresent(Bool.self, forKey: .needsResolution)
         self.isSamplePlace = try container.decodeIfPresent(Bool.self, forKey: .isSamplePlace)
+        self.approvalStatus = try container.decodeIfPresent(String.self, forKey: .approvalStatus)
     }
     
     // Manual initializer for creating Place instances in code

@@ -485,8 +485,13 @@ async function savePlace(user, body) {
       // name/POI signals when the client sent 'other') — return what the map
       // pin will actually show rather than the pre-link doc.
       try {
-        const linkedCategory = (await placeRef.get()).get('category');
-        if (linkedCategory) place.category = linkedCategory;
+        const linked = await placeRef.get();
+        if (linked.get('category')) place.category = linked.get('category');
+        // A place waiting for the admin was saved private (services/placeApproval)
+        if (linked.get('privacyBeforeApproval')) {
+          place.privacy = linked.get('privacy');
+          place.approvalStatus = 'pending';
+        }
       } catch (e) { /* response falls back to the pre-link category */ }
       // One photo library per place: this save's photos join it (own
       // uploads attributed, stock photos only fill an empty library)

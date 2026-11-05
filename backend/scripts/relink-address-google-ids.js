@@ -7,6 +7,7 @@
 // library has no public photo, one Google photo.
 //   DRY_RUN=true  node scripts/relink-address-google-ids.js   (lookups only, no writes)
 //   DRY_RUN=false node scripts/relink-address-google-ids.js
+//   WIDE=1 adds a Text Search (list) try for the ones Find Place missed.
 // A match must be a business within 250 m sharing a distinctive name word.
 // Venues already holding the business id elsewhere are reported for a merge
 // (scripts/merge-venue-pair.js), never re-linked. No match → reported, left as is.
@@ -25,8 +26,9 @@ const MAX_METERS = 250;
 const key = process.env.GOOGLE_MAPS_API_KEY;
 const client = new Client({});
 
-async function findBusiness(venue) {
-  const [lng, lat] = venue.location.coordinates;
+// Find Place answers with one candidate, often the address entry; Text
+// Search returns a list, so it is the second try (WIDE=1 runs it)
+async function lookup(venue, lat, lng) {
   const res = await client.findPlaceFromText({
     params: {
       input: venue.name, inputtype: 'textquery',
@@ -35,7 +37,19 @@ async function findBusiness(venue) {
     },
     timeout: 8000
   });
-  return venueCandidates(res.data.candidates).find((c) => {
+  const found = venueCandidates(res.data.candidates);
+  if (!process.env.WIDE) return found;
+  const wide = await client.textSearch({
+    params: { query: `${venue.name} ${String(venue.address || '').split(',').slice(0, 3).join(' ')}`,
+      location: { lat, lng }, radius: MAX_METERS, key },
+    timeout: 8000
+  });
+  return [...found, ...venueCandidates(wide.data.results)];
+}
+
+async function findBusiness(venue) {
+  const [lng, lat] = venue.location.coordinates;
+  return (await lookup(venue, lat, lng)).find((c) => {
     const at = c.geometry && c.geometry.location;
     if (!at) return false;
     const meters = distanceBetween([lat, lng], [at.lat, at.lng]) * 1000;

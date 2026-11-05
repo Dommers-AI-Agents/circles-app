@@ -159,7 +159,7 @@
     }
   });
 
-  const TABS = ['overview', 'people', 'money', 'messaging', 'instagram', 'print'];
+  const TABS = ['overview', 'people', 'money', 'messaging', 'instagram', 'approvals', 'print'];
 
   // Print tab: files hosted on favcircles.com (website/favcircles.com), so a
   // new version is an upload there, not a deploy or an app build.
@@ -207,6 +207,7 @@
         renderEmailHealth(eh);
       }
       if (tab === 'print') renderPrint();
+      if (tab === 'approvals') renderApprovals(await api('/admin/dashboard/place-approvals'));
       if (tab === 'instagram') renderInstagram(await api('/admin/dashboard/instagram'));
     } catch (err) {
       if (err.message !== 'not admin') console.warn(err);
@@ -421,6 +422,26 @@
       b.disabled = true;
       try { await apiPost(`/admin/dashboard/instagram/${encodeURIComponent(b.dataset.ig)}/status`, { status: b.dataset.status }); load(); }
       catch (err) { $('#igMsg').textContent = err.message; b.disabled = false; }
+    }));
+  }
+
+  // Places nobody's map knows (services/placeApproval): approve → public,
+  // reject → stays private to the people who saved it
+  function renderApprovals(d) {
+    const rows = d.places || [];
+    $('#apMsg').textContent = rows.length ? `${rows.length} waiting` : '';
+    $('#approvals').innerHTML = rows.length ? `<tr><th>Place</th><th>Saved by</th><th>Waiting</th><th></th></tr>` + rows.map((p) => `<tr>
+        <td>${p.photo ? `<img src="${esc(p.photo)}" alt="" loading="lazy" style="width:48px;height:48px;object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:8px">` : ''}<b>${esc(p.name)}</b>
+          <div class="sub muted">${esc(p.address)} · ${esc(p.category)}${p.mapUrl ? ` · <a href="${esc(p.mapUrl)}" target="_blank" rel="noopener">Map</a>` : ''}</div></td>
+        <td>${esc(p.savedBy.join(', ') || '—')}${p.saves > 1 ? ` <span class="muted">(${p.saves} saves)</span>` : ''}</td>
+        <td class="muted">${p.pendingSince ? esc(ago(p.pendingSince)) : ''}</td>
+        <td style="white-space:nowrap"><button data-ap="${esc(p.id)}" data-decision="approve">Approve</button>
+          <button class="ghost" data-ap="${esc(p.id)}" data-decision="reject">Reject</button></td>
+      </tr>`).join('') : '<tr><td class="muted">Nothing waiting.</td></tr>';
+    document.querySelectorAll('[data-ap]').forEach((b) => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { await apiPost(`/admin/dashboard/place-approvals/${encodeURIComponent(b.dataset.ap)}`, { decision: b.dataset.decision }); load(); }
+      catch (err) { $('#apMsg').textContent = err.message; b.disabled = false; }
     }));
   }
 

@@ -164,6 +164,11 @@ exports.matchGlobalPlace = async (req, res) => {
       }
     }
 
+    // A place waiting for approval is only its submitter's to find
+    if (match && require('../services/placeApproval').isHiddenVenue(match)
+      && !require('../services/idService').isSameUser(match.submittedBy, req.user && req.user.uid)) {
+      match = null;
+    }
     if (!match) {
       return res.json({ success: true, data: { match: null } });
     }

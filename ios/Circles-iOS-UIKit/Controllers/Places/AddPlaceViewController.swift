@@ -1315,19 +1315,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
     
     @objc func manualEntryButtonTapped() {
-        // Show message about using the search bar
-        let alert = UIAlertController(
+        // Search finds places only (never a bare street address); anything
+        // else is named by hand and waits for approval (backend placeApproval)
+        AlertPresenter.showInfo(
             title: "How to Add Places",
-            message: "To add a place:\n\n1. Type the address or place name in the search bar above\n2. Select the place from the search results\n3. Fill in the place name and details\n4. Tap 'Save Place'",
-            preferredStyle: .alert
+            message: "Search for the place by name above and pick it from the results.\n\nNot on the map? Tap its spot on the map and give it a name. Places added this way stay private until FavCircles checks them.",
+            from: self,
+            actionTitle: "Search",
+            action: { [weak self] in self?.searchBar.becomeFirstResponder() }
         )
-        
-        alert.addAction(UIAlertAction(title: "Got it", style: .default) { [weak self] _ in
-            // Focus on the search bar
-            self?.searchBar.becomeFirstResponder()
-        })
-        
-        present(alert, animated: true)
     }
     
     @objc func addPhotoButtonTapped() {

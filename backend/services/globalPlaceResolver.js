@@ -554,10 +554,12 @@ async function ensureGlobalPlaceLink(placeDoc, { knownVenueId = null } = {}) {
       }
     }
 
+    let minted = false;
     if (!globalPlaceId) {
       const created = await createGlobalPlaceFromLegacy(placeDoc);
       globalPlaceId = created.resolvedId;
       resolvedData = created.resolvedData;
+      minted = true;
     }
 
     // Stamp the link and drop the now-canonical venue fields in one write —
@@ -579,6 +581,9 @@ async function ensureGlobalPlaceLink(placeDoc, { knownVenueId = null } = {}) {
       });
     }
     await placeDoc.ref.update(updates);
+    // A place no map source knows waits for the admin, its saves private
+    // (services/placeApproval)
+    await require('./placeApproval').onSaveLinked({ saveDoc: placeDoc, venueId: globalPlaceId, venue: resolvedData, minted });
 
     // An EXISTING venue that nothing has managed to categorize yet: flag it for
     // the nightly sweep rather than calling a model here — a save must never

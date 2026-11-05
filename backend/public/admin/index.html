@@ -146,6 +146,7 @@
         <button data-tab="money">Money &amp; partners</button>
         <button data-tab="messaging">Email &amp; push</button>
         <button data-tab="instagram">Instagram</button>
+        <button data-tab="approvals">Approve places</button>
         <button data-tab="print">Print</button>
       </nav>
       <div class="spacer"></div>
@@ -227,6 +228,13 @@
           <span class="muted" id="igMsg"></span>
         </div>
         <div class="ig-grid" id="igPosts"></div>
+      </section>
+    </div>
+    <div id="tab-approvals" class="hidden">
+      <section class="card">
+        <h2>Places to approve <span class="muted">(saved without a Google or Apple Maps match; private until you approve)</span></h2>
+        <p class="muted" id="apMsg" style="margin:6px 0 12px"></p>
+        <div class="scroll"><table id="approvals"></table></div>
       </section>
     </div>
     <div id="tab-print" class="hidden">

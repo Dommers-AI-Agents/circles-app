@@ -328,7 +328,7 @@ extension AddPlaceViewController {
 
                             // No success popup — the piggy-bank coin drop IS
                             // the success feedback; an alert here covered it up
-                            self?.navigateToCircleDetail()
+                            self?.finishSave(place)
                         case .failure(let error):
                             Logger.debug("❌ Failed to create place from POI: \(error)")
                             self?.endSaving()
@@ -475,8 +475,9 @@ extension AddPlaceViewController {
                         ProximityNotificationScheduler.shared.replanFromCache(force: true)
 
                         // No success popup — the piggy-bank coin drop IS the
-                        // success feedback; an alert here covered it up
-                        self?.navigateToCircleDetail()
+                        // success feedback; an alert here covered it up.
+                        // Except a place no map knows: say why it's private.
+                        self?.finishSave(place)
                     case .failure(let error):
                         Logger.debug("❌ Failed to create place: \(error)")
                         self?.endSaving()
@@ -556,8 +557,9 @@ extension AddPlaceViewController {
                         ProximityNotificationScheduler.shared.replanFromCache(force: true)
 
                         // No success popup — the piggy-bank coin drop IS the
-                        // success feedback; an alert here covered it up
-                        self?.navigateToCircleDetail()
+                        // success feedback; an alert here covered it up.
+                        // Except a place no map knows: say why it's private.
+                        self?.finishSave(place)
                     case .failure(let error):
                         Logger.debug("❌ Failed to create place: \(error)")
                         self?.endSaving()
@@ -571,4 +573,21 @@ extension AddPlaceViewController {
 
 private enum AddPlaceSaveKeys {
     static var retry: UInt8 = 0
+}
+
+extension AddPlaceViewController {
+    /// A place no map knows is saved private until FavCircles approves it
+    /// (Wes, 2026-11-05); say so once, then go on to the circle as usual.
+    func finishSave(_ place: Place) {
+        guard place.approvalStatus == "pending" else {
+            navigateToCircleDetail()
+            return
+        }
+        AlertPresenter.showAlert(
+            title: "Saved privately",
+            message: "We couldn't find \(place.name) on the map, so only you can see it for now. We'll make it public once we've checked it.",
+            actions: [("OK", .default, { [weak self] in self?.navigateToCircleDetail() })],
+            from: self
+        )
+    }
 }
