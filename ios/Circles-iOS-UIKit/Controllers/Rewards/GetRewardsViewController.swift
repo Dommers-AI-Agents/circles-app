@@ -518,7 +518,8 @@ final class GetRewardsViewController: BaseViewController {
         cost.setContentHuggingPriority(.required, for: .horizontal)
         cost.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        var parts: [UIView] = [title, cost]
+        let picture = Self.rewardPicture(offer.title)
+        var parts: [UIView] = [picture, title, cost]
         // Enough points: Redeem right in the row
         if offer.pointsCost <= details.venueBalance, let match = self.offer(titled: offer.title, cost: offer.pointsCost) {
             let redeem = UIButton.smallActionButton(title: "Redeem", style: .primary)
@@ -594,6 +595,22 @@ final class GetRewardsViewController: BaseViewController {
     }
 
     // MARK: - Factories
+
+    /// The reward's picture (☕️ for a coffee) on a soft tile
+    private static func rewardPicture(_ title: String) -> UIView {
+        let label = UILabel()
+        label.text = RewardPicture.emoji(for: title)
+        label.font = .systemFont(ofSize: 24)
+        label.textAlignment = .center
+        label.isAccessibilityElement = false
+        label.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.12)
+        label.layer.cornerRadius = 10
+        label.clipsToBounds = true
+        label.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([label.widthAnchor.constraint(equalToConstant: 42),
+                                     label.heightAnchor.constraint(equalToConstant: 42)])
+        return label
+    }
 
     private static func label(size: CGFloat, weight: UIFont.Weight, color: UIColor = Constants.Colors.label) -> UILabel {
         let label = UILabel()

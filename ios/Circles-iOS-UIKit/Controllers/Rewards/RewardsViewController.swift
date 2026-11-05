@@ -1159,7 +1159,7 @@ class RewardsViewController: BaseViewController {
         navigationController?.pushViewController(detailVC, animated: true)
     }
 
-    /// One offer: a gift badge, the title and cost, then Redeem when this
+    /// One offer: the reward's picture, the title and cost, then Redeem when this
     /// store's points cover it, or how many more points it takes
     private func makeOfferRow(_ offer: RewardOffer, venue: OfferVenue) -> UIView {
         // Per-store loyalty: only points earned at THIS shop pay for its offers
@@ -1171,16 +1171,17 @@ class RewardsViewController: BaseViewController {
         badge.layer.cornerRadius = 18
         badge.widthAnchor.constraint(equalToConstant: 36).isActive = true
         badge.heightAnchor.constraint(equalToConstant: 36).isActive = true
-        let gift = UIImageView(image: UIImage(systemName: "gift.fill"))
-        gift.tintColor = affordable ? .systemGreen : Constants.Colors.primary
-        gift.contentMode = .scaleAspectFit
-        gift.translatesAutoresizingMaskIntoConstraints = false
-        badge.addSubview(gift)
+        // The reward's picture: ☕️ for a coffee (Wes, 2026-11-05)
+        let picture = UILabel()
+        picture.text = RewardPicture.emoji(for: offer.title)
+        picture.font = .systemFont(ofSize: 19)
+        picture.textAlignment = .center
+        picture.isAccessibilityElement = false
+        picture.translatesAutoresizingMaskIntoConstraints = false
+        badge.addSubview(picture)
         NSLayoutConstraint.activate([
-            gift.centerXAnchor.constraint(equalTo: badge.centerXAnchor),
-            gift.centerYAnchor.constraint(equalTo: badge.centerYAnchor),
-            gift.widthAnchor.constraint(equalToConstant: 18),
-            gift.heightAnchor.constraint(equalToConstant: 18)
+            picture.centerXAnchor.constraint(equalTo: badge.centerXAnchor),
+            picture.centerYAnchor.constraint(equalTo: badge.centerYAnchor)
         ])
 
         let title = UILabel()

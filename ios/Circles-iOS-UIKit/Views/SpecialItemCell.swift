@@ -52,6 +52,17 @@ class SpecialItemCell: UITableViewCell {
         return imageView
     }()
 
+    /// An open store's deals: the reward's picture ☕️ in the thumbnail's place
+    private let pictureLabel: UILabel = {
+        let label = UILabel()
+        label.font = .systemFont(ofSize: 26)
+        label.textAlignment = .center
+        label.isHidden = true
+        label.isAccessibilityElement = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
     private let titleLabel: UILabel = {
         let label = UILabel()
         label.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
@@ -113,6 +124,7 @@ class SpecialItemCell: UITableViewCell {
 
         contentView.addSubview(containerView)
         containerView.addSubview(thumbnailImageView)
+        containerView.addSubview(pictureLabel)
         containerView.addSubview(titleLabel)
         containerView.addSubview(messageLabel)
         containerView.addSubview(venueLabel)
@@ -126,6 +138,8 @@ class SpecialItemCell: UITableViewCell {
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
 
             thumbnailImageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            pictureLabel.centerXAnchor.constraint(equalTo: thumbnailImageView.centerXAnchor),
+            pictureLabel.centerYAnchor.constraint(equalTo: thumbnailImageView.centerYAnchor),
             thumbnailImageView.topAnchor.constraint(greaterThanOrEqualTo: containerView.topAnchor, constant: 12),
 
             badgeLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
@@ -186,11 +200,16 @@ class SpecialItemCell: UITableViewCell {
             badgeIconView.image = UIImage(systemName: "megaphone.fill")
             badgeIconView.tintColor = .systemOrange
         }
-        // Under its store's header the store's name and photo are already shown
+        // Under its store's header the store's name and photo are already
+        // shown: the reward's own picture instead
         if isStoreDeal {
             venueLabel.text = nil
             currentImageLoadId = nil
             thumbnailImageView.image = nil
+            switch item.kind {
+            case .offer(let offer): pictureLabel.text = RewardPicture.emoji(for: offer.title)
+            case .announcement: pictureLabel.text = RewardPicture.announcement
+            }
             return
         }
         loadPhoto(of: item.venue)
@@ -219,13 +238,14 @@ class SpecialItemCell: UITableViewCell {
         loadPhoto(of: venue)
     }
 
-    /// One of an open store's deals: indented, no photo
+    /// One of an open store's deals: indented, with the reward's picture
     private func setDealUnderStore(_ under: Bool) {
         thumbnailLeading.constant = under ? 28 : 12
-        thumbnailWidth.constant = under ? 0 : 60
-        thumbnailHeight.constant = under ? 0 : 60
-        titleLeading.constant = under ? 0 : 12
-        thumbnailImageView.isHidden = under
+        thumbnailWidth.constant = under ? 44 : 60
+        thumbnailHeight.constant = under ? 44 : 60
+        thumbnailImageView.backgroundColor = under ? Constants.Colors.primary.withAlphaComponent(0.12) : Constants.Colors.lightGray
+        thumbnailImageView.layer.cornerRadius = under ? 10 : 8
+        pictureLabel.isHidden = !under
         containerView.backgroundColor = under ? Constants.Colors.secondaryBackground.withAlphaComponent(0.6)
                                               : Constants.Colors.secondaryBackground
         accessibilityHint = nil
@@ -272,6 +292,7 @@ class SpecialItemCell: UITableViewCell {
         currentImageLoadId = nil
         thumbnailImageView.image = nil
         titleLabel.text = nil
+        pictureLabel.text = nil
         messageLabel.text = nil
         venueLabel.text = nil
         badgeLabel.text = nil
