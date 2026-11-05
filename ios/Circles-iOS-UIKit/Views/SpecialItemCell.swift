@@ -1,8 +1,8 @@
 import UIKit
 
-/// One row in the home-page Specials tab: a live offer or announcement from a
-/// participating venue. Flat list — one row per deal, venue repeated as the
-/// subtitle.
+/// One row in the home-page Locals tab: a live offer or announcement from a
+/// participating venue, or a store with several of them (a header that opens
+/// to list each, see `LocalsDealGrouping`).
 struct SpecialItem {
     enum Kind {
         case offer(RewardOffer)
@@ -99,6 +99,11 @@ class SpecialItemCell: UITableViewCell {
         return imageView
     }()
 
+    private var thumbnailWidth: NSLayoutConstraint!
+    private var thumbnailHeight: NSLayoutConstraint!
+    private var thumbnailLeading: NSLayoutConstraint!
+    private var titleLeading: NSLayoutConstraint!
+
     // MARK: - Init
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -120,10 +125,7 @@ class SpecialItemCell: UITableViewCell {
             containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -12),
             containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
 
-            thumbnailImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12),
             thumbnailImageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            thumbnailImageView.widthAnchor.constraint(equalToConstant: 60),
-            thumbnailImageView.heightAnchor.constraint(equalToConstant: 60),
             thumbnailImageView.topAnchor.constraint(greaterThanOrEqualTo: containerView.topAnchor, constant: 12),
 
             badgeLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
@@ -135,7 +137,6 @@ class SpecialItemCell: UITableViewCell {
             badgeIconView.heightAnchor.constraint(equalToConstant: 18),
 
             titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 12),
-            titleLabel.leadingAnchor.constraint(equalTo: thumbnailImageView.trailingAnchor, constant: 12),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: badgeLabel.leadingAnchor, constant: -8),
 
             messageLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
@@ -147,6 +148,11 @@ class SpecialItemCell: UITableViewCell {
             venueLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -12),
             venueLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -12)
         ])
+        thumbnailLeading = thumbnailImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 12)
+        thumbnailWidth = thumbnailImageView.widthAnchor.constraint(equalToConstant: 60)
+        thumbnailHeight = thumbnailImageView.heightAnchor.constraint(equalToConstant: 60)
+        titleLeading = titleLabel.leadingAnchor.constraint(equalTo: thumbnailImageView.trailingAnchor, constant: 12)
+        NSLayoutConstraint.activate([thumbnailLeading, thumbnailWidth, thumbnailHeight, titleLeading])
     }
 
     required init?(coder: NSCoder) {
@@ -155,7 +161,8 @@ class SpecialItemCell: UITableViewCell {
 
     // MARK: - Configuration
 
-    func configure(with item: SpecialItem) {
+    func configure(with item: SpecialItem, isStoreDeal: Bool = false) {
+        setDealUnderStore(isStoreDeal)
         titleLabel.text = item.title
 
         var venueText = item.venue.venueName
@@ -176,15 +183,71 @@ class SpecialItemCell: UITableViewCell {
             messageLabel.text = announcement.message
             badgeLabel.isHidden = true
             badgeIconView.isHidden = false
+            badgeIconView.image = UIImage(systemName: "megaphone.fill")
+            badgeIconView.tintColor = .systemOrange
         }
+        // Under its store's header the store's name and photo are already shown
+        if isStoreDeal {
+            venueLabel.text = nil
+            currentImageLoadId = nil
+            thumbnailImageView.image = nil
+            return
+        }
+        loadPhoto(of: item.venue)
+    }
 
+    /// A store with several deals: its name, the first deal "+ N more", and
+    /// a chevron that turns when it's open
+    func configure(store items: [SpecialItem], isExpanded: Bool) {
+        guard let first = items.first else { return }
+        setDealUnderStore(false)
+        let venue = first.venue
+        titleLabel.text = venue.venueName
+        messageLabel.text = LocalsDealGrouping.summary(first: first.title, count: items.count)
+        var venueText = "\(items.count) deals"
+        if venue.isVirtual == true {
+            venueText += " · Online store"
+        } else if let distance = venue.distanceDisplay {
+            venueText += " · \(distance)"
+        }
+        venueLabel.text = venueText
+        badgeLabel.isHidden = true
+        badgeIconView.isHidden = false
+        badgeIconView.image = UIImage(systemName: isExpanded ? "chevron.up" : "chevron.down")
+        badgeIconView.tintColor = Constants.Colors.secondaryLabel
+        accessibilityHint = isExpanded ? "Hides this store's deals" : "Shows all of this store's deals"
+        loadPhoto(of: venue)
+    }
+
+    /// One of an open store's deals: indented, no photo
+    private func setDealUnderStore(_ under: Bool) {
+        thumbnailLeading.constant = under ? 28 : 12
+        thumbnailWidth.constant = under ? 0 : 60
+        thumbnailHeight.constant = under ? 0 : 60
+        titleLeading.constant = under ? 0 : 12
+        thumbnailImageView.isHidden = under
+        containerView.backgroundColor = under ? Constants.Colors.secondaryBackground.withAlphaComponent(0.6)
+                                              : Constants.Colors.secondaryBackground
+        accessibilityHint = nil
+    }
+
+    /// A quick tint so the eye lands on the deals a tap just opened
+    func flashReveal() {
+        let resting = containerView.backgroundColor
+        containerView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.15)
+        UIView.animate(withDuration: 0.9, delay: 0.1, options: [.allowUserInteraction]) {
+            self.containerView.backgroundColor = resting
+        }
+    }
+
+    private func loadPhoto(of venue: OfferVenue) {
         currentImageLoadId = nil
-        if let photoUrl = item.venue.photoUrl {
+        if let photoUrl = venue.photoUrl {
             let loadId = UUID().uuidString
             currentImageLoadId = loadId
             thumbnailImageView.contentMode = .scaleAspectFill
             thumbnailImageView.image = nil
-            ImageService.shared.loadImageWithKey(from: photoUrl, cacheKey: "special-\(item.venue.venueId)") { [weak self] image in
+            ImageService.shared.loadImageWithKey(from: photoUrl, cacheKey: "special-\(venue.venueId)") { [weak self] image in
                 DispatchQueue.main.async {
                     guard let self = self, self.currentImageLoadId == loadId else { return }
                     if let image = image {

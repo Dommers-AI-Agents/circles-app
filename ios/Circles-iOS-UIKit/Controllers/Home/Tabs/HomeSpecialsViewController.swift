@@ -3,8 +3,9 @@ import MapKit
 import SafariServices
 
 /// The home screen's Locals tab (was Specials): live offers and announcements
-/// from participating venues, one row per deal in the server's order (saved
-/// venues first, then nearest); then "Happening nearby" — events stores post
+/// from participating venues in the server's order (saved venues first, then
+/// nearest), one row per store: a store with several deals opens to list them
+/// (Wes, 2026-11-05). A deal opens the store's rewards page; then "Happening nearby" — events stores post
 /// on FavCircles, free library programs and Ticketmaster shows — and the
 /// nearest farmers markets (Wes, 2026-10-15). Loads once when first shown;
 /// pull-to-refresh and the `specialsUpdated` SSE event refetch.
@@ -13,6 +14,8 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     var isActiveTab = false
 
     private(set) var specials: [SpecialItem] = []
+    /// Stores whose deals are open
+    private var expandedStores: Set<String> = []
     private(set) var events: [NearbyEvent] = []
     private(set) var markets: [FarmersMarket] = []
     /// The server's credits line for the sources shown
@@ -50,6 +53,11 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         return specials.filter {
             LocalsSearch.matches([$0.title, $0.venue.venueName, $0.venue.placeName, $0.venue.category], query: searchQuery)
         }
+    }
+    /// The deals section's rows: one per store, open stores followed by their
+    /// deals. A search opens every store, so each match shows.
+    var dealRows: [LocalsDealGrouping.Row<SpecialItem>] {
+        LocalsDealGrouping.rows(shownSpecials, key: { $0.venue.venueId }, expanded: expandedStores, expandAll: isSearchActive)
     }
     var shownEvents: [NearbyEvent] {
         guard isSearchActive else { return events }
@@ -301,14 +309,75 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
 
     // MARK: - Actions
 
-    /// Opens the tapped deal's place page — same resolution as the Rewards
-    /// screen: canonical global place by id, venue-built fallback otherwise.
-    func openSpecialPlace(_ venue: OfferVenue) {
+    /// A deal opens its store's rewards page to look through (Wes,
+    /// 2026-11-05); the store's name there opens its place page. The
+    /// canonical place and the store's rewards load side by side; a store
+    /// with no rewards to get opens its place page instead.
+    func openStoreRewards(_ venue: OfferVenue) {
         guard let placeId = venue.globalPlaceId ?? venue.googlePlaceId else {
             pushSpecialPlaceFallback(venue)
             return
         }
-        openPlace(id: placeId) { [weak self] in self?.pushSpecialPlaceFallback(venue) }
+        AnalyticsService.shared.logEvent("locals_deal_opened", parameters: ["venue": venue.venueId])
+        let loading = AlertPresenter.showLoading(message: "Loading rewards...", from: self)
+        let group = DispatchGroup()
+        var place: Place?
+        var data: PlaceVenueData?
+        group.enter()
+        GlobalPlaceService.shared.getGlobalPlace(id: placeId) { result in
+            DispatchQueue.main.async {
+                if case .success(let response) = result { place = response.bestDetailPlace() }
+                group.leave()
+            }
+        }
+        group.enter()
+        RewardsService.shared.getVenueByPlace(placeId: placeId, googlePlaceId: venue.googlePlaceId) { result in
+            DispatchQueue.main.async {
+                if case .success(let venueData) = result { data = venueData }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) { [weak self] in
+            loading.dismiss(animated: true) {
+                guard let self else { return }
+                let store = place ?? self.fallbackPlace(for: venue)
+                let page: UIViewController = GetRewardsViewController(place: store, data: data)
+                    ?? PlaceDetailViewController(place: store)
+                self.navigationController?.pushViewController(page, animated: true)
+            }
+        }
+    }
+
+    /// Opens or closes a store's deals in place. Opening scrolls the store to
+    /// the top and tints its deals so it's clear what the tap showed.
+    private func toggleStore(_ key: String, at headerPath: IndexPath) {
+        let before = dealRows.count
+        let opening = !expandedStores.contains(key)
+        if opening { expandedStores.insert(key) } else { expandedStores.remove(key) }
+        let added = dealRows.count - before
+        let childPaths = (1...max(1, abs(added))).map { IndexPath(row: headerPath.row + $0, section: headerPath.section) }
+        guard added != 0 else {
+            tableView.reloadData()
+            return
+        }
+        tableView.performBatchUpdates {
+            if opening {
+                tableView.insertRows(at: childPaths, with: .fade)
+            } else {
+                tableView.deleteRows(at: childPaths, with: .fade)
+            }
+            tableView.reloadRows(at: [headerPath], with: .none)
+        } completion: { [weak self] _ in
+            guard let self, opening else { return }
+            self.tableView.scrollToRow(at: headerPath, at: .top, animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                guard let self else { return }
+                childPaths.forEach { (self.tableView.cellForRow(at: $0) as? SpecialItemCell)?.flashReveal() }
+            }
+        }
+        if !opening, !(tableView.indexPathsForVisibleRows ?? []).contains(headerPath) {
+            tableView.scrollToRow(at: headerPath, at: .top, animated: true)
+        }
     }
 
     /// The canonical place page by id, or `fallback` when it can't load.
@@ -356,10 +425,16 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     }
 
     private func pushSpecialPlaceFallback(_ venue: OfferVenue) {
-        pushPlace(name: venue.placeName ?? venue.venueName, address: venue.placeAddress,
+        navigationController?.pushViewController(PlaceDetailViewController(place: fallbackPlace(for: venue)), animated: true)
+    }
+
+    /// The store as the deal row knows it, when its place record can't load
+    private func fallbackPlace(for venue: OfferVenue) -> Place {
+        makePlace(name: venue.placeName ?? venue.venueName, address: venue.placeAddress,
                   lat: venue.location?.lat, lng: venue.location?.lng,
                   globalPlaceId: venue.globalPlaceId, googlePlaceId: venue.googlePlaceId,
-                  id: venue.venueId, category: PlaceCategory(rawValue: venue.category ?? "") ?? .restaurant)
+                  id: venue.venueId, category: PlaceCategory(rawValue: venue.category ?? "") ?? .restaurant,
+                  photos: venue.photoUrl.map { [$0] })
     }
 
     /// A place page built from what the row knows (no saved record behind it).
@@ -367,6 +442,16 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
                            globalPlaceId: String?, googlePlaceId: String?,
                            id: String? = nil, category: PlaceCategory = .restaurant,
                            photos: [String]? = nil, website: String? = nil, openingHours: [OpeningHour]? = nil) {
+        let place = makePlace(name: name, address: address, lat: lat, lng: lng, globalPlaceId: globalPlaceId,
+                              googlePlaceId: googlePlaceId, id: id, category: category, photos: photos,
+                              website: website, openingHours: openingHours)
+        navigationController?.pushViewController(PlaceDetailViewController(place: place), animated: true)
+    }
+
+    private func makePlace(name: String, address: String?, lat: Double?, lng: Double?,
+                           globalPlaceId: String?, googlePlaceId: String?,
+                           id: String? = nil, category: PlaceCategory = .restaurant,
+                           photos: [String]? = nil, website: String? = nil, openingHours: [OpeningHour]? = nil) -> Place {
         var location: GeoLocation?
         if let lat, let lng {
             // GeoJSON order: [longitude, latitude]
@@ -407,8 +492,7 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
             createdAt: Date(),
             updatedAt: Date()
         )
-        let detailVC = PlaceDetailViewController(place: place)
-        navigationController?.pushViewController(detailVC, animated: true)
+        return place
     }
 }
 
@@ -435,7 +519,7 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch Section(rawValue: section) {
         case .searchNote: return searchNoteText == nil ? 0 : 1
-        case .specials: return showsNoSpecialsNote ? 1 : shownSpecials.count
+        case .specials: return showsNoSpecialsNote ? 1 : dealRows.count
         case .events: return shownEvents.count
         case .markets: return shownMarkets.count
         case nil: return 0
@@ -468,7 +552,7 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
         if showsNoSpecialsNote {
             let cell = tableView.dequeueReusableCell(withIdentifier: "note", for: indexPath)
             var content = cell.defaultContentConfiguration()
-            content.text = "No store shownSpecials nearby right now."
+            content.text = "No store deals nearby right now."
             content.textProperties.font = .systemFont(ofSize: 14)
             content.textProperties.color = Constants.Colors.secondaryLabel
             cell.contentConfiguration = content
@@ -477,8 +561,13 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
             return cell
         }
         let cell = tableView.dequeueReusableCell(withIdentifier: SpecialItemCell.identifier, for: indexPath) as! SpecialItemCell
-        guard indexPath.row < shownSpecials.count else { return cell }
-        cell.configure(with: shownSpecials[indexPath.row])
+        let rows = dealRows
+        guard indexPath.row < rows.count else { return cell }
+        switch rows[indexPath.row] {
+        case .single(let item): cell.configure(with: item)
+        case .deal(let item): cell.configure(with: item, isStoreDeal: true)
+        case .store(_, let items, let isExpanded): cell.configure(store: items, isExpanded: isExpanded)
+        }
         return cell
     }
 
@@ -547,8 +636,14 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
         case .markets:
             if indexPath.row < shownMarkets.count { openMarket(shownMarkets[indexPath.row]) }
         default:
-            guard !showsNoSpecialsNote, indexPath.row < shownSpecials.count else { return }
-            openSpecialPlace(shownSpecials[indexPath.row].venue)
+            let rows = dealRows
+            guard !showsNoSpecialsNote, indexPath.row < rows.count else { return }
+            switch rows[indexPath.row] {
+            case .single(let item), .deal(let item): openStoreRewards(item.venue)
+            case .store(let key, let items, _):
+                // A search shows every store open already: the header opens the store
+                if isSearchActive, let first = items.first { openStoreRewards(first.venue) } else { toggleStore(key, at: indexPath) }
+            }
         }
     }
 
@@ -585,8 +680,13 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
                 ])
             }
         default:
-            guard !showsNoSpecialsNote, indexPath.row < shownSpecials.count else { return nil }
-            let item = shownSpecials[indexPath.row]
+            let rows = dealRows
+            guard !showsNoSpecialsNote, indexPath.row < rows.count else { return nil }
+            let item: SpecialItem
+            switch rows[indexPath.row] {
+            case .single(let deal), .deal(let deal): item = deal
+            case .store: return nil
+            }
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
                 let share = UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
                     self?.shareSpecial(item)

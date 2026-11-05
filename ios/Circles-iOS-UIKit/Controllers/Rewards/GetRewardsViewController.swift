@@ -181,6 +181,12 @@ final class GetRewardsViewController: BaseViewController {
         storeNameLabel.numberOfLines = 2
         storeNameLabel.adjustsFontSizeToFitWidth = true
         storeNameLabel.minimumScaleFactor = 0.7
+        // The store's name opens its place page (Wes, 2026-11-05)
+        heroText.isUserInteractionEnabled = true
+        heroText.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(storeNameTapped)))
+        heroText.isAccessibilityElement = true
+        heroText.accessibilityTraits = .button
+        heroText.accessibilityHint = "Opens the store's page"
 
         let cardStack = UIStackView()
         cardStack.axis = .vertical
@@ -297,10 +303,11 @@ final class GetRewardsViewController: BaseViewController {
     }
 
     private func render() {
-        storeNameLabel.text = details.venueName
+        storeNameLabel.attributedText = Self.nameWithChevron(details.venueName)
         let line = address ?? place.address
         addressLabel.text = line
         addressLabel.isHidden = (line ?? "").isEmpty
+        storeNameLabel.superview?.accessibilityLabel = [details.venueName, line].compactMap { $0 }.joined(separator: ", ")
 
         pointsLabel.text = details.venueBalance.formatted()
         pointsCaption.text = details.venueBalance == 1 ? "point at \(details.venueName)" : "points at \(details.venueName)"
@@ -557,6 +564,29 @@ final class GetRewardsViewController: BaseViewController {
         let nav = UINavigationController(rootViewController: RewardScannerViewController())
         nav.modalPresentationStyle = .fullScreen
         present(nav, animated: true)
+    }
+
+    /// The store's place page. Opened from that page (its Get Rewards
+    /// button), going back is the way there; from anywhere else it opens.
+    @objc private func storeNameTapped() {
+        guard let nav = navigationController else { return }
+        if let index = nav.viewControllers.firstIndex(of: self), index > 0,
+           nav.viewControllers[index - 1] is PlaceDetailViewController {
+            nav.popViewController(animated: true)
+            return
+        }
+        nav.pushViewController(PlaceDetailViewController(place: place), animated: true)
+    }
+
+    /// "Sal's Bakery ›": the name reads as something to tap
+    private static func nameWithChevron(_ name: String) -> NSAttributedString {
+        let text = NSMutableAttributedString(string: name + " ")
+        let config = UIImage.SymbolConfiguration(pointSize: Constants.FontSize.large, weight: .bold)
+        if let chevron = UIImage(systemName: "chevron.right", withConfiguration: config)?
+            .withTintColor(UIColor.white.withAlphaComponent(0.85), renderingMode: .alwaysOriginal) {
+            text.append(NSAttributedString(attachment: NSTextAttachment(image: chevron)))
+        }
+        return text
     }
 
     @objc private func closeTapped() {
