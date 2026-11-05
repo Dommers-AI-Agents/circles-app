@@ -131,10 +131,37 @@ const pdfToBuffer = (doc) => new Promise((resolve, reject) => {
   doc.end();
 });
 
-const qrBuffer = (code, sizePx, dark = '#000000') => QRCode.toBuffer(
-  rewardService.stickerUrl(code),
-  { width: sizePx, margin: 1, errorCorrectionLevel: 'M', color: { dark, light: '#FFFFFF' } }
-);
+// QR codes are drawn as vector squares in the PDF, not embedded PNGs: sharp
+// at any print size, ~30× smaller files, and ~40× faster — encoding the PNGs
+// (pngjs) was 95% of the render time (2026-11-05: a 30-store sticker sheet
+// took close to a minute and timed the test out under load).
+const QR_MARGIN = 1; // quiet-zone modules inside the drawn square, as the PNGs had
+const qrCode = (code, dark = '#000000') => ({
+  modules: QRCode.create(rewardService.stickerUrl(code), { errorCorrectionLevel: 'M' }).modules,
+  dark
+});
+
+/** Draw a QR (from qrCode) filling the size × size square at (x, y). */
+function drawQR(doc, qr, x, y, size) {
+  const { modules, dark } = qr;
+  const n = modules.size;
+  const cell = size / (n + QR_MARGIN * 2);
+  doc.save();
+  doc.rect(x, y, size, size).fill('#FFFFFF');
+  // One rectangle per horizontal run of dark modules keeps the PDF small
+  for (let row = 0; row < n; row++) {
+    let col = 0;
+    while (col < n) {
+      if (!modules.get(row, col)) { col += 1; continue; }
+      const start = col;
+      while (col < n && modules.get(row, col)) col += 1;
+      // A hair of overlap so no white seams show between modules when printed
+      doc.rect(x + (start + QR_MARGIN) * cell, y + (row + QR_MARGIN) * cell, (col - start) * cell + 0.01, cell + 0.01);
+    }
+  }
+  doc.fill(dark);
+  doc.restore();
+}
 
 // --- drawing helpers ------------------------------------------------------
 
@@ -212,7 +239,7 @@ function drawQRCard(doc, qr, x, y, size, s) {
   const r = 14 * s;
   doc.roundedRect(x, y, outer, outer, r).fill('#FFFFFF');
   doc.roundedRect(x, y, outer, outer, r).lineWidth(2.2 * s).strokeColor(BRAND).stroke();
-  doc.image(qr, x + pad, y + pad, { width: size, height: size });
+  drawQR(doc, qr, x + pad, y + pad, size);
   // Yellow corner ticks just outside the frame: the eye goes to the code
   const t = 16 * s;
   const o = 5 * s;
@@ -381,7 +408,7 @@ function drawStickerSheets(entries, startAt = 1, sheet = STICKER_SHEET) {
     const y = top + Math.floor(slot / cols) * pitchY;
     if (entry.name) {
       const pad = (size - NAMED_STICKER_QR) / 2;
-      doc.image(entry.qr, x + pad, y + 0.06 * IN, { width: NAMED_STICKER_QR, height: NAMED_STICKER_QR });
+      drawQR(doc, entry.qr, x + pad, y + 0.06 * IN, NAMED_STICKER_QR);
       const nameSize = fitSize(doc, entry.name, 'Helvetica-Bold', 7, 5, size - 0.16 * IN, 1);
       doc.fillColor(STICKER_INK).font('Helvetica-Bold').fontSize(nameSize)
         .text(entry.name, x + 0.08 * IN, y + 0.06 * IN + NAMED_STICKER_QR + 0.06 * IN,
@@ -389,7 +416,7 @@ function drawStickerSheets(entries, startAt = 1, sheet = STICKER_SHEET) {
     } else {
       const qrSize = entry.qrSize || STICKER_QR;
       const inset = (size - qrSize) / 2;
-      doc.image(entry.qr, x + inset, y + inset, { width: qrSize, height: qrSize });
+      drawQR(doc, entry.qr, x + inset, y + inset, qrSize);
     }
     slot += 1;
   });
@@ -404,7 +431,7 @@ function stickerHeader(doc, sheet) {
 
 // One store's code on every sticker of a sheet
 async function renderStickerSheet(code) {
-  const qr = await qrBuffer(code, Math.round(STICKER_QR / IN * 600), STICKER_INK);
+  const qr = qrCode(code, STICKER_INK);
   return drawStickerSheets(Array.from({ length: STICKERS_PER_SHEET }, () => ({ qr })));
 }
 
@@ -423,7 +450,7 @@ async function renderCoasterStickers({ coasters = COASTER_STICKERS_PER_SHEET / 2
   if (!Number.isInteger(start) || start < 1 || start > COASTER_STICKERS_PER_SHEET) {
     throw new ServiceError(400, 'BAD_START', `startAt must be 1 to ${COASTER_STICKERS_PER_SHEET}`);
   }
-  const qr = await qrBuffer(rewardConfig.GENERIC_JOIN_CODE, Math.round(COASTER_QR / IN * 1200), STICKER_INK);
+  const qr = qrCode(rewardConfig.GENERIC_JOIN_CODE, STICKER_INK);
   const entries = Array.from({ length: count * 2 }, () => ({ qr, qrSize: COASTER_QR }));
   return drawStickerSheets(entries, start, COASTER_SHEET);
 }
@@ -440,7 +467,7 @@ async function renderStoreStickers(venues, { kind = 'window', startAt = 1 } = {}
     throw new ServiceError(400, 'TOO_MANY_STORES', `At most ${MAX_STORE_STICKERS} stores at a time`);
   }
   const entries = await Promise.all(venues.map(async (venue) => ({
-    qr: await qrBuffer(codeFor(kind, venue), Math.round(NAMED_STICKER_QR / IN * 600), STICKER_INK),
+    qr: qrCode(codeFor(kind, venue), STICKER_INK),
     name: String(venue.venueName || '').trim() || 'Store'
   })));
   return drawStickerSheets(entries, start);
@@ -450,7 +477,7 @@ async function renderPDF(venue, rawOptions) {
   const { kind, format, qrInches } = printOptions(rawOptions);
   const code = codeFor(kind, venue);
   if (format === 'stickers') return renderStickerSheet(code);
-  const qr = await qrBuffer(code, Math.max(600, Math.round(qrInches * 300)));
+  const qr = qrCode(code);
   const qrPt = qrInches * IN;
   const geo = GEOMETRY[format];
   const [faceW, faceH] = geo.face || geo.page;
