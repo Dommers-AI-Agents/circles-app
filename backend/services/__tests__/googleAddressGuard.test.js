@@ -21,3 +21,13 @@ test('a name that is only the address’s street line', () => {
   expect(isStreetLineName('300 East', '300 East Blvd, Charlotte, NC')).toBe(false);
   expect(isStreetLineName('', address)).toBe(false);
 });
+
+test('venueCandidates drops address entries and keeps Google order', () => {
+  const { venueCandidates } = require('../googleAddressGuard');
+  const addr = { place_id: 'addr', types: ['premise', 'street_address'] };
+  const bar = { place_id: 'bar', types: ['bar', 'establishment', 'point_of_interest'] };
+  const road = { place_id: 'road', types: ['route'] };
+  expect(venueCandidates([addr, bar, road]).map((c) => c.place_id)).toEqual(['bar']);
+  expect(venueCandidates([addr])).toEqual([]);
+  expect(venueCandidates(undefined)).toEqual([]);
+});

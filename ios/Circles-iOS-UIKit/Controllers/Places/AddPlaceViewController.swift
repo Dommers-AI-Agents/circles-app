@@ -1094,7 +1094,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         // Setup MKLocalSearchCompleter
         searchCompleter.delegate = self
-        searchCompleter.resultTypes = [.address, .pointOfInterest]
+        // Places only: a street address is never a place (Wes, 2026-11-05;
+        // "300 East" was saved as Google's entry for 300 East Blvd)
+        searchCompleter.resultTypes = .pointOfInterest
         
         // Table view setup
         searchResultsTableView.delegate = self
@@ -1635,6 +1637,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Create search request for the place type
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
+        request.resultTypes = .pointOfInterest
         request.region = MKCoordinateRegion(
             center: userLocation.coordinate,
             latitudinalMeters: 10000, // ~6 miles radius

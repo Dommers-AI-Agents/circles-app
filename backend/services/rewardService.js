@@ -6,6 +6,7 @@ const { getFirestore, FieldValue } = require('../config/firebase');
 const QRCode = require('qrcode');
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
+const { venueCandidates } = require('./googleAddressGuard');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const {
   STICKER_COLLECTIONS,
@@ -58,14 +59,15 @@ class RewardService {
       const params = {
         input: [name, address].filter(Boolean).join(', '),
         inputtype: 'textquery',
-        fields: ['place_id'],
+        fields: ['place_id', 'types'],
         key: googleMapsApiKey
       };
       if (typeof lat === 'number' && typeof lng === 'number') {
         params.locationbias = `circle:250@${lat},${lng}`;
       }
       const response = await client.findPlaceFromText({ params });
-      return response.data.candidates?.[0]?.place_id || null;
+      // An address entry is never the store (services/googleAddressGuard)
+      return venueCandidates(response.data.candidates)[0]?.place_id || null;
     } catch (error) {
       console.error('⚠️ googlePlaceId resolution failed:', error.message);
       return null;

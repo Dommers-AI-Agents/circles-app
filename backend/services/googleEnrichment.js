@@ -7,6 +7,7 @@
 // "use the same process we have for manually adding a place".
 const { Client } = require('@googlemaps/google-maps-services-js');
 const { googleMapsApiKey } = require('../config/config');
+const { venueCandidates } = require('./googleAddressGuard');
 
 const googleMapsClient = new Client({});
 
@@ -37,14 +38,16 @@ async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
       }
     });
     
-    if (!searchResponse.data.candidates || searchResponse.data.candidates.length === 0) {
+    // An address entry is never this venue (services/googleAddressGuard)
+    const candidates = venueCandidates(searchResponse.data.candidates);
+    if (candidates.length === 0) {
       console.log(`No Google Places results found for: ${placeName}`);
       // A definite "no such place" (not an error): check-ins remember it so
       // the same name at the same spot doesn't bill again (checkInGuards).
       return { noMatch: true };
     }
     
-    const candidate = searchResponse.data.candidates[0];
+    const candidate = candidates[0];
     const placeId = candidate.place_id;
     
     // Get detailed place information

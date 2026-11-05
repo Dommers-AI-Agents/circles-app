@@ -32,4 +32,14 @@ function isStreetLineName(name, address) {
   return !!streetLine && n === streetLine;
 }
 
-module.exports = { isAddressOnly, isStreetLineName };
+/**
+ * Google's text-search candidates with the address entries removed, in
+ * Google's order. Every "find this business on Google" lookup picks from
+ * these, never from the raw list: taking candidates[0] tied 300 East to
+ * "300 East Blvd" (no photos, rating or hours; 43 venues, 2026-11-05).
+ */
+function venueCandidates(candidates) {
+  return (Array.isArray(candidates) ? candidates : []).filter((c) => c && !isAddressOnly(c.types));
+}
+
+module.exports = { isAddressOnly, isStreetLineName, venueCandidates };

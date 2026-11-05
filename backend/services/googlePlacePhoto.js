@@ -10,6 +10,7 @@
 // bill per render and expose the key).
 
 const { Client } = require('@googlemaps/google-maps-services-js');
+const { venueCandidates } = require('./googleAddressGuard');
 
 const client = new Client({});
 const apiKey = () => require('../config/config').googleMapsApiKey || null;
@@ -34,13 +35,14 @@ async function photoReferences({ googlePlaceId, name, location }, limit = 1) {
     params: {
       input: name,
       inputtype: 'textquery',
-      fields: ['photos', 'place_id'],
+      fields: ['photos', 'place_id', 'types'],
       locationbias: `circle:200@${coords[1]},${coords[0]}`,
       key
     },
     timeout: 8000
   });
-  const candidate = found.data && found.data.candidates && found.data.candidates[0];
+  // An address entry's photo is a street view of the block, not the store
+  const candidate = venueCandidates(found.data && found.data.candidates)[0];
   return ((candidate && candidate.photos) || []).slice(0, limit).map((p) => p.photo_reference).filter(Boolean);
 }
 
