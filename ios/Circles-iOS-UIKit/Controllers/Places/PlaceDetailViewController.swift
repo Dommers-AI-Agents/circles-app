@@ -2065,7 +2065,7 @@ class PlaceDetailViewController: BaseViewController {
         // card) from any place, claimed or not. A store nobody enrolled is
         // set up on the way; the Store page opens either way.
         if placeVenueData?.canPrintCodes == true {
-            actions.append((title: "Print Store QR Codes", style: .default, handler: { [weak self] in
+            actions.append((title: "Store Admin", style: .default, handler: { [weak self] in
                 self?.enrollStoreForPrinting()
             }))
         }

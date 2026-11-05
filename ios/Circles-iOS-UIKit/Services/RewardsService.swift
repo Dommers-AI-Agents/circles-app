@@ -1326,7 +1326,7 @@ struct PlaceVenueData: Codable {
     /// Present only when isOwner: headline counters for the inline stat strip
     let ownerStats: VenueOwnerStats?
     let claim: PlaceVenueClaim?
-    /// Super-users only: the place page offers "Print Store QR Codes",
+    /// Super-users only: the place page offers "Store Admin" (was "Print Store QR Codes"),
     /// whether the store is enrolled yet or not (2026-10-28)
     let canPrintCodes: Bool?
     /// Menu / money buttons / gallery. nil when the owner has set nothing;

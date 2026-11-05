@@ -561,7 +561,7 @@ exports.getVenueByPlace = async (req, res) => {
 
     // The store's team only. A super-user is not the owner (Wes, 2026-10-28):
     // the page keeps its claim card for the real owner, and the super-user
-    // reaches the store's codes and tools through "Print Store QR Codes".
+    // reaches the store's codes and tools through "Store Admin".
     const isOwner = isVenueTeamMember(venue, userId);
 
     // Get Rewards asks for the caller's own history here (?history=1);
@@ -648,7 +648,7 @@ exports.getVenueByPlace = async (req, res) => {
         myOrders,
         myOrder: myOrders[0] || null,
         isOwner,
-        // Super-users keep the place page's "Print Store QR Codes" door once
+        // Super-users keep the place page's "Store Admin" door once
         // the store is enrolled too (it opens the Store page)
         canPrintCodes: req.user.isSuperUser === true,
         // For the owner viewing their own place: drives the in-place
