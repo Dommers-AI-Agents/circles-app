@@ -36,8 +36,10 @@ enum WakeAlarmScheduler {
         let wanted = Dictionary(specs.compactMap { spec in UUID(uuidString: spec.id).map { ($0, spec) } },
                                 uniquingKeysWith: { a, _ in a })
 
-        // Gone from the widget (or switched off): cancel
-        for alarm in existing where wanted[alarm.id] == nil {
+        // Gone from the widget (or switched off): cancel. Not while it rings or
+        // snoozes: a one-time alarm switches itself off once it has rung, and
+        // opening the app mid-snooze must not cancel the snooze.
+        for alarm in existing where wanted[alarm.id] == nil && alarm.state == .scheduled {
             try? manager.cancel(id: alarm.id)
             fingerprints[alarm.id.uuidString] = nil
         }
@@ -160,7 +162,7 @@ final class WakeAlarmHandoff {
         content.body = "Tap to start your station."
         content.sound = nil
         content.interruptionLevel = .timeSensitive
-        content.userInfo = ["type": "wake_alarm_station"]
+        // No push type: tapping it just opens the app, which opens the station
         let request = UNNotificationRequest(identifier: "wake-alarm-station", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
