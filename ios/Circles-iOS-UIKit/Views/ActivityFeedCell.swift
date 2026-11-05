@@ -497,6 +497,15 @@ class ActivityFeedCell: UITableViewCell {
             : Constants.Colors.secondaryBackground
     }
 
+    /// A short tint on the card that fades back, so rows a tap just revealed stand out
+    func flashReveal() {
+        let original = containerView.backgroundColor
+        containerView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.15)
+        UIView.animate(withDuration: 0.9, delay: 0.25, options: [.allowUserInteraction]) {
+            self.containerView.backgroundColor = original
+        }
+    }
+
     /// Renders a collapsed burst of same-actor activities as one summary row,
     /// e.g. "Wesley liked 5 places and uploaded 2 photos (7) ▾". The heart
     /// reacts to the whole group (2026-10-31); comments stay per activity.

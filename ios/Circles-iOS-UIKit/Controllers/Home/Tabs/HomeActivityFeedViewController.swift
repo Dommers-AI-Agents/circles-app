@@ -511,6 +511,7 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
             tableView.reloadData()
             return
         }
+        let headerPath = IndexPath(row: header, section: 0)
         let childPaths = (1...group.count).map { IndexPath(row: header + $0, section: 0) }
         tableView.performBatchUpdates {
             if expanding {
@@ -518,9 +519,28 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
             } else {
                 tableView.deleteRows(at: childPaths, with: .fade)
             }
+        } completion: { [weak self] _ in
+            guard let self, expanding else { return }
+            self.revealExpandedGroup(header: headerPath, children: childPaths)
         }
         // Refresh the header's "Show all / Show less" state
-        tableView.reloadRows(at: [IndexPath(row: header, section: 0)], with: .none)
+        tableView.reloadRows(at: [headerPath], with: .none)
+        if !expanding, !(tableView.indexPathsForVisibleRows ?? []).contains(headerPath) {
+            // Collapsing from far down the list: bring the group's header back
+            tableView.scrollToRow(at: headerPath, at: .top, animated: true)
+        }
+    }
+
+    /// After a group opens, scroll so its header sits at the top and as many of
+    /// its activities as fit are on screen, then briefly tint them so the tap
+    /// visibly did something (Wes, 2026-11-05)
+    private func revealExpandedGroup(header: IndexPath, children: [IndexPath]) {
+        guard header.row < tableView.numberOfRows(inSection: 0) else { return }
+        tableView.scrollToRow(at: header, at: .top, animated: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self else { return }
+            children.forEach { (self.tableView.cellForRow(at: $0) as? ActivityFeedCell)?.flashReveal() }
+        }
     }
 
     // MARK: - In-place row updates
