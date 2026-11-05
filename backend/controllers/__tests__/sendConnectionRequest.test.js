@@ -175,3 +175,25 @@ test('an unknown user is a 404 without scanning the users collection', async () 
     delete users.get;
   }
 });
+
+test('tapping the card of someone you already asked accepts your own request with their token', async () => {
+  await mockDb.collection(COLLECTIONS.CONNECTIONS).doc('req2').set({ userId: 'sal', connectedUserId: 'wes', status: 'pending' });
+  const out = await send({ targetUserId: 'wes', autoAccept: true, inviteToken: signInviteToken('wes') });
+  expect(out.statusCode).toBe(200);
+  expect(out.body.data.status).toBe('accepted');
+  expect(mockDb.rows(COLLECTIONS.CONNECTIONS).get('req2').status).toBe('accepted');
+  expect(connections()).toHaveLength(1);
+  // Both follow each other
+  const followed = (id) => { const f = mockDb.rows(COLLECTIONS.USERS).get(id).following || []; return f.elements || f; };
+  expect(followed('sal')).toContain('wes');
+  expect(followed('wes')).toContain('sal');
+});
+
+test('without the target\'s token, your own waiting request stays pending', async () => {
+  await mockDb.collection(COLLECTIONS.CONNECTIONS).doc('req3').set({ userId: 'sal', connectedUserId: 'wes', status: 'pending' });
+  for (const body of [{ targetUserId: 'wes', autoAccept: true }, { targetUserId: 'wes', inviteToken: signInviteToken('britt') }]) {
+    const out = await send(body);
+    expect(out.body.alreadyPending).toBe(true);
+    expect(mockDb.rows(COLLECTIONS.CONNECTIONS).get('req3').status).toBe('pending');
+  }
+});

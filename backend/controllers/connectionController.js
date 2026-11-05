@@ -30,6 +30,7 @@ const dailyBudget = require('../services/dailyBudget');
 const {
   signInviteToken,
   targetInvitedRequester,
+  verifyInviteToken,
   claimRequestNotification
 } = require('../services/connectionRequestPolicy');
 const { clean } = require('../utils/text');
@@ -438,6 +439,20 @@ const sendConnectionRequest = async (req, res) => {
         return acceptConnection(req, res);
       }
 
+      // The other way round: the requester asked earlier and is now tapping
+      // the target's card (phones together) or opening their invite link.
+      // The target's signed token is their yes, so the waiting request is
+      // accepted on their behalf — both connected and following in one tap
+      // (Wes, 2026-11-05). A token alone could already create an accepted
+      // connection, so this grants nothing new.
+      if (connectionData.status === 'pending'
+          && isSameUser(connectionData.userId, userId)
+          && verifyInviteToken(inviteToken, targetUserDocId)) {
+        req.params = { ...req.params, id: existingConnection.id };
+        req.acceptForInviter = true;
+        return acceptConnection(req, res);
+      }
+
       console.log(`⚠️ Connection request already exists with status: ${connectionData.status}`);
       // Connecting implies following — self-heal requests sent before that
       // rule existed when the user taps Connect again
@@ -674,7 +689,7 @@ const archiveConnectionRequestNotifications = async (connectionId) => {
 
 const acceptConnection = async (req, res) => {
   try {
-    const userId = req.user.firebaseDocId || req.user.uid;
+    const callerId = req.user.firebaseDocId || req.user.uid;
     const connectionId = req.params.id;
 
     // Get connection document
@@ -688,6 +703,12 @@ const acceptConnection = async (req, res) => {
     }
 
     const connection = connectionDoc.data();
+
+    // Set only by sendConnectionRequest after verifying the target's invite
+    // token: the requester's tap accepts on the target's behalf, and the
+    // target is the accepting user for everything below.
+    const forInviter = req.acceptForInviter === true && isSameUser(connection.userId, callerId);
+    const userId = forInviter ? connection.connectedUserId : callerId;
 
     console.log(`🔍 Accept connection check:`, {
       connectionId: connectionId,
