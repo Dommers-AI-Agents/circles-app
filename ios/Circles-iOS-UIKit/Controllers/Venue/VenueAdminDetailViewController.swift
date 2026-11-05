@@ -32,6 +32,9 @@ class VenueAdminDetailViewController: BaseViewController {
         case claim(AdminVenueClaim)
         case contact
         case windowCode
+        /// Write the store's window link onto NFC stickers (2026-11-05: a
+        /// super-user setting up an unclaimed store had no way to reach it)
+        case nfcStickers
         case registerCode
         case replaceRegisterCode
         case appClipCard
@@ -261,7 +264,10 @@ class VenueAdminDetailViewController: BaseViewController {
             if d.venue.contactName != nil || d.venue.contactEmail != nil { rows.append(.contact) }
             return rows
         case .codes:
-            return [.windowCode, .registerCode, .replaceRegisterCode, .appClipCard, .emailCodes]
+            // NFC stickers carry the window link, so only for a real place
+            return isVirtual
+                ? [.windowCode, .registerCode, .replaceRegisterCode, .appClipCard, .emailCodes]
+                : [.windowCode, .nfcStickers, .registerCode, .replaceRegisterCode, .appClipCard, .emailCodes]
         case .manage:
             return [.manageTools, .singleUseCodes]
         }
@@ -607,6 +613,13 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
             config.image = UIImage(systemName: "arrow.triangle.2.circlepath")
             config.imageProperties.tintColor = Constants.Colors.danger
 
+        case .nfcStickers:
+            config = UIListContentConfiguration.subtitleCell()
+            config.text = "NFC stickers"
+            config.secondaryText = "Write the window link onto tap-to-open stickers for tables and coasters"
+            config.secondaryTextProperties.color = Constants.Colors.secondaryLabel
+            config.image = UIImage(systemName: "wave.3.right")
+
         case .appClipCard:
             config = UIListContentConfiguration.cell()
             config.text = "Publish this store's App Clip card"
@@ -661,6 +674,9 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
             if let email = detail?.venue.contactEmail { emailContact(email) }
         case .windowCode:
             showQR(register: false)
+        case .nfcStickers:
+            navigationController?.pushViewController(
+                VenueNFCStickersViewController(venueId: venueId, venueName: venueName), animated: true)
         case .registerCode:
             showQR(register: true)
         case .replaceRegisterCode:
