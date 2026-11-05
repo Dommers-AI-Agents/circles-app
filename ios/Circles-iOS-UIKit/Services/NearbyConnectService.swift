@@ -38,6 +38,24 @@ final class NearbyConnectService: NSObject {
 
     func start() {
         stop()
+        // Without our signed invite, a tap on our card only sends a request.
+        // Fetch it first so the very first tap connects and follows both ways.
+        guard NetworkManager.shared.myInviteToken != nil else {
+            isWaitingForToken = true
+            NetworkManager.shared.refreshInviteToken { [weak self] _ in
+                guard let self, self.isWaitingForToken else { return }
+                self.isWaitingForToken = false
+                self.startRadios()
+            }
+            return
+        }
+        startRadios()
+    }
+
+    /// stop() before the token arrives cancels the pending start
+    private var isWaitingForToken = false
+
+    private func startRadios() {
         guard let rawId = AuthService.shared.getUserId(),
               let uid = IDNormalizer.normalize(rawId),
               let user = AuthService.shared.currentUser else {
@@ -50,7 +68,6 @@ final class NearbyConnectService: NSObject {
         let peerID = MCPeerID(displayName: String(uid.prefix(60)))
         myPeerID = peerID
 
-        if NetworkManager.shared.myInviteToken == nil { NetworkManager.shared.refreshInviteToken() }
         var info = [
             "uid": uid,
             // Bonjour TXT records are tight — clamp the name
@@ -75,6 +92,7 @@ final class NearbyConnectService: NSObject {
     }
 
     func stop() {
+        isWaitingForToken = false
         advertiser?.stopAdvertisingPeer()
         advertiser?.delegate = nil
         advertiser = nil

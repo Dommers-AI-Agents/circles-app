@@ -136,9 +136,13 @@ final class TapToConnectViewController: BaseViewController {
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {
-                case .success:
+                case .success(let connection) where connection.status == .accepted:
                     card.showConnected()
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
+                case .success:
+                    // Their invite didn't come through, so this was only a
+                    // request: their tap on our card finishes it
+                    card.showWaiting()
                 case .failure(let error):
                     if case ConnectionInviteError.alreadyConnected = error {
                         card.showConnected()

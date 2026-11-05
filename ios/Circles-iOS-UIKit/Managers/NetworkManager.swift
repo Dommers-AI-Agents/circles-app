@@ -387,11 +387,14 @@ class NetworkManager {
     /// cached for the session. Share links and QR codes carry it as `?t=`.
     private(set) var myInviteToken: String?
 
-    func refreshInviteToken() {
-        guard AuthService.shared.isLoggedIn else { return }
+    func refreshInviteToken(completion: ((String?) -> Void)? = nil) {
+        guard AuthService.shared.isLoggedIn else { completion?(nil); return }
         apiService.request(endpoint: "connections/invite-token", method: .get, requiresAuth: true) { [weak self] (result: Result<InviteTokenResponse, APIError>) in
-            if case .success(let response) = result, let token = response.token {
-                DispatchQueue.main.async { self?.myInviteToken = token }
+            DispatchQueue.main.async {
+                if case .success(let response) = result, let token = response.token {
+                    self?.myInviteToken = token
+                }
+                completion?(self?.myInviteToken)
             }
         }
     }
@@ -451,9 +454,13 @@ class NetworkManager {
                             // Add to the right list once: a repeat tap gets
                             // the same request back (the server is idempotent)
                             if connection.status == .accepted {
+                                // An invite can accept a request that was waiting
+                                self.pendingConnections.removeAll { $0.id == connection.id }
                                 if !self.connections.contains(where: { $0.id == connection.id }) {
                                     self.connections.append(connection)
                                 }
+                                NotificationCenter.default.post(name: .pendingConnectionsCountChanged, object: nil)
+                                NotificationCenter.default.post(name: .connectionsChanged, object: nil)
                             } else if !self.pendingConnections.contains(where: { $0.id == connection.id }) {
                                 self.pendingConnections.append(connection)
                             }
@@ -508,8 +515,11 @@ class NetworkManager {
             return
         }
 
-        // Check if there's already a pending request
-        if pendingConnections.contains(where: { $0.connectedUserId == cleanUserId || $0.userId == cleanUserId }) {
+        // Check if there's already a pending request. With their signed
+        // invite the server settles it either way round (theirs or ours), so
+        // only a tokenless invite stops here.
+        if inviteToken?.isEmpty ?? true,
+           pendingConnections.contains(where: { $0.connectedUserId == cleanUserId || $0.userId == cleanUserId }) {
             Logger.debug("🔗 NetworkManager: Connection request already pending for user \(cleanUserId)")
             completion(.failure(ConnectionInviteError.requestPending))
             return
