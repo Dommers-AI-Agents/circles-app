@@ -61,6 +61,10 @@ final class NetworkDiscoverViewController: BaseViewController {
             self?.navigationController?.pushViewController(ProfileViewController(user: user), animated: true)
         }
         inviteCard.onInvite = { [weak self] in self?.invite() }
+        // Last visit's Discover at once; loadData refreshes it (2026-11-05)
+        loved = ScreenSnapshot.load([NetworkDiscoverService.LovedPlace].self, key: "discover.loved") ?? []
+        month = ScreenSnapshot.load(MilestoneMonthViewController.Month.self, key: "discover.month")
+        people = ScreenSnapshot.load([User].self, key: "discover.people") ?? []
         render()
     }
 
@@ -69,7 +73,10 @@ final class NetworkDiscoverViewController: BaseViewController {
         group.enter()
         NetworkDiscoverService.shared.lovedPlaces { [weak self] result in
             DispatchQueue.main.async {
-                if case .success(let places) = result { self?.loved = places }
+                if case .success(let places) = result {
+                    self?.loved = places
+                    ScreenSnapshot.save(places, key: "discover.loved")
+                }
                 self?.render()
                 group.leave()
             }
@@ -77,14 +84,22 @@ final class NetworkDiscoverViewController: BaseViewController {
         group.enter()
         NetworkDiscoverService.shared.month { [weak self] result in
             DispatchQueue.main.async {
-                if case .success(let month) = result { self?.month = month }
+                if case .success(let month) = result {
+                    self?.month = month
+                    ScreenSnapshot.save(month, key: "discover.month")
+                }
                 self?.render()
                 group.leave()
             }
         }
         group.enter()
         NetworkDiscoverService.shared.people(location: currentLocation()) { [weak self] users in
-            self?.people = users
+            // An empty answer is kept only when there was nothing before:
+            // a failed load mustn't wipe the people already showing
+            if !users.isEmpty || (self?.people.isEmpty ?? true) {
+                self?.people = users
+                ScreenSnapshot.save(users, key: "discover.people")
+            }
             self?.render()
             group.leave()
         }

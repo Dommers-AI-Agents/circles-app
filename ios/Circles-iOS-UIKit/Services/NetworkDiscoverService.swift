@@ -7,8 +7,8 @@ final class NetworkDiscoverService {
     static let shared = NetworkDiscoverService()
     private let api = APIService.shared
 
-    struct LovedPlace: Decodable, Equatable {
-        struct Saver: Decodable, Equatable {
+    struct LovedPlace: Codable, Equatable {
+        struct Saver: Codable, Equatable {
             let userId: String
             let displayName: String
             let profilePicture: String?

@@ -192,8 +192,19 @@ class AllUsersListViewController: UIViewController {
         }
 
         installExplainerCardIfNeeded()
+        // Last visit's list at once, no spinner; loadPeople refreshes it
+        // behind (2026-11-05: My Network started blank every visit)
+        if let saved = ScreenSnapshot.load([User].self, key: snapshotKey), !saved.isEmpty {
+            allUsers = saved
+            hasLoadedInitialData = true
+            hideLoadingState()
+            sortAndFilterUsers()
+            tableView.reloadData()
+        }
         loadPeople()
     }
+
+    private var snapshotKey: String { "network.people.\(listMode)" }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -409,6 +420,7 @@ class AllUsersListViewController: UIViewController {
             }
 
             self.allUsers = Array(merged.values)
+            ScreenSnapshot.save(self.allUsers, key: self.snapshotKey)
             self.sortAndFilterUsers()
             self.tableView.reloadData()
 

@@ -566,6 +566,7 @@ class AuthService {
         loggedOutThisSession = true
         NextStepService.shared.reset()
         DeltaSync.clearAll()
+        ScreenSnapshot.clearAll()
         // The next account on this phone must report its own push permission
         UserDefaults.standard.removeObject(forKey: "lastReportedPushStatus")
         // …and its own analytics / crash-report identity

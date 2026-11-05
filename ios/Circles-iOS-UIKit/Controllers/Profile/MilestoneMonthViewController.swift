@@ -7,15 +7,15 @@ import UIKit
 /// your connections, the places you added, and what to do next.
 final class MilestoneMonthViewController: BaseViewController {
 
-    struct Month: Decodable {
-        struct Row: Decodable {
+    struct Month: Codable {
+        struct Row: Codable {
             let userId: String
             let displayName: String
             let profilePicture: String?
             let count: Int
             let isMe: Bool
         }
-        struct PlaceItem: Decodable {
+        struct PlaceItem: Codable {
             let id: String
             let name: String
             let photo: String?
