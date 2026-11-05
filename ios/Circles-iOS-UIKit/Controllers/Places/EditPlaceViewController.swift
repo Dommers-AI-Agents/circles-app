@@ -57,6 +57,8 @@ class EditPlaceViewController: BaseViewController {
     private var canEditDetails = false
     private var globalPlaceId: String?
     private var libraryURLs: [String] = []
+    /// The library itself, so the full-screen viewer can show hearts
+    private var libraryPhotos: [AttributedPhoto] = []
     private var selectedCategory: PlaceCategory = .other
     /// The address boxes as first filled. The split-into-boxes form can't
     /// round-trip every stored address ("1616, Camden Rd, …" lands one box
@@ -440,7 +442,8 @@ class EditPlaceViewController: BaseViewController {
                 guard let self, case .success(let response) = result else { return }
                 self.globalPlaceId = response.globalPlace.id
                 self.canEditDetails = response.detailRights?.canEdit ?? false
-                self.libraryURLs = response.globalPlace.photos?.map(\.url) ?? []
+                self.libraryPhotos = response.globalPlace.photos ?? []
+                self.libraryURLs = self.libraryPhotos.map(\.url)
                 self.photoStrip.configure(urls: self.libraryURLs, canManage: response.photoRights?.canManage ?? false)
                 self.updateHoursTitle(response.globalPlace.googleData?.openingHours)
                 self.applyDetailRights()
@@ -523,7 +526,10 @@ class EditPlaceViewController: BaseViewController {
         photoStrip.onOpenLibrary = { [weak self] in self?.openPhotoLibrary() }
         photoStrip.onPhotoTapped = { [weak self] index in
             guard let self, !self.libraryURLs.isEmpty else { return }
-            self.present(StorefrontPhotoViewerViewController(urls: self.libraryURLs, startingAt: index), animated: true)
+            self.present(StorefrontPhotoViewerViewController(
+                urls: self.libraryURLs, startingAt: index,
+                placeId: self.globalPlaceId, libraryPhotos: self.libraryPhotos,
+                onLikeChanged: { [weak self] in self?.loadRightsAndPhotos() }), animated: true)
         }
 
         func row(_ views: [UIView], spacing: CGFloat = Constants.Spacing.medium) -> UIStackView {

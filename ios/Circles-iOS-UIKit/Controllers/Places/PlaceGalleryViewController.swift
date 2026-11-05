@@ -230,7 +230,16 @@ extension PlaceGalleryViewController: UICollectionViewDataSource, UICollectionVi
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard !isArranging else { return }
-        let viewer = StorefrontPhotoViewerViewController(urls: photos.map(\.url), startingAt: indexPath.item)
+        // Hearts on every photo; a like reloads the grid and the place page
+        let viewer = StorefrontPhotoViewerViewController(
+            urls: photos.map(\.url), startingAt: indexPath.item,
+            placeId: placeId, libraryPhotos: photos,
+            onLikeChanged: { [weak self] in
+                self?.loadData {
+                    guard let self else { return }
+                    self.onChanged?(self.photos)
+                }
+            })
         present(viewer, animated: true)
     }
 

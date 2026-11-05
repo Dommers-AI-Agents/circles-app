@@ -81,7 +81,7 @@ class PlaceDetailViewController: BaseViewController {
             guard let self else { return }
             let urls = (self.globalPlace?.photos?.map(\.url)).flatMap { $0.isEmpty ? nil : $0 } ?? (self.place.photos ?? [])
             guard !urls.isEmpty else { return }
-            self.present(StorefrontPhotoViewerViewController(urls: urls, startingAt: index), animated: true)
+            self.presentPhotoViewer(urls: urls, startingAt: index)
         }
         view.onMomentTapped = { [weak self] index in
             guard let self, self.placeMoments.indices.contains(index) else { return }
@@ -427,7 +427,7 @@ class PlaceDetailViewController: BaseViewController {
         guard index != nil || globalPlace != nil else { return }
         photoToOpenOnAppear = nil
         guard !urls.isEmpty else { return }   // removed since: the place page is the answer
-        present(StorefrontPhotoViewerViewController(urls: urls, startingAt: index ?? 0), animated: true)
+        presentPhotoViewer(urls: urls, startingAt: index ?? 0)
     }
 
     @objc private func handleStoreDetailsChanged(_ note: Notification) {
@@ -3127,7 +3127,18 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
 extension PlaceDetailViewController: MediaCarouselViewDelegate {
     func mediaCarouselView(_ carouselView: MediaCarouselView, didTapPhotoAt index: Int, items: [MediaItem]) {
         guard let viewer = CarouselPhotoViewerMap.viewer(for: items, tappedAt: index) else { return }
-        present(StorefrontPhotoViewerViewController(urls: viewer.urls, startingAt: viewer.startIndex), animated: true)
+        presentPhotoViewer(urls: viewer.urls, startingAt: viewer.startIndex)
+    }
+
+    /// Every full-screen photo view of this place: the library's photos carry
+    /// a heart there too, and a like refreshes the page (carousel, Photos section)
+    func presentPhotoViewer(urls: [String], startingAt index: Int) {
+        let viewer = StorefrontPhotoViewerViewController(
+            urls: urls, startingAt: index,
+            placeId: globalPlace?.id ?? place.globalPlaceId,
+            libraryPhotos: globalPlace?.photos ?? [],
+            onLikeChanged: { [weak self] in self?.loadGlobalPlaceData() })
+        present(viewer, animated: true)
     }
 
     func mediaCarouselView(_ carouselView: MediaCarouselView, didTapVideoAt index: Int, url: String) {
@@ -3633,7 +3644,7 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontPhotos urls: [String], startingAt index: Int) {
         guard !urls.isEmpty else { return }
         AnalyticsService.shared.logEvent("storefront_photos_opened", parameters: ["place_id": place.id, "count": urls.count])
-        present(StorefrontPhotoViewerViewController(urls: urls, startingAt: index), animated: true)
+        presentPhotoViewer(urls: urls, startingAt: index)
     }
 
     /// Owner bar → the store's Orders (the same screen Manage Store opens)
