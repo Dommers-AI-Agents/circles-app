@@ -180,32 +180,8 @@ class SettingsViewController: BaseTableViewController {
         }
     }
 
-    /// Opens the admin dashboard already signed in: the server hands this
-    /// signed-in admin a one-time code (60 s, single use) that the page
-    /// trades for its own short session. No password changes hands.
     private func openAdminDashboard() {
-        let loading = AlertPresenter.showLoading(message: "Opening dashboard…", from: self)
-        APIService.shared.request(
-            endpoint: "admin/dashboard/handoff",
-            method: .post,
-            body: [:],
-            requiresAuth: true
-        ) { [weak self] (result: Result<AdminHandoffResponse, APIError>) in
-            DispatchQueue.main.async {
-                loading.dismiss(animated: true) {
-                    guard let self else { return }
-                    switch result {
-                    case .success(let response):
-                        guard let url = URL(string: response.url) else { return }
-                        let safari = SFSafariViewController(url: url)
-                        safari.preferredControlTintColor = Constants.Colors.primary
-                        self.present(safari, animated: true)
-                    case .failure(let error):
-                        self.showError(error)
-                    }
-                }
-            }
-        }
+        AdminDashboardOpener.open(from: self)
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -1078,7 +1054,3 @@ extension SettingsViewController {
     }
 }
 
-/// POST /admin/dashboard/handoff
-private struct AdminHandoffResponse: Decodable {
-    let url: String
-}

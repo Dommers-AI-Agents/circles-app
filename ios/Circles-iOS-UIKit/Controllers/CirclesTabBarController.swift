@@ -293,6 +293,8 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(navigateToVenueOrders(_:)), name: .navigateToVenueOrders, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(navigateToVenueFeedback(_:)), name: .navigateToVenueFeedback, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(navigateToVenueReceipts(_:)), name: .navigateToVenueReceipts, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(navigateToPlaceApprovals(_:)), name: .navigateToPlaceApprovals, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(navigateToAdminDashboard(_:)), name: .navigateToAdminDashboard, object: nil)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(refreshHomeWidget(_:)),
@@ -629,6 +631,17 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         let nav = UINavigationController(rootViewController: VenueReceiptsViewController(venueId: venueId))
         nav.modalPresentationStyle = .pageSheet
         topPresenter.present(nav, animated: true)
+    }
+
+    @objc private func navigateToPlaceApprovals(_ note: Notification) {
+        let placeId = (note.object as? String).flatMap { $0 == "all" ? nil : $0 }
+        let nav = UINavigationController(rootViewController: PlaceApprovalsViewController(focusId: placeId))
+        nav.modalPresentationStyle = .pageSheet
+        topPresenter.present(nav, animated: true)
+    }
+
+    @objc private func navigateToAdminDashboard(_ note: Notification) {
+        AdminDashboardOpener.open(from: topPresenter)
     }
 
     @objc private func navigateToHomeWidget(_ note: Notification) {

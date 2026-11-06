@@ -56,6 +56,8 @@ extension Notification.Name {
     /// object = venue id: the store's Private feedback screen (a customer sent some)
     static let navigateToVenueFeedback = Notification.Name("NavigateToVenueFeedback")
     static let navigateToVenueReceipts = Notification.Name("NavigateToVenueReceipts")
+    static let navigateToPlaceApprovals = Notification.Name("NavigateToPlaceApprovals")
+    static let navigateToAdminDashboard = Notification.Name("NavigateToAdminDashboard")
     /// object = widget id; a push for that widget arrived while the app was
     /// open, so its data should be refetched rather than shown stale.
     static let refreshHomeWidget = Notification.Name("RefreshHomeWidget")

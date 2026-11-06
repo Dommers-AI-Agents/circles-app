@@ -708,6 +708,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             postOrStashDeepLink(navName: Notification.Name.navigateToVenueFeedback.rawValue, pending: "venue-feedback:\(venueId)", object: venueId)
         case .venueReceipts(let venueId):
             postOrStashDeepLink(navName: Notification.Name.navigateToVenueReceipts.rawValue, pending: "venue-receipts:\(venueId)", object: venueId)
+        case .placeApprovals(let placeId):
+            postOrStashDeepLink(navName: Notification.Name.navigateToPlaceApprovals.rawValue, pending: "place-approvals:\(placeId ?? "all")", object: placeId)
+        case .adminDashboard:
+            postOrStashDeepLink(navName: Notification.Name.navigateToAdminDashboard.rawValue, pending: "admin-dashboard:open")
         case .motivationSend(let lineId):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "motivation-send:\(lineId)",
                                 object: "motivation", userInfo: ["motivationLineId": lineId, "motivationSend": true])

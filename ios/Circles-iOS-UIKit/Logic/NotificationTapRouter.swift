@@ -46,6 +46,10 @@ enum NotificationDestination: Equatable {
     case venueFeedback(venueId: String)
     /// A delivery receipt waiting for the store's team (2026-11-06)
     case venueReceipts(venueId: String)
+    /// Super users: a place saved without a map match waits to be approved (2026-11-06)
+    case placeApprovals(placeId: String?)
+    /// Super users: any other admin alert opens the dashboard, signed in
+    case adminDashboard
     case suggestions(placeId: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).
     case circle(id: String, showComments: Bool?)
@@ -111,6 +115,12 @@ enum NotificationTapRouter {
         case "store_feedback":
             if let venueId = string("venueId", in: userInfo) { return .venueFeedback(venueId: venueId) }
             return nil
+        case "admin_alert":
+            // "place-approval-<globalPlaceId>" → the app's Approve places screen
+            let key = string("key", in: userInfo) ?? ""
+            let prefix = "place-approval-"
+            if key.hasPrefix(prefix) { return .placeApprovals(placeId: String(key.dropFirst(prefix.count))) }
+            return .adminDashboard
         case "receipt_new":
             if let venueId = string("venueId", in: userInfo) { return .venueReceipts(venueId: venueId) }
             return nil

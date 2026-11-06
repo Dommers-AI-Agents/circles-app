@@ -100,3 +100,21 @@ struct ReceiptPushRouteTests {
         #expect(PendingLinkParser.parse("venue-receipts:v1") == .venueReceipts(venueId: "v1"))
     }
 }
+
+struct AdminAlertRouteTests {
+    @Test func aPlaceToApproveOpensTheApprovalScreenOtherAlertsTheDashboard() {
+        #expect(NotificationTapRouter.destination(for: ["type": "admin_alert", "key": "place-approval-g42"]) == .placeApprovals(placeId: "g42"))
+        #expect(NotificationTapRouter.destination(for: ["type": "admin_alert", "key": "instagram_queue_empty"]) == .adminDashboard)
+        #expect(NotificationTapRouter.destination(for: ["type": "admin_alert"]) == .adminDashboard)
+        #expect(PendingLinkParser.parse("place-approvals:g42") == .placeApprovals(placeId: "g42"))
+    }
+
+    @Test func thePushedPlaceIsListedFirst() {
+        let a = PlaceApprovalsViewController.PendingPlace(id: "a", name: "A", address: nil, category: nil, pendingSince: nil, mapUrl: nil, saves: 1, savedBy: ["Wes"])
+        let b = PlaceApprovalsViewController.PendingPlace(id: "b", name: "B", address: "1 Main St", category: nil, pendingSince: nil, mapUrl: nil, saves: 2, savedBy: nil)
+        #expect(PlaceApprovalCopy.ordered([a, b], focusId: "b").map(\.id) == ["b", "a"])
+        #expect(PlaceApprovalCopy.ordered([a, b], focusId: "zz").map(\.id) == ["a", "b"])
+        #expect(PlaceApprovalCopy.detail(b) == "1 Main St \u{00B7} 2 saves")
+        #expect(PlaceApprovalCopy.done(name: "Ilios", approved: true, restored: 1) == "Ilios is public now. 1 save went back to the privacy people chose.")
+    }
+}
