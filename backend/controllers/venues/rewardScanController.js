@@ -630,6 +630,8 @@ exports.getVenueByPlace = async (req, res) => {
         // Whether a register scan here earns right now (the same check the
         // scan makes) — the place page's "Get Rewards" hides when it wouldn't.
         rewardsLive: venueLoyaltyLive,
+        // "Ordered for delivery? Send your receipt" (services/receiptClaims)
+        deliveryReceipts: venueLoyaltyLive ? require('../../services/receiptClaims').mode(venue) : 'off',
         offers: (venueLoyaltyLive ? activeOffers(venue) : []).map(({ offerId, title, pointsCost }) => ({
           offerId, title, pointsCost
         })),

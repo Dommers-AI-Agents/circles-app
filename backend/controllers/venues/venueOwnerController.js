@@ -98,6 +98,7 @@ exports.getMyVenues = async (req, res) => {
     await Promise.all(venueInfos.map(async (info, i) => {
       info.orderingEnabled = !!(venues[i].ordering && venues[i].ordering.enabled === true);
       info.newOrders = await orders.newCount(venues[i]);
+      info.pendingReceipts = await require('../../services/receiptClaims').pendingCount(venues[i]);
     }));
     await Promise.all(venueInfos.map(async (info, i) => {
       const globalPlaceId = await venueGlobalPlaceId(venues[i]);

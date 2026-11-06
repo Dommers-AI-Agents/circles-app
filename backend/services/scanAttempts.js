@@ -8,6 +8,7 @@
 //   scan_far      the phone was clearly away from the store
 //   scan_repeat   already earned at this store today
 //   scan_removed  the store took them off its rewards
+//   receipt_declined  the team declined a delivery receipt (services/receiptClaims)
 //
 // The owner's Activity merges these with rewardEvents (venueActivityFeed).
 
@@ -15,7 +16,7 @@ const { getFirestore } = require('../config/firebase');
 const { newId, nowIso } = require('../utils/ids');
 
 const SCAN_ATTEMPTS = 'scanAttempts';
-const OUTCOME_TYPES = { far: 'scan_far', already_today: 'scan_repeat', removed: 'scan_removed' };
+const OUTCOME_TYPES = { far: 'scan_far', already_today: 'scan_repeat', removed: 'scan_removed', receipt_declined: 'receipt_declined' };
 
 /** The attempt's row type for a scan that didn't earn, or null when it isn't one we log. */
 const attemptType = (reason) => OUTCOME_TYPES[reason] || null;

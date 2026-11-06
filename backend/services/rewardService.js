@@ -247,13 +247,13 @@ class RewardService {
 
   // Awards points exactly once per idempotencyKey.
   // Returns { awarded: true, points } or { awarded: false, duplicate: true }.
-  async awardPoints({ userId, type, points, idempotencyKey, venueId, venueName, code, googlePlaceId, sourceUserId, location, bucketUpdate }) {
+  async awardPoints({ userId, type, points, idempotencyKey, venueId, venueName, code, googlePlaceId, sourceUserId, location, via, bucketUpdate }) {
     const eventRef = this.db
       .collection(STICKER_COLLECTIONS.REWARD_EVENTS)
       .doc(sanitizeKeyPart(idempotencyKey));
 
     const event = createRewardEvent({
-      userId, type, points, venueId, venueName, code, googlePlaceId, sourceUserId, location
+      userId, type, points, venueId, venueName, code, googlePlaceId, sourceUserId, location, via
     });
 
     try {
@@ -613,15 +613,18 @@ class RewardService {
   // (services/scanLocation), the owner's "Remove from rewards", and
   // owner-initiated code rotation. `location` is stamped on the event so the
   // owner's Activity shows "location off". Returns { awarded, reason? }.
-  async awardVenueVisit(userId, venue, { location = null } = {}) {
+  // `via: 'delivery_receipt'` (services/receiptClaims): a delivery order's
+  // receipt, approved — the same visit, keyed to the day it was sent
+  async awardVenueVisit(userId, venue, { location = null, via = null, day: onDay = null } = {}) {
     if (await require('./storeCustomers').isRemoved(userId, venue.venueId)) {
       return { awarded: false, reason: 'removed' };
     }
     const now = new Date().toISOString();
-    const day = now.slice(0, 10);
+    const day = onDay || now.slice(0, 10);
     const result = await this.awardPoints({
       userId,
       type: 'venue_visit',
+      via,
       points: this.effectiveEarnRate(venue),
       idempotencyKey: `visit:${userId}:${venue.venueId}:${day}`, // 1/venue/day
       venueId: venue.venueId,

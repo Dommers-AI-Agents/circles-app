@@ -55,6 +55,10 @@ const TYPES = {
   // customer. Someone is waiting on both, so Time Sensitive.
   order_new:               { category: null,                      pref: null,                     badge: true, record: true, urgent: true },
   order_update:            { category: null,                      pref: null,                     badge: true, record: true, urgent: true },
+  // Delivery receipts (services/receiptClaims, 2026-11-06): one waits for the
+  // team; the customer hears the answer
+  receipt_new:             { category: null,                      pref: null,                     badge: true, record: true },
+  receipt_result:          { category: null,                      pref: null,                     badge: true, record: true },
   // A customer's private feedback (stars + note) to the store's team (2026-11-02)
   store_feedback:          { category: null,                      pref: null,                     badge: true, record: true },
   premium_signup:          { category: null,                      pref: null,                     badge: true },

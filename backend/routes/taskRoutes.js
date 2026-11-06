@@ -10,6 +10,7 @@ const tasks = require('../controllers/tasks/scheduledTasksController');
 const orphanUploads = require('../controllers/tasks/orphanUploadsController');
 const momentExpiryTask = require('../controllers/tasks/momentExpiryController');
 const ordersSweepTask = require('../controllers/tasks/ordersSweepController');
+const receiptExpiryTask = require('../controllers/tasks/receiptExpiryController');
 const emailHealthTask = require('../controllers/tasks/emailHealthController');
 const appClipSyncTask = require('../controllers/tasks/appClipSyncController');
 const walletCertRenewTask = require('../controllers/tasks/walletCertRenewController');
@@ -84,6 +85,7 @@ router.post('/orphan-uploads', verifyCloudScheduler, orphanUploads.sweep);
 router.post('/moments-expire', verifyCloudScheduler, momentExpiryTask.sweep);
 // Every 5 min: unanswered order-ahead orders expire, stale ready ones close
 router.post('/orders-sweep', verifyCloudScheduler, ordersSweepTask.sweep);
+router.post('/receipts-expire', verifyCloudScheduler, receiptExpiryTask.sweep);
 router.post('/email-health', verifyCloudScheduler, emailHealthTask.check);
 router.post('/app-clip-sync', verifyCloudScheduler, appClipSyncTask.sync);
 // Monthly: renew the Apple Wallet pass certificate when ≤45 days are left

@@ -36,6 +36,8 @@ const BUCKETS = {
   // store's counter); fail open so a Firestore blip never blocks lunch
   orderPlace: { env: 'ORDER_PLACE_DAILY_BUDGET', limit: 20, failOpen: true },
   // A web guest (keyed by phone HMAC, services/orders/guestRules): no account, so a tighter day
+  // Delivery receipts a customer sends in a day (services/receiptClaims)
+  receiptClaim: { env: 'RECEIPT_CLAIM_DAILY_BUDGET', limit: 3, failOpen: true },
   webOrderPlace: { env: 'WEB_ORDER_PLACE_DAILY_BUDGET', limit: 10, failOpen: true },
   // Every paid scan one PERSON starts in a day, whatever it's for and
   // whichever store (Wes, 2026-10-23: "a limit on how many scans anyone can

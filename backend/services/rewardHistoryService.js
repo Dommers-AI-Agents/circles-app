@@ -44,7 +44,7 @@ function historyRow(e) {
   const points = Number(e.points) || 0;
   const base = { at: e.createdAt, points };
   switch (e.type) {
-    case 'venue_visit': return { ...base, kind: 'earn', title: 'Visit' };
+    case 'venue_visit': return { ...base, kind: 'earn', title: e.via === 'delivery_receipt' ? 'Delivery order' : 'Visit' };
     case 'sticker_save': return { ...base, kind: 'earn', title: 'Saved the store' };
     case 'sticker_signup': return { ...base, kind: 'earn', title: 'Joined at the store' };
     case 'share_conversion': return { ...base, kind: 'earn', title: 'A friend saved it from your share' };

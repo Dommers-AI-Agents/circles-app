@@ -63,6 +63,8 @@ const ownerVenueInfo = (venue) => ({
   managerUserIds: venueManagerIds(venue),
   earnRate: rewardService.effectiveEarnRate(venue),
   savePoints: rewardService.effectiveSavePoints(venue),
+  // Delivery receipts for points: 'off' | 'approve' | 'auto' (services/receiptClaims)
+  deliveryReceipts: ['approve', 'auto'].includes(venue.deliveryReceipts) ? venue.deliveryReceipts : 'off',
   offers: venue.offers || [],
   announcements: venue.announcements || [],
   stats: venue.stats || {},

@@ -267,6 +267,8 @@ const createRewardEvent = (data) => {
     sourceUserId: data.sourceUserId || null,
     // Register scans: where the phone was (services/scanLocation: near/far/off/unknown)
     location: data.location || null,
+    // How a visit was earned when it wasn't the register: 'delivery_receipt'
+    ...(data.via ? { via: data.via } : {}),
     // Redemption voucher fields (only set for type === 'redemption')
     voucherCode: data.voucherCode || null,
     offerId: data.offerId || null,

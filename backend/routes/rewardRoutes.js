@@ -111,6 +111,9 @@ router.post('/venues/:venueId/share', require('../controllers/venues/rewardScanC
 // "Enjoying <store>?" after a reward, and private feedback to the store (2026-11-02)
 router.post('/venues/:venueId/enjoying', require('../controllers/venues/rewardScanController').enjoyingCard);
 router.post('/venues/:venueId/feedback', require('../controllers/venues/rewardScanController').sendStoreFeedback);
+// A delivery order's receipt for points, when the store takes them (2026-11-06)
+const receiptClaims = require('../controllers/venues/receiptClaimsController');
+router.post('/venues/:venueId/receipts', appAttestMonitor, receiptClaims.submit);
 // Reward tickets (2026-11-01): open + recent, and the staff "Given" tap
 const rewardVouchers = require('../controllers/venues/rewardVouchersController');
 router.get('/vouchers', rewardVouchers.listMine);
@@ -219,5 +222,10 @@ const venueOrders = require('../controllers/venues/venueOrdersController');
 router.get('/venues/:venueId/orders', requireVenueOwner, requireOwnerPremium, venueOrders.list);
 router.post('/venues/:venueId/orders/:orderId/:action', requireVenueOwner, requireOwnerPremium, venueOrders.act);
 router.put('/venues/:venueId/ordering', requireVenueOwner, requireOwnerPremium, venueOrders.saveSettings);
+// Delivery receipts: the store's setting and the team's queue, Business like the rest of rewards
+router.get('/venues/:venueId/receipts', requireVenueOwner, requireOwnerPremium, receiptClaims.list);
+router.post('/venues/:venueId/receipts/:claimId/approve', requireVenueOwner, requireOwnerPremium, receiptClaims.approve);
+router.post('/venues/:venueId/receipts/:claimId/decline', requireVenueOwner, requireOwnerPremium, receiptClaims.decline);
+router.put('/venues/:venueId/delivery-receipts', requireVenueOwner, requireOwnerPremium, receiptClaims.setMode);
 
 module.exports = router;
