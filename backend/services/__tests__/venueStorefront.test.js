@@ -56,7 +56,19 @@ describe('actions', () => {
   it('keeps the four money buttons and drops the rest', () => {
     const { value, errors } = sf.normalizeActions({ reserve: 'https://resy.com/x', order: '', evil: 'https://y', book: null });
     expect(errors).toEqual([]);
-    expect(value).toEqual({ reserve: 'https://resy.com/x', order: null, catering: null, book: null });
+    expect(value).toEqual({ reserve: 'https://resy.com/x', order: null, catering: null, book: null, menu: null, hide: [] });
+  });
+
+  it('keeps the menu link and the automatic buttons the owner turned off', () => {
+    const { value } = sf.normalizeActions({ menu: 'https://ilios.com/menu', hide: ['reserve', 'ride', 'evil'] });
+    expect(value.menu).toBe('https://ilios.com/menu');
+    expect(value.hide).toEqual(['reserve', 'ride']);
+  });
+
+  it('shows a store whose only choice is hiding a button', () => {
+    const pub = sf.publicStorefront({ category: 'restaurant', storefront: { actions: { hide: ['reserve'] } } }, { live: false });
+    expect(pub.actions.hide).toEqual(['reserve']);
+    expect(pub.actions.reserve).toBeNull();
   });
 
   it('refuses a non-web link', () => {
@@ -104,7 +116,7 @@ describe('what the customer sees', () => {
       menu: { sections: [], source: 'manual', updatedAt: null },
       ordering: { enabled: false, leadMinutes: 15, note: null },
       orderingPage: null,
-      actions: { reserve: null, order: null, catering: null, book: null },
+      actions: { reserve: null, order: null, catering: null, book: null, menu: null, hide: [] },
       gallery: []
     });
   });

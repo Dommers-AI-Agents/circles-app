@@ -20,8 +20,14 @@ const MAX_TAGS_PER_ITEM = 3;
 const MAX_MENU_SECTIONS = 30;
 const MAX_MENU_ITEMS = 400;
 
-const ACTION_KEYS = ['reserve', 'order', 'catering', 'book'];
-const ACTION_LABELS = { reserve: 'Reserve', order: 'Order', catering: 'Catering', book: 'Book' };
+// `menu` (2026-11-06): the owner's online menu link, free like the rest —
+// the place page's Menu button opens it (after in-app ordering, before the
+// website)
+const ACTION_KEYS = ['reserve', 'order', 'catering', 'book', 'menu'];
+const ACTION_LABELS = { reserve: 'Reserve', order: 'Order', catering: 'Catering', book: 'Book', menu: 'Menu' };
+// The place page's automatic buttons an owner can turn off (Wes, 2026-11-06:
+// a Greek counter-service spot doesn't take reservations)
+const HIDEABLE_BUTTONS = ['delivery', 'reserve', 'ride'];
 
 /** The word for "the thing this store sells", by venue category. */
 const offeringsLabel = (category) => {
@@ -136,8 +142,13 @@ const normalizeActions = (input = {}) => {
     if (!isHttpsUrl(v)) { errors.push(`${key} must be a web address`); return; }
     out[key] = String(v).trim();
   });
+  const hide = Array.isArray(input.hide) ? input.hide.map(String) : [];
+  out.hide = HIDEABLE_BUTTONS.filter((k) => hide.includes(k));
   return { value: out, errors };
 };
+
+const hiddenButtons = (s) => (s && s.actions && Array.isArray(s.actions.hide)
+  ? HIDEABLE_BUTTONS.filter((k) => s.actions.hide.includes(k)) : []);
 
 const normalizeGallery = (input = []) => {
   const errors = [];
@@ -164,7 +175,8 @@ const publicStorefront = (venue, { live, orderingLive = live }) => {
   const s = (venue && venue.storefront) || {};
   const actions = {};
   ACTION_KEYS.forEach((k) => { actions[k] = (s.actions && s.actions[k]) || null; });
-  const hasAnyAction = ACTION_KEYS.some((k) => actions[k]);
+  actions.hide = hiddenButtons(s);
+  const hasAnyAction = ACTION_KEYS.some((k) => actions[k]) || actions.hide.length > 0;
   const offerings = live && s.offerings ? s.offerings : null;
   const gallery = live && Array.isArray(s.gallery) ? s.gallery : [];
   const menu = live && hasMenu(s.menu) ? { sections: s.menu.sections, updatedAt: s.menu.updatedAt || null } : null;
@@ -194,7 +206,7 @@ const ownerStorefront = (venue) => {
     // The store's web page (services/venueSlugService): menu for everyone,
     // ordering once it's on. Null until a slug exists (virtual stores never)
     orderingPage: venue.slug ? { slug: venue.slug, url: require('./venueSlugService').pageUrl(venue.slug) } : null,
-    actions: Object.fromEntries(ACTION_KEYS.map((k) => [k, (s.actions && s.actions[k]) || null])),
+    actions: { ...Object.fromEntries(ACTION_KEYS.map((k) => [k, (s.actions && s.actions[k]) || null])), hide: hiddenButtons(s) },
     gallery: Array.isArray(s.gallery) ? s.gallery : []
   };
 };
@@ -202,7 +214,7 @@ const ownerStorefront = (venue) => {
 module.exports = {
   MAX_FEATURED_ITEMS, MAX_MENU_FILES, MAX_GALLERY_PHOTOS, MAX_TAGS_PER_ITEM,
   MAX_MENU_SECTIONS, MAX_MENU_ITEMS,
-  ACTION_KEYS, ACTION_LABELS,
+  ACTION_KEYS, ACTION_LABELS, HIDEABLE_BUTTONS,
   offeringsLabel, normalizeOfferings, normalizeActions, normalizeGallery, normalizeMenu, hasMenu,
   publicStorefront, ownerStorefront
 };
