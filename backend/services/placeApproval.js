@@ -60,6 +60,7 @@ async function onSaveLinked({ saveDoc, venueId, venue, minted }, deps = {}) {
       await holdSavePrivate(saveRef, save);
       const alertAdmin = deps.alertAdmin || require('./adminAlerts').alertAdmin;
       alertAdmin({
+        // The app opens its Approve places screen for this key (NotificationTapRouter)
         key: `place-approval-${venueId}`,
         title: `Place to approve: ${save.name || 'Unnamed'}`,
         body: `"${save.name || 'Unnamed'}"\n${save.address || ''}\n\nSaved without a Google or Apple Maps match, so it's private until you approve it.\nApprove or reject: admin dashboard → Approve places.`

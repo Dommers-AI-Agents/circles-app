@@ -48,6 +48,12 @@ router.post('/handoff', protect, async (req, res) => {
   }
 });
 
+// The app's own Approve places screen (Wes, 2026-11-06: tapping the "Place
+// to approve" push did nothing): the app's sign-in, super users only
+const requireSuperUser = require('../middleware/requireSuperUser');
+router.get('/app/place-approvals', protect, requireSuperUser, c.placeApprovals);
+router.post('/app/place-approvals/:id', protect, requireSuperUser, express.json(), c.placeDecision);
+
 // Everything else: dashboard tokens only (their own signing key, so they
 // work nowhere else in the app, and an app token doesn't work here).
 router.use(requireDashboardToken);
