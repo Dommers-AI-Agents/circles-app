@@ -4,7 +4,7 @@ Goal (Wes, 2026-11-06): people searching for widget features ("pandora alarm", "
 find FavCircles, **in addition to** its core purpose. Nothing about places changes: the name
 "FavCircles: Save Your Places", the subtitle "Share favorites with friends" and the en-US keywords stay.
 
-State 2026-11-06: website pages live; four custom product pages submitted for review; In-App Events still drafts (section 3).
+State 2026-11-06: website pages live; four custom product pages submitted for review; "Your holiday favorites" In-App Event built, draft (section 3).
 
 ## 1. Keywords: unchanged (Wes, 2026-11-06)
 
@@ -46,23 +46,25 @@ reminder, so nothing is ever sent). Navigation is `simctl openurl https://api.fa
 taps go through the UI-test servant (`DuoAppStoreCaptureUITests`, generic `tap:` / `at:` commands).
 Slides: `source/<page>.json` → `source/render.sh <page>` → `<page>/*.jpg` (1320×2868).
 
-## 3. In-App Events — can go up anytime, no app update
+## 3. In-App Event: "Your holiday favorites" (core app), built 2026-11-06
 
-Events show in search results and can be featured. Each needs a 1920×1080 card image and a
-1080×1920 details image (to make), plus:
+Wes, 2026-11-06: build the event around the core app, not the widgets. The Wake Up and Sleep Sounds
+event drafts are dropped (they would surface the app for widget searches; see section 1).
 
-**Wake Up**
-- Badge: New Feature (or Major Update)
-- Name (≤30): `Wake up to your music`
-- Short description (≤50): `Real alarms that open Pandora or Spotify`
-- Long description (≤120): `Real iPhone alarms that ring even on silent, then open your Pandora, Spotify or Apple Music station.`
-- Dates: two weeks from when 1.4.9 is live. Deep link: the Wake Up widget.
-
-**Sleep Sounds Bedtime**
-- Badge: New Feature
-- Name: `Bedtime sounds, on time`
-- Short: `Rain, ocean and white noise, ready at bedtime`
-- Long: `Mix rain, ocean, fire and white noise with a fade-out timer, and a bedtime reminder that plays it.`
+- App Store Connect event 6831705900, reference name "Holiday favorites 2026", state DRAFT (not yet
+  submitted for review: `node source/asc/iesubmit.js submit` from `in-app-events/`).
+- Badge Special Event · for all users · no purchase · USA · shown from Nov 13, runs Nov 27 – Dec 27
+  (Apple's limits: 31 days, shown up to 14 days before).
+- Name: `Your holiday favorites`
+- Short: `Save and share the spots that make your season`
+- Long: `Put the lights, cocoa and gift shops you love in one circle, then share it with friends and family before they visit.`
+- Opens: `https://api.favcircles.com/app/open?path=add-place` (Add Place).
+- Images (`in-app-events/event-card.jpg` 1920×1080, `event-details.jpg` 1080×1920): Apple asks for no
+  text or logos, so they are the real circle screen on a holiday-lights photo. The screen is a
+  "Holiday favorites" circle (c6BTNLItIKYFinznFPrq) on the hidden widget-demo@ account: 9 real Charlotte
+  places with notes, cover photo picked like a person would. Photos are free Unsplash images
+  (`source/photos/`, Unsplash License). `source/render.sh` rebuilds them; `source/asc/iecreate.js`
+  creates or updates the event, its text and images.
 
 ## 4. Website (live)
 
