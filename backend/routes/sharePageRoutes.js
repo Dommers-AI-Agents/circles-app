@@ -234,12 +234,14 @@ router.get('/app/widget/:id', async (req, res) => {
 <meta property="og:type" content="website">
 ${image ? `<meta property="og:image" content="${image}">` : ''}
 <meta property="og:url" content="https://api.favcircles.com/app/widget/${id}${esc(query)}">
+${copy.page && !query ? `<link rel="canonical" href="${esc(copy.page)}">` : ''}
 </head>
 <body style="font-family:-apple-system,Helvetica,Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#3182CE;color:#fff;text-align:center;padding:24px">
 <div>${image ? `<img src="${image}" alt="" style="width:220px;max-width:80vw;border-radius:16px;object-fit:cover;margin-bottom:16px">` : `<div style="font-size:64px;line-height:1;margin-bottom:16px">${copy.emoji}</div>`}
 <h1 style="margin:0 0 8px">${title}</h1>
 <p style="margin:0 0 24px;opacity:.9">${blurb}</p>
-<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a></div>
+<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a>${copy.page ? `
+<p style="margin:20px 0 0"><a href="${esc(copy.page)}" style="color:#fff;opacity:.9">More about ${title}</a></p>` : ''}</div>
 <script>
   window.location = 'circles://widget/${id}${query}';
   setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
@@ -274,7 +276,8 @@ router.get('/app/tab/:slug', (req, res) => {
 <div><div style="font-size:64px;line-height:1;margin-bottom:16px">${copy.emoji}</div>
 <h1 style="margin:0 0 8px">${title}</h1>
 <p style="margin:0 0 24px;opacity:.9">${blurb}</p>
-<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a></div>
+<a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a>${copy.page ? `
+<p style="margin:20px 0 0"><a href="${esc(copy.page)}" style="color:#fff;opacity:.9">More about ${title}</a></p>` : ''}</div>
 <script>
   window.location = 'circles://tab/${slug}';
   setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
