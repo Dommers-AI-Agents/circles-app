@@ -1,25 +1,35 @@
 import UIKit
 
 protocol PartnerActionsRowViewDelegate: AnyObject {
-    func partnerActionsRow(_ view: PartnerActionsRowView, didTap group: PartnerActionGroup, sourceView: UIView)
+    func partnerActionsRow(_ view: PartnerActionsRowView, didTap action: PlaceAction, sourceView: UIView)
 }
 
-/// Horizontal row of server-driven partner action chips (Delivery / Reserve /
-/// Ride) on the place detail screen. Styling matches the practical chips row
-/// directly above it; max 3 groups fit untruncated (enforced upstream by
-/// PartnerActionsService.eligibleGroups). Collapses to zero height when empty —
-/// the hosting controller owns the collapse constraint.
+/// The place page's action buttons (Menu, the store's own links, Delivery /
+/// Reservations / Ride), ranked by PlaceActionPlanner. Styling matches the
+/// practical chips row directly above it; three to a row, a second row when
+/// the store set up more. Collapses to zero height when empty — the hosting
+/// controller owns the collapse constraint (`height(for:)`).
 class PartnerActionsRowView: UIView {
 
     weak var delegate: PartnerActionsRowViewDelegate?
 
-    private var groups: [PartnerActionGroup] = []
+    private var actions: [PlaceAction] = []
+
+    static let perRow = 3
+    static let chipHeight: CGFloat = 44
+    static let rowSpacing: CGFloat = 10
+
+    static func height(for count: Int) -> CGFloat {
+        guard count > 0 else { return 0 }
+        let rows = CGFloat((count + perRow - 1) / perRow)
+        return rows * chipHeight + (rows - 1) * rowSpacing
+    }
 
     private let stackView: UIStackView = {
         let stack = UIStackView()
-        stack.axis = .horizontal
+        stack.axis = .vertical
         stack.distribution = .fillEqually
-        stack.spacing = 10
+        stack.spacing = PartnerActionsRowView.rowSpacing
         stack.translatesAutoresizingMaskIntoConstraints = false
         return stack
     }()
@@ -39,14 +49,27 @@ class PartnerActionsRowView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     /// Rebuilds the chips. Empty array clears the row (host collapses it).
-    func configure(with groups: [PartnerActionGroup]) {
-        self.groups = groups
+    func configure(with actions: [PlaceAction]) {
+        self.actions = actions
         stackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for (index, group) in groups.enumerated() {
-            let chip = Self.chip(title: group.title, systemName: group.icon)
+        var row: UIStackView?
+        for (index, action) in actions.enumerated() {
+            if index % Self.perRow == 0 {
+                let next = UIStackView()
+                next.axis = .horizontal
+                next.distribution = .fillEqually
+                next.spacing = 10
+                stackView.addArrangedSubview(next)
+                row = next
+            }
+            let chip = Self.chip(title: action.title, systemName: action.icon)
             chip.tag = index
             chip.addTarget(self, action: #selector(chipTapped(_:)), for: .touchUpInside)
-            stackView.addArrangedSubview(chip)
+            row?.addArrangedSubview(chip)
+        }
+        // A short last row keeps chips the same width as the rows above
+        if let row, actions.count > Self.perRow {
+            for _ in 0..<((Self.perRow - actions.count % Self.perRow) % Self.perRow) { row.addArrangedSubview(UIView()) }
         }
     }
 
@@ -67,7 +90,7 @@ class PartnerActionsRowView: UIView {
     }
 
     @objc private func chipTapped(_ sender: UIButton) {
-        guard sender.tag < groups.count else { return }
-        delegate?.partnerActionsRow(self, didTap: groups[sender.tag], sourceView: sender)
+        guard sender.tag < actions.count else { return }
+        delegate?.partnerActionsRow(self, didTap: actions[sender.tag], sourceView: sender)
     }
 }

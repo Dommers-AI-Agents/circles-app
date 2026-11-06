@@ -1,8 +1,10 @@
 import UIKit
 
-/// The money buttons: Reserve, Order, Catering, Book — each a link the owner
-/// already has (OpenTable, Toast, their own site). Free for every claimed
-/// venue: a working Reserve button helps the customer whoever is paying.
+/// The store's buttons on its place page: Menu, Reserve, Order, Catering,
+/// Book — each a link the owner already has (their menu page, OpenTable,
+/// Toast) — and the automatic ones (Delivery, Reservations, Ride) they can
+/// turn off. Free for every claimed venue: a working Reserve button helps the
+/// customer whoever is paying. Ranked on the page by PlaceActionPlanner.
 final class VenueStorefrontActionsViewController: BaseViewController {
     private let venueId: String
     private var actions: StorefrontActions
@@ -13,12 +15,20 @@ final class VenueStorefrontActionsViewController: BaseViewController {
 
     private struct Field { let key: String; let title: String; let hint: String; let icon: String }
     private let fields: [Field] = [
+        Field(key: "menu", title: "Menu", hint: "Your online menu page", icon: "menucard"),
         Field(key: "reserve", title: "Reserve a table", hint: "OpenTable, Resy, Tock…", icon: "calendar.badge.clock"),
         Field(key: "order", title: "Order online", hint: "Toast, Square, DoorDash…", icon: "bag"),
         Field(key: "catering", title: "Catering & events", hint: "Your catering page or inquiry form", icon: "fork.knife"),
         Field(key: "book", title: "Book an appointment", hint: "Booking or scheduling link", icon: "calendar")
     ]
     private var textFields: [String: UITextField] = [:]
+    /// The automatic buttons, on unless the owner turned them off
+    private let automatic: [(key: String, title: String, detail: String)] = [
+        ("delivery", "Delivery", "DoorDash and Uber Eats"),
+        ("reserve", "Reservations", "OpenTable (your Reserve link above replaces it)"),
+        ("ride", "Ride", "Uber and Lyft, for people more than 3 miles away")
+    ]
+    private var switches: [String: UISwitch] = [:]
     private lazy var saveButton = UIButton.primaryButton(title: "Save buttons")
 
     init(venueId: String, actions: StorefrontActions?) {
@@ -53,7 +63,7 @@ final class VenueStorefrontActionsViewController: BaseViewController {
         ])
 
         let intro = UILabel()
-        intro.text = "These show as buttons at the top of your store card. Leave one blank to hide it."
+        intro.text = "These show as buttons on your store's page. Leave one blank to hide it. Menu opens your in-app menu when you have one, then this link, then your website."
         intro.font = .systemFont(ofSize: 14)
         intro.textColor = .secondaryLabel
         intro.numberOfLines = 0
@@ -61,6 +71,14 @@ final class VenueStorefrontActionsViewController: BaseViewController {
 
         for field in fields {
             stack.addArrangedSubview(makeRow(field))
+        }
+        let autoHeader = UILabel()
+        autoHeader.text = "Automatic buttons"
+        autoHeader.font = .systemFont(ofSize: 15, weight: .semibold)
+        stack.addArrangedSubview(autoHeader)
+        let hidden = Set(actions.hide ?? [])
+        for item in automatic {
+            stack.addArrangedSubview(makeSwitchRow(item, isOn: !hidden.contains(item.key)))
         }
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
         stack.addArrangedSubview(saveButton)
@@ -94,8 +112,31 @@ final class VenueStorefrontActionsViewController: BaseViewController {
         return box
     }
 
+    private func makeSwitchRow(_ item: (key: String, title: String, detail: String), isOn: Bool) -> UIView {
+        let title = UILabel()
+        title.text = item.title
+        title.font = .systemFont(ofSize: 15)
+        let detail = UILabel()
+        detail.text = item.detail
+        detail.font = .systemFont(ofSize: 13)
+        detail.textColor = .secondaryLabel
+        detail.numberOfLines = 0
+        let labels = UIStackView(arrangedSubviews: [title, detail])
+        labels.axis = .vertical
+        labels.spacing = 2
+        let toggle = UISwitch()
+        toggle.isOn = isOn
+        toggle.onTintColor = Constants.Colors.primary
+        switches[item.key] = toggle
+        let row = UIStackView(arrangedSubviews: [labels, toggle])
+        row.alignment = .center
+        row.spacing = 12
+        return row
+    }
+
     private func current(_ key: String) -> String? {
         switch key {
+        case "menu": return actions.menu
         case "reserve": return actions.reserve
         case "order": return actions.order
         case "catering": return actions.catering
@@ -116,6 +157,8 @@ final class VenueStorefrontActionsViewController: BaseViewController {
         next.order = clean("order")
         next.catering = clean("catering")
         next.book = clean("book")
+        next.menu = clean("menu")
+        next.hide = automatic.map(\.key).filter { switches[$0]?.isOn == false }
         saveButton.isEnabled = false
         RewardsService.shared.updateStorefrontActions(venueId: venueId, actions: next) { [weak self] result in
             DispatchQueue.main.async {

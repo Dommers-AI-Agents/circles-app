@@ -107,8 +107,9 @@ class PlaceVenueRewardsView: UIView {
         // "Is this your store?" an unenrolled place gets.
         let rewardsLive = data.rewardsLive != false
         let storefront = data.storefront
-        let hasStorefrontContent = (storefront?.actions).map { makeActionButtonsRow($0) != nil } ?? false
-            || !(storefront?.menu?.isEmpty ?? true)
+        // The store's buttons (Reserve, Order…) live in the place page's
+        // action row now (PlaceActionPlanner, 2026-11-06), not on this card
+        let hasStorefrontContent = !(storefront?.menu?.isEmpty ?? true)
             || !(storefront?.offerings?.isEmpty ?? true)
             || !(storefront?.gallery.isEmpty ?? true)
         if !isOwner, data.isOwner != true, !rewardsLive, !hasStorefrontContent {
@@ -137,11 +138,6 @@ class PlaceVenueRewardsView: UIView {
         containerStack.addArrangedSubview(headerRow)
         // A reward they redeemed and haven't been handed yet shows at the
         // top of the page (PlaceOrderBannerView), not down here
-        // The money buttons sit right under the name — Reserve / Order are
-        // the reason most people open a store's page at all.
-        if let actions = storefront?.actions, let row = makeActionButtonsRow(actions) {
-            containerStack.addArrangedSubview(row)
-        }
         // The owner's one strip: what needs them, how the store is doing,
         // and the way into Manage Store (the same screen the profile's store
         // icon opens). Editing happens there, not on the page (2026-10-23).
@@ -652,27 +648,6 @@ class PlaceVenueRewardsView: UIView {
     // MARK: - Storefront rows
 
     /// Reserve · Order · Catering · Book, as pills. nil when none are set.
-    private func makeActionButtonsRow(_ actions: StorefrontActions) -> UIView? {
-        let buttons = actions.buttons
-        guard !buttons.isEmpty else { return nil }
-        let row = UIStackView()
-        row.axis = .horizontal
-        row.spacing = 8
-        row.distribution = .fillEqually
-        for (index, button) in buttons.enumerated() {
-            let b = UIButton.smallActionButton(title: button.title, style: index == 0 ? .primary : .secondary)
-            b.setImage(UIImage(systemName: button.icon), for: .normal)
-            b.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
-            b.tag = index
-            b.addAction(UIAction { [weak self] _ in
-                guard let self else { return }
-                self.delegate?.placeVenueView(self, didTapStorefrontLink: button.url, title: button.title)
-            }, for: .touchUpInside)
-            row.addArrangedSubview(b)
-        }
-        return row
-    }
-
     /// Horizontal cards: photo, name, price. The thing that makes the page
     /// look like a real place rather than a listing.
     private func makeFeaturedStrip(_ items: [StorefrontFeaturedItem], label: String) -> UIView {

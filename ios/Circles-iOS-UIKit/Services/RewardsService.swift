@@ -1461,8 +1461,13 @@ struct StorefrontActions: Codable {
     var order: String?
     var catering: String?
     var book: String?
+    /// Their online menu: the place page's Menu button (2026-11-06)
+    var menu: String?
+    /// Automatic place-page buttons the owner turned off: "delivery", "reserve", "ride"
+    var hide: [String]?
 
-    /// In display order, with the label the button wears.
+    /// The money buttons in display order, with the label each wears (the
+    /// menu link is the place page's Menu button, not one of these).
     var buttons: [(key: String, title: String, icon: String, url: String)] {
         [("reserve", "Reserve", "calendar.badge.clock", reserve),
          ("order", "Order", "bag", order),
@@ -1474,7 +1479,8 @@ struct StorefrontActions: Codable {
             }
     }
     var asBody: [String: Any] {
-        ["reserve": reserve ?? NSNull(), "order": order ?? NSNull(), "catering": catering ?? NSNull(), "book": book ?? NSNull()]
+        ["reserve": reserve ?? NSNull(), "order": order ?? NSNull(), "catering": catering ?? NSNull(), "book": book ?? NSNull(),
+         "menu": menu ?? NSNull(), "hide": hide ?? []]
     }
 }
 

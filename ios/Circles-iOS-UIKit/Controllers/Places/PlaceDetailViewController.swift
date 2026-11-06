@@ -202,6 +202,9 @@ class PlaceDetailViewController: BaseViewController {
     private let partnerActionsRowView = PartnerActionsRowView()
     private var partnerActionsHeightConstraint: NSLayoutConstraint?
     private var partnerActionsTopConstraint: NSLayoutConstraint?
+    /// The catalog's partner groups eligible here; the row is re-ranked
+    /// with them whenever the store's own choices arrive
+    private var partnerGroups: [PartnerActionGroup] = []
 
     private var placeVenueData: PlaceVenueData?
     /// Partner chips, the venue rewards/claim card and the GlobalPlace record;
@@ -3509,7 +3512,50 @@ extension PlaceDetailViewController {
 
 // MARK: - PlaceVenueRewardsViewDelegate
 extension PlaceDetailViewController: PartnerActionsRowViewDelegate {
-    func partnerActionsRow(_ view: PartnerActionsRowView, didTap group: PartnerActionGroup, sourceView: UIView) {
+    /// The row from what's known now: the catalog and Google's data right
+    /// away, the store's own choices (menu, ordering, links, hidden buttons)
+    /// when its card loads (Wes, 2026-11-06)
+    func refreshPlaceActions() {
+        let storefront = placeVenueData?.storefront
+        let owned = storefront?.actions.map {
+            PlaceActionPlanner.OwnerButtons(reserve: $0.reserve, order: $0.order, catering: $0.catering, book: $0.book,
+                                            menu: $0.menu, hidden: Set($0.hide ?? []))
+        }
+        let here = LocationService.shared.lastKnownLocation
+        let planner = PlaceActionPlanner(
+            category: place.category, delivery: place.delivery, takeout: place.takeout, reservable: place.reservable,
+            priceLevel: place.priceLevel, website: effectiveWebsite,
+            distanceMeters: here.flatMap { me in place.location?.clLocation.map { me.distance(from: $0) } },
+            owner: owned,
+            hasInAppMenu: storefront?.menu.map { !$0.isEmpty } ?? false,
+            takesOrders: orderingMenu(from: placeVenueData) != nil,
+            publishedMenuLink: storefront?.offerings?.link,
+            partnerGroups: partnerGroups)
+        let actions = planner.actions()
+        partnerActionsRowView.configure(with: actions)
+        partnerActionsHeightConstraint?.constant = PartnerActionsRowView.height(for: actions.count)
+        partnerActionsTopConstraint?.constant = actions.isEmpty ? 0 : Constants.Spacing.medium
+        view.layoutIfNeeded()
+    }
+
+    func partnerActionsRow(_ view: PartnerActionsRowView, didTap action: PlaceAction, sourceView: UIView) {
+        switch action.kind {
+        case .inAppMenu:
+            if orderingMenu(from: placeVenueData) != nil {
+                orderTapped()
+            } else if let data = placeVenueData, let venue = data.venue, let storefront = data.storefront,
+                      let menu = storefront.menu, !menu.isEmpty {
+                placeVenueView(venueRewardsView, didTapFullMenu: menu, label: storefront.offeringsLabel, ordering: nil, venue: venue)
+            }
+        case .link(let url):
+            placeVenueView(venueRewardsView, didTapStorefrontLink: url, title: action.title)
+        case .partner(let groupId):
+            guard let group = partnerGroups.first(where: { $0.id == groupId }) else { return }
+            openPartnerGroup(group, sourceView: sourceView)
+        }
+    }
+
+    private func openPartnerGroup(_ group: PartnerActionGroup, sourceView: UIView) {
         let providers = PartnerActionsService.shared.usableProviders(in: group, for: place)
         guard !providers.isEmpty else { return }
         if providers.count == 1 {
@@ -3846,11 +3892,8 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
     func currentPlace(for loader: VenueRewardsLoader) -> Place { place }
 
     func loader(_ loader: VenueRewardsLoader, didLoadPartnerActionGroups groups: [PartnerActionGroup]) {
-        partnerActionsRowView.configure(with: groups)
-        let show = !groups.isEmpty
-        partnerActionsHeightConstraint?.constant = show ? 44 : 0
-        partnerActionsTopConstraint?.constant = show ? Constants.Spacing.medium : 0
-        view.layoutIfNeeded()
+        partnerGroups = groups
+        refreshPlaceActions()
     }
 
     func loader(_ loader: VenueRewardsLoader, didLoadVenueData data: PlaceVenueData) {
@@ -3860,6 +3903,7 @@ extension PlaceDetailViewController: VenueRewardsLoaderDelegate {
         // "Order" up top at a store that takes orders (customers only; the
         // team has Manage Store). Same menu as the store card's button.
         orderButton.isHidden = data.isOwner == true || orderingMenu(from: data) == nil
+        refreshPlaceActions()
         // The customer's open order, above everything else on the page
         // The customer's open reward ticket and open orders, first thing on the page
         let ticket = data.isOwner == true ? nil : data.venue.flatMap {
