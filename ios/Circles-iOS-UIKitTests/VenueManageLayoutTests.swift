@@ -13,59 +13,58 @@ struct VenueManageLayoutTests {
 
     @Test func physicalStoreShowsEveryGroupInOrder() {
         let order = L.sections(L.Facts()).map(\.section)
-        #expect(order == [.glance, .placePage, .loyalty, .announcements, .windowSticker, .team, .more])
+        #expect(order == [.glance, .placePage, .menuOrdering, .loyalty, .customers, .announcements, .codes, .team, .more])
+    }
+
+    @Test func everyRowAppearsOnce() {
+        for facts in [L.Facts(offerCount: 2, announcementCount: 2), L.Facts(orderingOn: true),
+                      L.Facts(isVirtual: true, hasPlace: false), L.Facts(hasPlace: false)] {
+            let all = L.sections(facts).flatMap(\.rows)
+            for (i, row) in all.enumerated() {
+                #expect(!all[(i + 1)...].contains(row), "\(row) is listed twice")
+            }
+        }
     }
 
     @Test func onlineStoreDropsWindowCounterHoursAndCover() {
         let facts = L.Facts(isVirtual: true, hasPlace: false)
-        #expect(!L.sections(facts).map(\.section).contains(.windowSticker))
-        let loyalty = rows(facts, .loyalty) ?? []
-        #expect(!loyalty.contains(.showRegisterCard))
-        #expect(!loyalty.contains(.replaceRegisterCard))
-        #expect(loyalty.contains(.loyaltyCodes))
+        let all = L.sections(facts).flatMap(\.rows)
+        #expect(!all.contains(.showRegisterCard))
+        #expect(!all.contains(.replaceRegisterCard))
+        #expect(!all.contains(.showWindowSticker))
+        #expect(!all.contains(.orderPage))
+        #expect(rows(facts, .codes) == [.loyaltyCodes])
         let page = rows(facts, .placePage) ?? []
-        #expect(!page.contains(.hours))
-        #expect(!page.contains(.photos))
-        #expect(page.contains(.gallery))
-        #expect(page.contains(.storefrontButtons))
+        #expect(page == [.gallery, .storefrontButtons])
     }
 
-    @Test func noPlaceRecordHidesPlaceRows() {
-        let page = rows(L.Facts(hasPlace: false), .placePage) ?? []
-        #expect(page == [.storefrontButtons, .fullMenu, .orders, .onlineOrdering, .orderPage, .menu, .gallery])
+    @Test func placePageIsTheFreeBasics() {
+        #expect(rows(L.Facts(), .placePage) == [.viewPage, .details, .hours, .photos, .storefrontButtons])
+        #expect(rows(L.Facts(hasPlace: false), .placePage) == [.gallery, .storefrontButtons])
+        (rows(L.Facts(), .placePage) ?? []).forEach { #expect(!L.isBusiness($0)) }
     }
 
-    @Test func webOrderingPageFollowsOnlineOrderingForPhysicalStoresOnly() {
-        for facts in [L.Facts(), L.Facts(orderingOn: true), L.Facts(hasPlace: false)] {
-            let page = rows(facts, .placePage) ?? []
-            let i = page.firstIndex(of: .onlineOrdering)!
-            #expect(page[i + 1] == .orderPage)
-        }
-        #expect(!(rows(L.Facts(isVirtual: true, hasPlace: false), .placePage) ?? []).contains(.orderPage))
+    @Test func menuAndOrderingSitTogether() {
+        #expect(rows(L.Facts(), .menuOrdering) == [.fullMenu, .menu, .onlineOrdering, .orderPage])
+        #expect(rows(L.Facts(isVirtual: true, hasPlace: false), .menuOrdering) == [.fullMenu, .menu, .onlineOrdering])
     }
 
-    @Test func storeDetailsSitUnderViewYourPage() {
-        let page = rows(L.Facts(), .placePage) ?? []
-        #expect(Array(page.prefix(3)) == [.viewPage, .details, .photos])
-        #expect(!(rows(L.Facts(hasPlace: false), .placePage) ?? []).contains(.details))
-    }
-
-    @Test func ordersLeadTheScreenWhileTheStoreTakesOrders() {
+    @Test func ordersLeadTheScreenOnlyWhileTheStoreTakesOrders() {
         let on = L.sections(L.Facts(orderingOn: true))
         #expect(on.first?.section == .ordersNow)
         #expect(on.first?.rows == [.orders])
-        // ...and aren't listed twice
-        #expect(!(rows(L.Facts(orderingOn: true), .placePage) ?? []).contains(.orders))
-        #expect((rows(L.Facts(orderingOn: true), .placePage) ?? []).contains(.onlineOrdering))
-        // Off: Orders waits in "Your place page", where it explains itself
+        // Off: Online ordering is the way in; Orders opened the same screen
         #expect(L.sections(L.Facts()).first?.section == .glance)
-        #expect((rows(L.Facts(), .placePage) ?? []).contains(.orders))
+        #expect(!L.sections(L.Facts()).flatMap(\.rows).contains(.orders))
     }
 
-    @Test func offersAndAnnouncementsListThenAdd() {
+    @Test func rewardsCustomersAndCodesAreSeparate() {
         let facts = L.Facts(offerCount: 2, announcementCount: 1)
-        #expect(rows(facts, .loyalty) == [.earnRate, .savePoints, .deliveryOrders, .offer(0), .offer(1), .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .customers, .feedback])
+        #expect(rows(facts, .loyalty) == [.earnRate, .savePoints, .deliveryOrders, .offer(0), .offer(1), .addOffer, .rewardsUsed])
+        #expect(rows(facts, .customers) == [.customers, .savers, .followers, .feedback])
+        #expect(rows(facts, .codes) == [.showRegisterCard, .showWindowSticker, .nfcStickers, .loyaltyCodes, .emailStickers, .replaceRegisterCard])
         #expect(rows(facts, .announcements) == [.announcement(0), .addAnnouncement])
+        #expect(rows(facts, .glance) == [.statTiles, .fullStats, .activity])
     }
 
     @Test func tilesOnlyWhenStatsArrived() {

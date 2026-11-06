@@ -10,10 +10,18 @@ enum VenueManageLayout {
         /// Orders waiting, first, while the store takes orders (2026-10-23)
         case ordersNow
         case glance
+        /// What the page shows: details, hours, photos, buttons (all free)
         case placePage
+        /// The menu and everything that takes orders from it (2026-11-06)
+        case menuOrdering
+        /// Points and the offers customers spend them on
         case loyalty
+        /// Who shops here and what they tell you
+        case customers
         case announcements
-        case windowSticker
+        /// Every printed or written code: register card, window sticker,
+        /// NFC stickers, loyalty codes (2026-11-06)
+        case codes
         case team
         case more
     }
@@ -89,53 +97,60 @@ enum VenueManageLayout {
         var hasStats = true
         var offerCount = 0
         var announcementCount = 0
-        /// Order ahead is on: Orders leads the screen instead of sitting in
-        /// "Your place page"
+        /// Order ahead is on: Orders leads the screen (off, Online ordering
+        /// in "Menu & ordering" is the way in)
         var orderingOn = false
     }
 
+    /// Wes, 2026-11-06: the old screen mixed the menu, ordering and buttons in
+    /// one group and put codes and customer lists under Loyalty. Each tool now
+    /// sits in exactly one group named for what the owner is doing.
     static func sections(_ facts: Facts) -> [(section: Section, rows: [Row])] {
         let physical = !facts.isVirtual
 
         var glance: [Row] = []
         if facts.hasStats { glance.append(.statTiles) }
-        glance += [.fullStats, .savers, .followers, .activity]
+        glance += [.fullStats, .activity]
 
         var placePage: [Row] = []
-        if facts.hasPlace { placePage += [.viewPage, .details, .photos] }
+        if facts.hasPlace { placePage += [.viewPage, .details] }
         if facts.hasPlace && physical { placePage.append(.hours) }
-        placePage += [.storefrontButtons, .fullMenu]
-        if !facts.orderingOn { placePage.append(.orders) }
-        placePage.append(.onlineOrdering)
-        if physical { placePage.append(.orderPage) }
-        placePage.append(.menu)
         // No place page (online-only store): its own storefront gallery
-        if !facts.hasPlace { placePage.append(.gallery) }
+        placePage.append(facts.hasPlace ? .photos : .gallery)
+        placePage.append(.storefrontButtons)
+
+        // Ordering off: the Online ordering row is the way in (Orders opened
+        // the same settings screen, so it isn't listed twice)
+        var menuOrdering: [Row] = [.fullMenu, .menu, .onlineOrdering]
+        if physical { menuOrdering.append(.orderPage) }
 
         var loyalty: [Row] = [.earnRate]
         if physical { loyalty += [.savePoints, .deliveryOrders] }
         loyalty += (0..<facts.offerCount).map { Row.offer($0) }
-        loyalty.append(.addOffer)
-        if physical { loyalty += [.showRegisterCard, .replaceRegisterCard] }
-        loyalty.append(.loyaltyCodes)
-        loyalty += [.rewardsUsed, .customers, .feedback]
+        loyalty += [.addOffer, .rewardsUsed]
+
+        let customers: [Row] = [.customers, .savers, .followers, .feedback]
 
         var announcements = (0..<facts.announcementCount).map { Row.announcement($0) }
         announcements.append(.addAnnouncement)
+
+        let codes: [Row] = physical
+            ? [.showRegisterCard, .showWindowSticker, .nfcStickers, .loyaltyCodes, .emailStickers, .replaceRegisterCard]
+            : [.loyaltyCodes]
 
         var result: [(Section, [Row])] = []
         if facts.orderingOn { result.append((.ordersNow, [.orders])) }
         result += [
             (.glance, glance),
             (.placePage, placePage),
+            (.menuOrdering, menuOrdering),
             (.loyalty, loyalty),
-            (.announcements, announcements)
+            (.customers, customers),
+            (.announcements, announcements),
+            (.codes, codes),
+            (.team, [.contactName, .contactEmail, .managers, .plan]),
+            (.more, [.ownerGuide, .brandStorefront, .addBusiness])
         ]
-        if physical {
-            result.append((.windowSticker, [.showWindowSticker, .nfcStickers, .emailStickers]))
-        }
-        result.append((.team, [.contactName, .contactEmail, .managers, .plan]))
-        result.append((.more, [.ownerGuide, .brandStorefront, .addBusiness]))
         return result.map { (section: $0.0, rows: $0.1) }
     }
 

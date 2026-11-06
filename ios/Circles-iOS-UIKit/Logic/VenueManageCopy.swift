@@ -23,22 +23,34 @@ enum VenueManageCopy {
             return Header(
                 title: "Your place page",
                 explanation: isVirtual
-                    ? "What customers see when they open your store: buttons that make money (Reserve, Order, Catering, Book — free), and with FavCircles Business your menu, featured items and your own photos."
-                    : "What customers see when they open your place: your hours and cover photo, buttons that make money (Reserve, Order, Catering, Book — free), and with FavCircles Business your menu, featured items, your own photos, online ordering, and your own ordering page on the web (order.favcircles.com/your-store) to link from your website.")
+                    ? "What customers see when they open your store: your photos (FavCircles Business) and the buttons that make money \u{2014} Menu, Reserve, Order, Catering, Book (free)."
+                    : "What customers see when they open your place: your details, hours and photos, and the buttons that make money \u{2014} Menu, Reserve, Order, Catering, Book. All free.")
+        case .menuOrdering:
+            return Header(
+                title: "Menu & ordering",
+                explanation: isVirtual
+                    ? "Your menu, featured items, and online ordering from it. Comes with FavCircles Business."
+                    : "Scan your menu once and every item goes on your page, where customers can search it. Pick a few featured items with a picture and a price. Turn on online ordering and customers order ahead from that menu and pay at pickup \u{2014} in the app, or on your own ordering page (order.favcircles.com/your-store) to link from your website. Comes with FavCircles Business.")
         case .loyalty:
             return Header(
-                title: "Loyalty program",
+                title: "Rewards",
                 explanation: isVirtual
                     ? "Customers earn points with your loyalty codes and spend them on your offers. Pack a code into every order; they redeem it in the app and follow your store."
-                    : "Customers scan your register card after buying something to earn points (once a day), then spend them on your offers at the counter. Loyalty codes work the same way for shipped orders and event handouts.")
+                    : "Customers earn points each time they scan your register card (once a day), and spend them on the offers you add here. Rewards used shows every redemption and whether staff gave it.")
+        case .customers:
+            return Header(
+                title: "Customers",
+                explanation: "Who earns rewards here, who saved your place, who follows it, and the private notes customers sent only to you. Comes with FavCircles Business.")
         case .announcements:
             return Header(
                 title: "Announcements",
                 explanation: "Short updates shown on your place's page and in your followers' feeds — deals, happy hours, events. Followers who turn on alerts for your store also get a notification when you post something new (at most one a day). Expired announcements hide automatically.")
-        case .windowSticker:
+        case .codes:
             return Header(
-                title: "Window sticker",
-                explanation: "Print this code and put it in your window, or write it onto NFC stickers for tables and coasters. Customers scan or tap to save your place in FavCircles and start earning points. Free for every store.")
+                title: "Codes & stickers",
+                explanation: isVirtual
+                    ? "Single-use loyalty codes to pack into orders and hand out at events."
+                    : "The register card sits at the counter: customers scan it after buying something to earn points. The window sticker and NFC stickers (tables, coasters) save your place in FavCircles. Loyalty codes are single-use, for delivery orders and event handouts.")
         case .team:
             return Header(
                 title: "Owner & team",
@@ -53,15 +65,13 @@ enum VenueManageCopy {
     static func footer(_ section: VenueManageLayout.Section, isVirtual: Bool = false) -> String? {
         switch section {
         case .placePage:
-            return "Buttons are free for every store. Menu, featured items and photos come with FavCircles Business."
-        case .loyalty:
-            return isVirtual
-                ? nil
-                : "Making a new register card turns the printed one off immediately — only do it if the card leaked or was lost."
+            return isVirtual ? nil : "Everything here is free for every store."
         case .announcements:
             return "New posts alert followers who turned on your store's bell, at most once a day."
-        case .windowSticker:
-            return "The email has both printable codes: the window sticker and the register card."
+        case .codes:
+            return isVirtual
+                ? nil
+                : "The email has both printable codes. Making a new register card turns the printed one off immediately \u{2014} only do it if the card leaked or was lost."
         default:
             return nil
         }

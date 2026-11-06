@@ -892,8 +892,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("Photos", "Arrange them, choose the cover, remove any — yours and customers'", "photo.on.rectangle.angled")
         case .storefrontButtons:
             let count = storefront?.actions?.buttons.count ?? 0
-            set("Reserve · Order · Catering · Book",
-                count > 0 ? "\(count) button\(count == 1 ? "" : "s") on your page" : "Add the links customers tap to spend money",
+            set("Buttons",
+                count > 0 ? "\(count) button\(count == 1 ? "" : "s") on your page" : "Menu, Reserve, Order, Catering, Book \u{2014} links customers tap",
                 "hand.tap")
         case .fullMenu:
             let label = storefront?.offeringsLabel ?? "Menu"
@@ -916,7 +916,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             }
         case .onlineOrdering:
             let o = storefront?.ordering
-            set("Online ordering", o?.enabled == true ? "On \u{00B7} usually ready in \(o?.leadMinutes ?? 15) min" : "Off", "switch.2")
+            set("Online ordering", o?.enabled == true ? "On \u{00B7} usually ready in \(o?.leadMinutes ?? 15) min" : "Off \u{00B7} let customers order ahead and pay at pickup", "switch.2")
         case .orderPage:
             let url = storefront?.orderingPage?.url.replacingOccurrences(of: "https://", with: "")
             set("Your ordering page", url ?? "Your menu and ordering on the web \u{2014} link it from your site", "globe")
@@ -927,8 +927,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             if let featured = o?.featured.count, featured > 0 { parts.append("\(featured) featured") }
             if let pages = o?.files.count, pages > 0 { parts.append("\(pages) photo\(pages == 1 ? "" : "s")") }
             if !(o?.link ?? "").isEmpty { parts.append("link") }
-            set("\(label) & featured items",
-                parts.isEmpty ? "A link or photos of your \(label.lowercased()), plus a few items with a picture and a price" : parts.joined(separator: " · "),
+            set("Featured items",
+                parts.isEmpty ? "A few items with a picture and a price, plus photos of your printed \(label.lowercased())" : parts.joined(separator: " · "),
                 "menucard")
         case .gallery:
             let count = storefront?.gallery.count ?? 0
