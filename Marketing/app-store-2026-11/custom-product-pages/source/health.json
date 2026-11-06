@@ -1,0 +1,5 @@
+{"device":"iphone","slides":[
+ {"slug":"water","image":"source/raw/water.png","headline":"A <em>water reminder</em> that keeps count","sub":"Log each cup with a tap, get reminders through the day, and keep your streak."},
+ {"slug":"meds","image":"source/raw/meds.png","headline":"Never miss a <em>medication</em>","sub":"A reminder at the right time, one tap when you take it, and your history at a glance."},
+ {"slug":"habits","image":"source/raw/habits.png","headline":"Build habits with <em>streaks</em>","sub":"Check off each day and watch your streaks grow."}
+]}

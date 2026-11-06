@@ -9,7 +9,9 @@ import XCTest
 /// in its own tmp folder (visible on the Mac in the runner's data container)
 /// and runs each command, answering with `<command>.done`.
 ///
-/// Commands: `expand-map`, `close-map`, `store-points`, `privacy`, `end`.
+/// Commands: `expand-map`, `close-map`, `store-points`, `privacy`, `end`, plus
+/// generic ones for any screen: `tap:<label>`, `at:<x>,<y>` (0–1 of the
+/// screen), `type:<text>`, `swipe:up|down|left|right`, `dump`.
 /// Run with `-parallel-testing-enabled NO` so the app stays on the device being captured.
 final class DuoAppStoreCaptureUITests: XCTestCase {
     private let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("duo-capture", isDirectory: true)
@@ -70,9 +72,35 @@ final class DuoAppStoreCaptureUITests: XCTestCase {
             for o in app.otherElements.matching(NSPredicate(format: "identifier != ''")).allElementsBoundByIndex.prefix(40) { lines.append("other|\(o.identifier)|\(o.frame)") }
             try? lines.joined(separator: "\n").write(toFile: dir.appendingPathComponent("dump-\(Int(Date().timeIntervalSince1970)).txt").path, atomically: true, encoding: .utf8)
         default:
-            break
+            runGeneric(cmd, app)
         }
         sleep(2)
+    }
+
+    private func runGeneric(_ cmd: String, _ app: XCUIApplication) {
+        guard let colon = cmd.firstIndex(of: ":") else { return }
+        let verb = String(cmd[..<colon]), arg = String(cmd[cmd.index(after: colon)...])
+        switch verb {
+        case "tap":
+            let match = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", arg, arg))
+            let hittable = match.allElementsBoundByIndex.first { $0.isHittable }
+            if let element = hittable ?? (match.firstMatch.waitForExistence(timeout: 4) ? match.firstMatch : nil) { element.tap() }
+        case "at":
+            let parts = arg.split(separator: ",").compactMap { Double($0) }
+            guard parts.count == 2 else { return }
+            app.coordinate(withNormalizedOffset: CGVector(dx: parts[0], dy: parts[1])).tap()
+        case "type":
+            app.typeText(arg)
+        case "swipe":
+            switch arg {
+            case "up": app.swipeUp()
+            case "down": app.swipeDown()
+            case "left": app.swipeLeft()
+            default: app.swipeRight()
+            }
+        default:
+            break
+        }
     }
 
     private func dismissPrompts(_ app: XCUIApplication) {

@@ -21,6 +21,11 @@ const out = path.join(root, 'favcircles.com/widgets.html');
 const seo = JSON.parse(fs.readFileSync(path.join(root, 'widgets/widget-seo.json'), 'utf8'));
 const APP_STORE = 'https://apps.apple.com/us/app/favcircles/id6746807095';
 const SITE = 'https://favcircles.com';
+// A widget on one of the App Store custom product pages links to that page
+const productPage = Object.fromEntries(Object.entries(seo._productPages || {})
+  .filter(([ppid]) => !ppid.startsWith('_'))
+  .flatMap(([ppid, p]) => p.widgets.map((id) => [id, ppid])));
+const appStoreFor = (id) => (productPage[id] ? `${APP_STORE}?ppid=${productPage[id]}` : APP_STORE);
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 // Every widget in the package must be on the page
@@ -249,7 +254,7 @@ for (const g of data.groups) {
             <span class="emoji">${esc(w.emoji)}</span>
             <h1>${esc(s.h1)}</h1>
             <p class="lead">${esc(s.intro)}</p>
-            <a class="cta" href="${APP_STORE}" target="_blank" rel="noopener">Get FavCircles, free on iPhone</a>
+            <a class="cta" href="${appStoreFor(w.id)}" target="_blank" rel="noopener">Get FavCircles, free on iPhone</a>
         </section>
 
         <section class="band">

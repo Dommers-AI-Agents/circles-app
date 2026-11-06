@@ -1,4 +1,11 @@
 {
+  "_productPages": {
+    "_readme": "App Store custom product pages (App Store Connect, 2026-11-06). A widget listed here sends its page's App Store button to that page (screenshots of those widgets); every other widget uses the main listing.",
+    "ab9789e4-1fcc-4cdb-9679-837cbdba2b8a": { "name": "Wake Up & Sleep", "widgets": ["wakeup", "sleepsounds", "sleep"] },
+    "58c75022-4ff4-4270-9e87-ca732bb26951": { "name": "Health", "widgets": ["water", "meds", "habits", "heartbeat"] },
+    "aa6ddfd8-6e35-42c4-9270-d58180f48908": { "name": "Fitness", "widgets": ["workouts", "run", "calories", "motivation"] },
+    "985262c3-e739-4151-849c-b2e09a357cdb": { "name": "Family", "widgets": ["events", "howareyou", "fridgemail", "postcard"] }
+  },
   "_readme": "Search pages for each widget: favcircles.com/widgets/<slug>.html, built by website/tools/build-widgets-page.js with widgets.json. Never rename a slug (it's the page's address). title <= 60 chars, description <= 155. Plain words, nothing that isn't in the app.",
   "events": { "slug": "party-planner-rsvp-app", "title": "Party Planner & RSVP App for iPhone with Shared Album",
     "description": "Plan a party, trip or night out on iPhone: invite anyone by email, track RSVPs and head counts, and share one photo album with your guests.",

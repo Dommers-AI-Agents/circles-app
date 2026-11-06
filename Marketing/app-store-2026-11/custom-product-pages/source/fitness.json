@@ -1,0 +1,5 @@
+{"device":"iphone","slides":[
+ {"slug":"workouts","image":"source/raw/workouts.png","headline":"Log every <em>workout</em>","sub":"Start from 16 ready routines or your own, and track sets, reps and weight."},
+ {"slug":"run","image":"source/raw/rundetail.png","headline":"Track your runs <em>on a map</em>","sub":"Distance, pace and splits for every run, with your route."},
+ {"slug":"calories","image":"source/raw/calories.png","headline":"Count calories <em>and macros</em>","sub":"Log a meal in seconds and see what's left for the day."}
+]}
