@@ -51,6 +51,8 @@ enum PendingLink: Equatable {
     case venueOrders(venueId: String)
     /// "venue-feedback:<venueId>": a private-feedback push on a cold start (store)
     case venueFeedback(venueId: String)
+    /// "venue-receipts:<venueId>": a delivery-receipt push on a cold start (store)
+    case venueReceipts(venueId: String)
     /// "tab:<local|widgets>": a shared home tab opened before the app was ready.
     case homeTab(HomeContentSegment)
 
@@ -132,6 +134,7 @@ enum PendingLinkParser {
         case "order": return .storeOrder(id: payload)
         case "venue-orders": return .venueOrders(venueId: payload)
         case "venue-feedback": return .venueFeedback(venueId: payload)
+        case "venue-receipts": return .venueReceipts(venueId: payload)
         case "tab": return HomeContentSegment(shareSlug: payload).map(PendingLink.homeTab)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary

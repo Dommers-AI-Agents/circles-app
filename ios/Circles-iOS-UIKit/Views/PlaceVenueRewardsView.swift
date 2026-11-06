@@ -10,6 +10,8 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     func placeVenueViewDidTapRewards(_ view: PlaceVenueRewardsView)
     /// A customer tapped "Add to Apple Wallet": this store's card (2026-11-01)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapAddToWallet venue: PlaceVenue)
+    /// "Ordered for delivery? Send your receipt" (2026-11-06)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapSendReceipt venue: PlaceVenue, mode: String?)
     /// Owner bar: the store's Orders screen
     func placeVenueViewDidTapOrders(_ view: PlaceVenueRewardsView, venue: PlaceVenue)
     /// Owner bar: flip between the owner's view and the customer's
@@ -169,6 +171,19 @@ class PlaceVenueRewardsView: UIView {
 
         // The customer's card for this store in Apple Wallet: points on the
         // lock screen near the store, updated after every scan
+        // A delivery order earns too, when the store takes receipts
+        if opensRewards && data.takesDeliveryReceipts {
+            let b = UIButton.smallActionButton(title: ReceiptCopy.entryTitle, style: .secondary)
+            b.setImage(UIImage(systemName: "bag.badge.plus"), for: .normal)
+            b.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+            b.titleLabel?.adjustsFontSizeToFitWidth = true
+            b.titleLabel?.minimumScaleFactor = 0.8
+            b.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.delegate?.placeVenueView(self, didTapSendReceipt: venue, mode: data.deliveryReceipts)
+            }, for: .touchUpInside)
+            containerStack.addArrangedSubview(b)
+        }
         if opensRewards && WalletCardPresenter.isAvailable {
             containerStack.addArrangedSubview(WalletCardPresenter.makeButton { [weak self] in
                 guard let self else { return }

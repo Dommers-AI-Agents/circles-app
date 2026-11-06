@@ -445,6 +445,7 @@ final class DeepLinkCoordinator: SceneCoordinator {
             case .storeOrder(let id): NotificationCenter.default.post(name: .navigateToStoreOrder, object: id)
             case .venueOrders(let venueId): NotificationCenter.default.post(name: .navigateToVenueOrders, object: venueId)
             case .venueFeedback(let venueId): NotificationCenter.default.post(name: .navigateToVenueFeedback, object: venueId)
+            case .venueReceipts(let venueId): NotificationCenter.default.post(name: .navigateToVenueReceipts, object: venueId)
             case .homeTab(let segment): self.navigateToHomeTab(segment)
             case .openPath(let path):
                 if let destination = DeepLinkRouter().openPathDestination(path) { self.route(destination) }

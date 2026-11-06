@@ -48,6 +48,8 @@ enum VenueManageLayout {
         case earnRate
         /// Owner-set points for saving the store after a register scan (2026-10-30)
         case savePoints
+        /// Delivery orders earn points from their receipt: the setting and the queue (2026-11-06)
+        case deliveryOrders
         case offer(Int)
         case addOffer
         case showRegisterCard
@@ -111,7 +113,7 @@ enum VenueManageLayout {
         if !facts.hasPlace { placePage.append(.gallery) }
 
         var loyalty: [Row] = [.earnRate]
-        if physical { loyalty.append(.savePoints) }
+        if physical { loyalty += [.savePoints, .deliveryOrders] }
         loyalty += (0..<facts.offerCount).map { Row.offer($0) }
         loyalty.append(.addOffer)
         if physical { loyalty += [.showRegisterCard, .replaceRegisterCard] }
@@ -144,7 +146,7 @@ enum VenueManageLayout {
         switch row {
         case .savers, .followers, .activity,
              .menu, .fullMenu, .orders, .onlineOrdering, .orderPage, .gallery,
-             .earnRate, .savePoints, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .customers,
+             .earnRate, .savePoints, .deliveryOrders, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .customers,
              .announcement, .addAnnouncement:
             return true
         default:

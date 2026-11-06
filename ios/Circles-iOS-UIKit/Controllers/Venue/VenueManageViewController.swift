@@ -39,6 +39,9 @@ class VenueManageViewController: BaseViewController {
     private var managerCount: Int = 0
     /// Orders waiting to be accepted (the Orders row leads with it)
     private var newOrders: Int
+    /// Delivery receipts: the store's setting and how many wait (2026-11-06)
+    private var deliveryMode: DeliveryReceiptMode
+    private var pendingReceipts: Int
     private var ordersObserver: NSObjectProtocol?
     private let stats: AdminVenueStats?
     /// Online-only brand store: no window sticker, register card, hours or cover
@@ -154,6 +157,8 @@ class VenueManageViewController: BaseViewController {
         self.venueId = venue.venueId
         self.venueName = venue.venueName
         self.newOrders = venue.newOrders ?? 0
+        self.deliveryMode = DeliveryReceiptMode(rawValue: venue.deliveryReceipts ?? "off") ?? .off
+        self.pendingReceipts = venue.pendingReceipts ?? 0
         self.offers = venue.offers ?? []
         self.announcements = venue.announcements ?? []
         self.earnRate = venue.earnRate ?? 25
@@ -935,6 +940,11 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("Points per purchase", "\(earnRate) points each time a customer scans", "dollarsign.circle")
         case .savePoints:
             set("Points for saving your store", savePoints > 0 ? "\(savePoints) points when a customer saves your store after a register scan" : "Off", "bookmark")
+        case .deliveryOrders:
+            let waiting = pendingReceipts > 0 ? " \u{00B7} \(pendingReceipts) waiting" : ""
+            set(pendingReceipts > 0 ? "Delivery receipts to approve (\(pendingReceipts))" : "Delivery orders earn points",
+                deliveryMode == .off ? "Off: let DoorDash and Uber Eats customers send their receipt" : deliveryMode.title + waiting,
+                "bag.badge.plus")
         case .offer(let index):
             let offer = offers[index]
             let isActive = offer.active != false
@@ -1055,6 +1065,15 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             navigationController?.pushViewController(VenueCodesViewController(venueId: venueId, venueName: venueName), animated: true)
         case .rewardsUsed:
             navigationController?.pushViewController(VenueRewardTicketsViewController(venueId: venueId), animated: true)
+        case .deliveryOrders:
+            let vc = VenueReceiptsViewController(venueId: venueId, mode: deliveryMode)
+            vc.onChanged = { [weak self] mode, waiting in
+                guard let self, mode != self.deliveryMode || waiting != self.pendingReceipts else { return }
+                self.deliveryMode = mode
+                self.pendingReceipts = waiting
+                self.reload()
+            }
+            navigationController?.pushViewController(vc, animated: true)
         case .customers:
             navigationController?.pushViewController(VenueCustomersViewController(venueId: venueId, venueName: venueName), animated: true)
         case .feedback:

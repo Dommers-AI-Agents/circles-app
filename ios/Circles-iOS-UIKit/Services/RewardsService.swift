@@ -1335,6 +1335,11 @@ struct PlaceVenueData: Codable {
     let storefront: VenueStorefront?
     /// The caller's own history here, when asked for (Get Rewards, 2026-11-02)
     @LenientlyDecoded var myHistory: VenueRewardHistory?
+    /// "approve" or "auto" when a delivery order's receipt earns here; the
+    /// store card offers "Send your receipt" (2026-11-06)
+    var deliveryReceipts: String? = nil
+
+    var takesDeliveryReceipts: Bool { rewardsLive != false && (deliveryReceipts == "approve" || deliveryReceipts == "auto") }
 }
 
 /// A customer's visits, points and latest moves at one store
@@ -1731,6 +1736,10 @@ struct AdminVenue: Codable {
     /// (the profile's store icon badge and Manage Store's Orders row)
     var orderingEnabled: Bool? = nil
     var newOrders: Int? = nil
+    /// Delivery receipts for points: "off" | "approve" | "auto", and how
+    /// many wait for the team (2026-11-06)
+    var deliveryReceipts: String? = nil
+    var pendingReceipts: Int? = nil
 }
 
 // MARK: - Super-user store page

@@ -44,6 +44,8 @@ enum NotificationDestination: Equatable {
     case venueOrders(venueId: String)
     /// A customer's private feedback, for the store's team (2026-11-02)
     case venueFeedback(venueId: String)
+    /// A delivery receipt waiting for the store's team (2026-11-06)
+    case venueReceipts(venueId: String)
     case suggestions(placeId: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).
     case circle(id: String, showComments: Bool?)
@@ -109,6 +111,12 @@ enum NotificationTapRouter {
         case "store_feedback":
             if let venueId = string("venueId", in: userInfo) { return .venueFeedback(venueId: venueId) }
             return nil
+        case "receipt_new":
+            if let venueId = string("venueId", in: userInfo) { return .venueReceipts(venueId: venueId) }
+            return nil
+        case "receipt_result":
+            // The store's answer → its place page (points show on the store card)
+            return placeId.map { .place(id: $0, showComments: nil) }
         case "fridgemail":
             if let cardId = string("cardId", in: userInfo) { return .fridgeMailCard(id: cardId) }
             return .homeWidget(id: "fridgemail")

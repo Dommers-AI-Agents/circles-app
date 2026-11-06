@@ -112,6 +112,9 @@ final class GetRewardsViewController: BaseViewController {
     private let announcementsStack = GetRewardsViewController.vertical(spacing: Constants.Spacing.xsmall)
     private let historyStack = GetRewardsViewController.vertical(spacing: 0)
     private let walletSlot = GetRewardsViewController.vertical(spacing: Constants.Spacing.small)
+    /// "Ordered for delivery?" when the store takes receipts (2026-11-06)
+    private let deliverySlot = GetRewardsViewController.vertical(spacing: Constants.Spacing.small)
+    private var deliveryReceipts: String?
 
     private lazy var scanButton: UIButton = {
         let button = UIButton.primaryButton(title: "Scan QR code")
@@ -204,6 +207,7 @@ final class GetRewardsViewController: BaseViewController {
         stack.addArrangedSubview(ticketSlot)
         stack.addArrangedSubview(statsSlot)
         stack.addArrangedSubview(earnSection())
+        stack.addArrangedSubview(deliverySlot)
         stack.addArrangedSubview(offersStack)
         stack.addArrangedSubview(announcementsStack)
         stack.addArrangedSubview(historyStack)
@@ -286,6 +290,7 @@ final class GetRewardsViewController: BaseViewController {
         if let history = data.myHistory { self.history = history }
         address = data.venue?.placeAddress ?? address
         if let cover = data.venue?.coverPhotoUrl, !cover.isEmpty { coverPhotoUrl = cover }
+        deliveryReceipts = data.takesDeliveryReceipts ? data.deliveryReceipts : nil
     }
 
     private var coverPhotoUrl: String?
@@ -325,6 +330,25 @@ final class GetRewardsViewController: BaseViewController {
         renderAnnouncements()
         renderHistory()
         renderWallet()
+        renderDelivery()
+    }
+
+    /// A delivery order's receipt earns too, when the store takes them
+    private func renderDelivery() {
+        deliverySlot.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        deliverySlot.isHidden = deliveryReceipts == nil || venueId == nil
+        guard let mode = deliveryReceipts, let venueId else { return }
+        let body = Self.label(size: Constants.FontSize.large, weight: .regular)
+        body.text = "Ordered through DoorDash, Uber Eats or another app? Send a photo or screenshot of the receipt within a week. Same points as a visit."
+        let button = UIButton.secondaryButton(title: "Send your receipt")
+        button.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            let send = SendReceiptViewController(venueId: venueId, venueName: self.details.venueName, mode: mode)
+            send.onEarned = { [weak self] in self?.loadData() }
+            self.present(UINavigationController(rootViewController: send), animated: true)
+        }, for: .touchUpInside)
+        deliverySlot.addArrangedSubview(Self.sectionCard(title: "Ordered for delivery?", symbol: "bag.badge.plus",
+                                                         tint: Constants.Colors.primary, rows: [body, button], dividers: false))
     }
 
     private func renderTicket() {

@@ -706,6 +706,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             postOrStashDeepLink(navName: Notification.Name.navigateToVenueOrders.rawValue, pending: "venue-orders:\(venueId)", object: venueId)
         case .venueFeedback(let venueId):
             postOrStashDeepLink(navName: Notification.Name.navigateToVenueFeedback.rawValue, pending: "venue-feedback:\(venueId)", object: venueId)
+        case .venueReceipts(let venueId):
+            postOrStashDeepLink(navName: Notification.Name.navigateToVenueReceipts.rawValue, pending: "venue-receipts:\(venueId)", object: venueId)
         case .motivationSend(let lineId):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "motivation-send:\(lineId)",
                                 object: "motivation", userInfo: ["motivationLineId": lineId, "motivationSend": true])

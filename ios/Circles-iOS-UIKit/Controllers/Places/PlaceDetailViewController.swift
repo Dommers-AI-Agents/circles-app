@@ -3677,6 +3677,13 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         present(nav, animated: true)
     }
 
+    /// "Send your receipt": a delivery order's points (2026-11-06)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapSendReceipt venue: PlaceVenue, mode: String?) {
+        let send = SendReceiptViewController(venueId: venue.venueId, venueName: venue.venueName, mode: mode)
+        send.onEarned = { [weak self] in self?.loadVenueRewards() }
+        present(UINavigationController(rootViewController: send), animated: true)
+    }
+
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapStorefrontPhotos urls: [String], startingAt index: Int) {
         guard !urls.isEmpty else { return }
         AnalyticsService.shared.logEvent("storefront_photos_opened", parameters: ["place_id": place.id, "count": urls.count])
