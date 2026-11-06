@@ -61,7 +61,7 @@
   .scroll{overflow-x:auto}
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
   .print-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
-  .print-item img{width:100%;border-radius:8px;border:1px solid var(--line);display:block;margin-bottom:12px}
+  .print-item img{width:100%;max-height:260px;object-fit:contain;background:var(--soft);border-radius:8px;border:1px solid var(--line);display:block;margin-bottom:12px}
   .print-item .actions{display:flex;gap:10px;margin-top:12px}
   .print-item .actions a{padding:8px 14px;border-radius:8px;font-weight:700;text-decoration:none;background:var(--navy);color:#fff}
   .ig-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
@@ -147,7 +147,7 @@
         <button data-tab="messaging">Email &amp; push</button>
         <button data-tab="instagram">Instagram</button>
         <button data-tab="approvals">Approve places</button>
-        <button data-tab="print">Print</button>
+        <button data-tab="kit">Sales kit</button>
       </nav>
       <div class="spacer"></div>
       <select id="range" aria-label="Date range">
@@ -237,11 +237,9 @@
         <div class="scroll"><table id="approvals"></table></div>
       </section>
     </div>
-    <div id="tab-print" class="hidden">
-      <section class="card">
-        <h2>Print materials <span class="muted">(open the PDF, then print it from your browser)</span></h2>
-        <div class="print-grid" id="printItems"></div>
-      </section>
+    <div id="tab-kit" class="hidden">
+      <p class="muted" style="margin:0 0 4px">Everything for selling to stores. Only admins can open this page.</p>
+      <div id="kitSections"></div>
     </div>
   </main>
 </div>

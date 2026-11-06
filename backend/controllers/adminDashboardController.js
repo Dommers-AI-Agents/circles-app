@@ -48,6 +48,7 @@ exports.instagramPostNow = async (req, res) => {
 // Places saved without a Google or Apple Maps match wait here
 // (services/placeApproval): approve to make them public, reject to keep them
 // private to the people who saved them
+exports.salesKit = handle(() => ({ sections: require('../config/salesKit').SALES_KIT }));
 exports.placeApprovals = handle(async () => ({ places: await require('../services/placeApproval').listPending() }));
 exports.placeDecision = async (req, res) => {
   try {

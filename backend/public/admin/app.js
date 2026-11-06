@@ -159,24 +159,20 @@
     }
   });
 
-  const TABS = ['overview', 'people', 'money', 'messaging', 'instagram', 'approvals', 'print'];
+  const TABS = ['overview', 'people', 'money', 'messaging', 'instagram', 'approvals', 'kit'];
 
-  // Print tab: files hosted on favcircles.com (website/favcircles.com), so a
-  // new version is an upload there, not a deploy or an app build.
-  const PRINT_MATERIALS = [{
-    title: 'Store sell sheet',
-    sub: 'For store owners · two-sided US Letter. Print double-sided (long edge), actual size, background graphics on.',
-    pdf: 'https://favcircles.com/FavCircles-Founding-Store-Sell-Sheet.pdf',
-    thumb: 'https://favcircles.com/img/sell-sheet-thumb.png'
-  }];
-
-  function renderPrint() {
-    $('#printItems').innerHTML = PRINT_MATERIALS.map((m) => `<div class="card print-item">
-        <a href="${esc(m.pdf)}" target="_blank" rel="noopener"><img src="${esc(m.thumb)}" alt="${esc(m.title)} preview" loading="lazy"></a>
-        <b>${esc(m.title)}</b>
-        <div class="sub muted" style="white-space:normal">${esc(m.sub)}</div>
-        <div class="actions"><a href="${esc(m.pdf)}" target="_blank" rel="noopener">Open PDF to print</a></div>
-      </div>`).join('');
+  // Sales kit tab: the list comes from the server (config/salesKit.js), so
+  // only a signed-in admin sees it; the files are on favcircles.com
+  function renderKit(d) {
+    $('#kitSections').innerHTML = (d.sections || []).map((sec) => `<section class="card">
+        <h2>${esc(sec.title)}</h2>
+        <div class="print-grid">${sec.items.map((m) => `<div class="print-item">
+            ${m.thumb ? `<a href="${esc(m.url)}" target="_blank" rel="noopener"><img src="${esc(m.thumb)}" alt="${esc(m.title)} preview" loading="lazy"></a>` : ''}
+            <b>${esc(m.title)}</b>
+            <div class="sub muted" style="white-space:normal">${esc(m.sub)}</div>
+            ${m.url ? `<div class="actions"><a href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.action || 'Open')}</a></div>` : ''}
+          </div>`).join('')}</div>
+      </section>`).join('');
   }
 
   $('#signOut').addEventListener('click', () => signOut());
@@ -206,7 +202,7 @@
         renderMessaging(msg);
         renderEmailHealth(eh);
       }
-      if (tab === 'print') renderPrint();
+      if (tab === 'kit') renderKit(await api('/admin/dashboard/sales-kit'));
       if (tab === 'approvals') renderApprovals(await api('/admin/dashboard/place-approvals'));
       if (tab === 'instagram') renderInstagram(await api('/admin/dashboard/instagram'));
     } catch (err) {
