@@ -173,6 +173,8 @@ async function submit(userId, venueId, body = {}, { now = new Date() } = {}) {
   const claim = {
     venueId: venue.venueId,
     venueName: venue.venueName || null,
+    // The customer's answer opens the store's place page
+    globalPlaceId: venue.globalPlaceId || null,
     userId: String(userId),
     status: 'pending',
     mode: storeMode,
@@ -246,10 +248,10 @@ async function approve(venue, claimId, actorId) {
   }
   if (result.awarded) {
     push(claim.userId, 'receipt_result', `${venue.venueName} gave you ${result.points} points`,
-      'For your delivery order. Thanks for ordering!', { venueId: venue.venueId, claimId: ref.id, approved: true });
+      'For your delivery order. Thanks for ordering!', { venueId: venue.venueId, placeId: claim.globalPlaceId || null, claimId: ref.id, approved: true });
   } else if (result.reason === 'already_today') {
     push(claim.userId, 'receipt_result', `${venue.venueName} approved your receipt`,
-      'You’d already earned there that day, so no extra points this time.', { venueId: venue.venueId, claimId: ref.id, approved: true });
+      'You’d already earned there that day, so no extra points this time.', { venueId: venue.venueId, placeId: claim.globalPlaceId || null, claimId: ref.id, approved: true });
   }
   return { approved: true, points: result.awarded ? result.points : 0, alreadyEarned: result.reason === 'already_today' };
 }
@@ -260,7 +262,7 @@ async function decline(venue, claimId, actorId) {
   await ref.update({ status: 'declined', decidedBy: String(actorId), decidedAt: nowIso() });
   await require('./scanAttempts').recordScanAttempt(claim.userId, venue, { reason: 'receipt_declined' }).catch(() => {});
   push(claim.userId, 'receipt_result', `${venue.venueName} couldn’t match your receipt`,
-    'No points this time. Questions? Ask the store.', { venueId: venue.venueId, claimId: ref.id, approved: false });
+    'No points this time. Questions? Ask the store.', { venueId: venue.venueId, placeId: claim.globalPlaceId || null, claimId: ref.id, approved: false });
   return { declined: true };
 }
 
@@ -312,7 +314,7 @@ async function expireOld({ now = new Date() } = {}) {
     const claim = doc.data();
     await doc.ref.update({ status: 'expired', decidedAt: now.toISOString() });
     push(claim.userId, 'receipt_result', `${claim.venueName || 'The store'} didn’t get to your receipt`,
-      'It wasn’t answered within a week, so it expired.', { venueId: claim.venueId, claimId: doc.id, approved: false });
+      'It wasn’t answered within a week, so it expired.', { venueId: claim.venueId, placeId: claim.globalPlaceId || null, claimId: doc.id, approved: false });
   }
   return { expired: snap.size };
 }
