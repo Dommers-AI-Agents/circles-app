@@ -52,11 +52,20 @@ enum NetworkDiscoverLayout {
         }
     }
 
+    /// The places card's title and line under it: your people's places, or
+    /// places saved near you when your network has none yet
+    static func lovedCopy(_ scope: NetworkDiscoverService.LovedScope) -> (title: String, blurb: String, screenTitle: String) {
+        switch scope {
+        case .network: return ("❤️ Places your people love", "Saved by two or more of your people.", "Places your people love")
+        case .community: return ("📍 Saved near you", "Places people on FavCircles saved around you.", "Saved near you")
+        }
+    }
+
     /// "Saved by Brit, Sal + 3"
     static func savedByLine(names: [String], total: Int) -> String {
         let shown = names.prefix(2)
         let rest = total - shown.count
-        guard !shown.isEmpty else { return "Saved by \(total) people" }
+        guard !shown.isEmpty else { return total == 1 ? "Saved by 1 person" : "Saved by \(total) people" }
         return "Saved by " + shown.joined(separator: ", ") + (rest > 0 ? " + \(rest)" : "")
     }
 

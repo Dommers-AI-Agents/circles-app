@@ -31,6 +31,8 @@ final class NetworkCardHeader: UIView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     @objc private func tapped() { onAction?() }
+
+    func setTitle(_ title: String) { label.text = title }
 }
 
 /// Overlapping round faces: up to three savers
@@ -209,7 +211,10 @@ final class LovedPlacesCardView: UIView, UICollectionViewDataSource, UICollectio
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func configure(_ places: [NetworkDiscoverService.LovedPlace]) {
+    func configure(_ places: [NetworkDiscoverService.LovedPlace], scope: NetworkDiscoverService.LovedScope) {
+        let copy = NetworkDiscoverLayout.lovedCopy(scope)
+        header.setTitle(copy.title)
+        blurb.text = copy.blurb
         self.places = Array(places.prefix(10))
         collection.reloadData()
     }

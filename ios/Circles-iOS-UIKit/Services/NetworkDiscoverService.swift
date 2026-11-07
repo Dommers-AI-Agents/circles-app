@@ -23,12 +23,21 @@ final class NetworkDiscoverService {
         let viewerSaved: Bool
     }
 
-    private struct LovedEnvelope: Decodable { let success: Bool; let places: [LovedPlace] }
+    /// Whose places the card holds: your people's, or (nobody in your network
+    /// has any yet) places people saved near you
+    enum LovedScope: String, Codable { case network, community }
+    struct LovedPage: Codable, Equatable {
+        let scope: LovedScope
+        let places: [LovedPlace]
+    }
+    private struct LovedEnvelope: Decodable { let success: Bool; let scope: LovedScope?; let places: [LovedPlace] }
     private struct MonthEnvelope: Decodable { let success: Bool; let data: MilestoneMonthViewController.Month }
 
-    func lovedPlaces(completion: @escaping (Result<[LovedPlace], Error>) -> Void) {
-        api.request(endpoint: "network/loved-places", method: .get) { (result: Result<LovedEnvelope, APIError>) in
-            completion(result.map(\.places).mapError { $0 as Error })
+    func lovedPlaces(completion: @escaping (Result<LovedPage, Error>) -> Void) {
+        // fallback=community: a new account with no network still sees places
+        // (Wes, 2026-11-07); the scope says which the server sent
+        api.request(endpoint: "network/loved-places?fallback=community", method: .get) { (result: Result<LovedEnvelope, APIError>) in
+            completion(result.map { LovedPage(scope: $0.scope ?? .network, places: $0.places) }.mapError { $0 as Error })
         }
     }
 

@@ -15,6 +15,7 @@ final class NetworkDiscoverViewController: BaseViewController {
     private let inviteCard = InviteCardView()
 
     private var loved: [NetworkDiscoverService.LovedPlace] = []
+    private var lovedScope: NetworkDiscoverService.LovedScope = .network
     private var month: MilestoneMonthViewController.Month?
     private var people: [User] = []
 
@@ -48,7 +49,7 @@ final class NetworkDiscoverViewController: BaseViewController {
         lovedCard.onSelect = { [weak self] place in self?.openPlace(place.globalPlaceId) }
         lovedCard.onSeeAll = { [weak self] in
             guard let self else { return }
-            self.navigationController?.pushViewController(LovedPlacesListViewController(places: self.loved), animated: true)
+            self.navigationController?.pushViewController(LovedPlacesListViewController(places: self.loved, scope: self.lovedScope), animated: true)
         }
         boardCard.onTap = { [weak self] in self?.openMonth() }
         peopleCard.onSeeAll = { [weak self] in
@@ -62,7 +63,11 @@ final class NetworkDiscoverViewController: BaseViewController {
         }
         inviteCard.onInvite = { [weak self] in self?.invite() }
         // Last visit's Discover at once; loadData refreshes it (2026-11-05)
-        loved = ScreenSnapshot.load([NetworkDiscoverService.LovedPlace].self, key: "discover.loved") ?? []
+        // The scope travels with the places, so a cached copy keeps its own title
+        if let page = ScreenSnapshot.load(NetworkDiscoverService.LovedPage.self, key: "discover.lovedPage") {
+            loved = page.places
+            lovedScope = page.scope
+        }
         month = ScreenSnapshot.load(MilestoneMonthViewController.Month.self, key: "discover.month")
         people = ScreenSnapshot.load([User].self, key: "discover.people") ?? []
         render()
@@ -76,9 +81,10 @@ final class NetworkDiscoverViewController: BaseViewController {
         group.enter()
         NetworkDiscoverService.shared.lovedPlaces { [weak self] result in
             DispatchQueue.main.async {
-                if case .success(let places) = result {
-                    self?.loved = places
-                    ScreenSnapshot.save(places, key: "discover.loved")
+                if case .success(let page) = result {
+                    self?.loved = page.places
+                    self?.lovedScope = page.scope
+                    ScreenSnapshot.save(page, key: "discover.lovedPage")
                 }
                 self?.render()
                 group.leave()
@@ -122,7 +128,7 @@ final class NetworkDiscoverViewController: BaseViewController {
         lovedCard.isHidden = !cards.contains(.lovedPlaces)
         boardCard.isHidden = !cards.contains(.leaderboard)
         peopleCard.isHidden = !cards.contains(.people)
-        if !lovedCard.isHidden { lovedCard.configure(loved) }
+        if !lovedCard.isHidden { lovedCard.configure(loved, scope: lovedScope) }
         if let month, !boardCard.isHidden { boardCard.configure(month) }
         peopleCard.configure(people)
     }
@@ -219,6 +225,7 @@ final class NetworkDiscoverViewController: BaseViewController {
 /// two-column grid (Wes, 2026-11-05: "an ugly list")
 final class LovedPlacesListViewController: BaseViewController, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
     private let places: [NetworkDiscoverService.LovedPlace]
+    private let scope: NetworkDiscoverService.LovedScope
     private lazy var collectionView: UICollectionView = {
         let layout = UICollectionViewFlowLayout()
         layout.minimumLineSpacing = 14
@@ -235,15 +242,16 @@ final class LovedPlacesListViewController: BaseViewController, UICollectionViewD
     override var loadsDataOnViewDidLoad: Bool { false }
     override var showsLoadingIndicator: Bool { false }
 
-    init(places: [NetworkDiscoverService.LovedPlace]) {
+    init(places: [NetworkDiscoverService.LovedPlace], scope: NetworkDiscoverService.LovedScope) {
         self.places = places
+        self.scope = scope
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Places your people love"
+        title = NetworkDiscoverLayout.lovedCopy(scope).screenTitle
         collectionView.dataSource = self
         collectionView.delegate = self
         view.addSubview(collectionView)

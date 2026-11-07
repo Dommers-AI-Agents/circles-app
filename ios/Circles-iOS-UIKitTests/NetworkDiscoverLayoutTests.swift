@@ -42,6 +42,15 @@ struct NetworkDiscoverLayoutTests {
         #expect(NetworkDiscoverLayout.savedByLine(names: ["Brit", "Sal", "Joe"], total: 5) == "Saved by Brit, Sal + 3")
         #expect(NetworkDiscoverLayout.savedByLine(names: ["Brit", "Sal"], total: 2) == "Saved by Brit, Sal")
         #expect(NetworkDiscoverLayout.savedByLine(names: [], total: 4) == "Saved by 4 people")
+        #expect(NetworkDiscoverLayout.savedByLine(names: [], total: 1) == "Saved by 1 person")
+    }
+
+    @Test func placesCardSaysWhoseTheyAre() {
+        // Strangers' saves must never be titled as your people's
+        #expect(NetworkDiscoverLayout.lovedCopy(.network).title == "❤️ Places your people love")
+        #expect(NetworkDiscoverLayout.lovedCopy(.community).title == "📍 Saved near you")
+        #expect(!NetworkDiscoverLayout.lovedCopy(.community).blurb.contains("your people"))
+        #expect(NetworkDiscoverLayout.lovedCopy(.community).screenTitle == "Saved near you")
     }
 
     @Test func standingLine() {
