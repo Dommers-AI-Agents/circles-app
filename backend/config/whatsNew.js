@@ -9,8 +9,8 @@
  */
 module.exports = [
   {
-    date: '2026-11-07', emoji: '📍', title: 'Add a place in one tap',
-    body: 'Add Place now opens on the places you\'re near: save one with a tap, or search by name, pick a spot on the map, or add places from your photos.',
+    date: '2026-11-07', emoji: '📍', title: 'Adding a place, simpler',
+    body: 'Tap Add Place, pick the circle, then search for the place or tap it on the map. Want to add a lot at once? Add places from your photos on the same screen.',
     minVersion: '1.5.0'
   },
   {
