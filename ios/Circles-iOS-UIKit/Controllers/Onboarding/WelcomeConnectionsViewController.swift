@@ -272,7 +272,10 @@ final class WelcomeConnectionsViewController: BaseViewController {
 
     private func loadRecommendations() {
         APIService.shared.request(
-            endpoint: "users/contacts/discover?type=popular&limit=12",
+            // Most relevant first (Wes, 2026-11-07: it showed one person):
+            // people who saved a place they saved, then nearby, then the
+            // biggest maps — never anyone they already follow
+            endpoint: "users/contacts/discover?type=welcome&limit=20",
             method: .get
         ) { [weak self] (result: Result<DiscoveryUsersResponse, APIError>) in
             DispatchQueue.main.async {
@@ -292,7 +295,7 @@ final class WelcomeConnectionsViewController: BaseViewController {
                         guard let me = myId else { return true }
                         return !IDNormalizer.isSameUser(me, user.id)
                     }
-                    .prefix(6).map { $0 }
+                    .prefix(12).map { $0 }
                 guard !self.recommendations.isEmpty else { return }
 
                 self.contentStack.addArrangedSubview(Self.sectionHeader("Maps worth exploring"))
@@ -301,7 +304,7 @@ final class WelcomeConnectionsViewController: BaseViewController {
                     self.contentStack.addArrangedSubview(self.personRow(
                         user: user,
                         title: user.displayName,
-                        detail: places > 0 ? "\(places) place\(places == 1 ? "" : "s") on their map" : "Just getting started",
+                        detail: WelcomePeopleCopy.detail(reason: user.suggestionReason, places: places),
                         accessory: self.followButton(for: user)
                     ))
                 }
@@ -360,5 +363,17 @@ final class WelcomeConnectionsViewController: BaseViewController {
 
     @objc private func continueTapped() {
         dismiss(animated: true)
+    }
+}
+
+/// The line under a person on the first people list. Pure.
+enum WelcomePeopleCopy {
+    /// "Also loves Fresh Monkee · 45 places", "Near you · 12 places", "70 places on their map"
+    static func detail(reason: String?, places: Int) -> String {
+        let count = places == 1 ? "1 place" : "\(places) places"
+        if let reason, reason.hasPrefix("Also loves") || reason == "Near you" {
+            return places > 0 ? "\(reason) \u{00B7} \(count)" : reason
+        }
+        return places > 0 ? "\(count) on their map" : "Just getting started"
     }
 }

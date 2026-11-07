@@ -1189,6 +1189,14 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// the default view once — after that the camera is the person's, and
     /// re-centring on every arrival made the map jump seconds after launch
     /// (Wes, 2026-10-02). Filtered views still fit their places as they land.
+    /// One spot at neighborhood level, kept there (the data arriving after
+    /// doesn't re-frame it): the first run's "See it on your map"
+    func focus(on coordinate: CLLocationCoordinate2D, meters: CLLocationDistance = 1200) {
+        hasExplicitInitialRegion = true
+        hasInitiallyZoomed = true
+        mapView.setRegion(MKCoordinateRegion(center: coordinate, latitudinalMeters: meters, longitudinalMeters: meters), animated: true)
+    }
+
     func adjustMapRegion(fromDataArrival: Bool = false) {
         // Honor an explicitly provided opening region (e.g. expanding the
         // embedded map) — cleared when the user changes a filter in here

@@ -67,6 +67,10 @@ final class FirstSessionCoordinator: SceneCoordinator {
     /// first-people sheet → notification onboarding → home tour decision.
     /// Runs from runPostLaunchSideEffects when the first-session flow is active.
     func continueFirstSessionAfterCarousel() {
+        // The App Clip's first run owns this session (store result instead of
+        // the people sheet). Running both put the people sheet over the Face
+        // ID sheet and cut it off (Wes, 2026-11-07: "Oops" on Face ID).
+        guard !clipFirstSessionStarted else { return }
         guard let tabBarController = window?.rootViewController as? CirclesTabBarController else {
             finishFirstSessionChain()
             return
@@ -86,6 +90,9 @@ final class FirstSessionCoordinator: SceneCoordinator {
         }
     }
 
+    /// The App Clip's first run started (startClipFirstSession)
+    private var clipFirstSessionStarted = false
+
     /// The place they saved as their first favorite, for the steps after it
     private var firstFavoriteName: String?
     private var firstFavoritePlace: Place?
@@ -100,6 +107,7 @@ final class FirstSessionCoordinator: SceneCoordinator {
         guard !OnboardingManager.shared.isFirstSessionFlowActive,
               let tabBarController = window?.rootViewController as? CirclesTabBarController else { return }
         armFirstSessionChain()
+        clipFirstSessionStarted = true
         firstFavoriteName = place.name
         firstFavoritePlace = place
         FirstFavoriteViewController.recordFirstFavorite(named: place.name)

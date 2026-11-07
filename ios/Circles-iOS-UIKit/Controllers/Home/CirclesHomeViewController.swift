@@ -1900,6 +1900,14 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         ) { [weak self] _ in
             self?.mapViewController?.setAvailableConnections(NetworkManager.shared.connections)
         })
+        // First run: "See Fresh Monkee on your map" — the spot at neighborhood
+        // level, so the stores around it show as pins to save (2026-11-07)
+        blockObserverTokens.append(NotificationCenter.default.addObserver(
+            forName: .focusHomeMap, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let lat = note.userInfo?["latitude"] as? Double, let lng = note.userInfo?["longitude"] as? Double else { return }
+            self?.mapViewController?.focus(on: CLLocationCoordinate2D(latitude: lat, longitude: lng))
+        })
         
         addChild(mapVC)
         mapContainerView.addSubview(mapVC.view)

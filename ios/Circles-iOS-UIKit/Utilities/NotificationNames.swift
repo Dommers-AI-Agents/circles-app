@@ -57,6 +57,8 @@ extension Notification.Name {
     static let navigateToVenueFeedback = Notification.Name("NavigateToVenueFeedback")
     static let navigateToVenueReceipts = Notification.Name("NavigateToVenueReceipts")
     static let navigateToPlaceApprovals = Notification.Name("NavigateToPlaceApprovals")
+    /// Home's map to one spot at neighborhood level (userInfo latitude/longitude)
+    static let focusHomeMap = Notification.Name("FocusHomeMap")
     static let navigateToAdminDashboard = Notification.Name("NavigateToAdminDashboard")
     /// object = widget id; a push for that widget arrived while the app was
     /// open, so its data should be refetched rather than shown stale.

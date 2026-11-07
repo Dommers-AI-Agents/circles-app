@@ -317,10 +317,15 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
     
     // MARK: - Lifecycle
+    /// First run: a button at the bottom to see the new save on the map
+    /// (FirstFavoriteResultViewController, 2026-11-07)
+    var mapPrompt: (title: String, action: () -> Void)?
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         configureUI()
+        installMapPromptIfNeeded()
 
         // The privacy menu names each Inner Circle list: load them, and
         // rebuild the chip when they arrive or change
@@ -2134,5 +2139,23 @@ extension CircleDetailViewController: FullScreenMapViewControllerDelegate {
             // For embedded map, use regular navigation push
             navigationController?.pushViewController(placeDetailVC, animated: true)
         }
+    }
+}
+
+// MARK: - First run: "See it on your map"
+
+extension CircleDetailViewController {
+    func installMapPromptIfNeeded() {
+        guard let prompt = mapPrompt else { return }
+        let button = UIButton.primaryButton(title: prompt.title)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addAction(UIAction { _ in prompt.action() }, for: .touchUpInside)
+        view.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            button.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            button.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12)
+        ])
+        tableView.contentInset.bottom += 80
     }
 }

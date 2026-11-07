@@ -118,3 +118,13 @@ struct AdminAlertRouteTests {
         #expect(PlaceApprovalCopy.done(name: "Ilios", approved: true, restored: 1) == "Ilios is public now. 1 save went back to the privacy people chose.")
     }
 }
+
+struct WelcomePeopleCopyTests {
+    @Test func saysWhyEachPersonIsListed() {
+        #expect(WelcomePeopleCopy.detail(reason: "Also loves Fresh Monkee", places: 45) == "Also loves Fresh Monkee \u{00B7} 45 places")
+        #expect(WelcomePeopleCopy.detail(reason: "Near you", places: 1) == "Near you \u{00B7} 1 place")
+        #expect(WelcomePeopleCopy.detail(reason: "⚡ Active this week", places: 70) == "70 places on their map")
+        #expect(WelcomePeopleCopy.detail(reason: nil, places: 0) == "Just getting started")
+        #expect(FirstFavoriteCopy.seeOnMapTitle(placeName: "Fresh Monkee") == "See Fresh Monkee on your map")
+    }
+}

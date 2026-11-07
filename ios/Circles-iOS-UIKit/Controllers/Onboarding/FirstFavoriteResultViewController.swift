@@ -182,6 +182,12 @@ final class FirstFavoriteResultViewController: BaseViewController, UIScrollViewD
         row.spacing = 14
         row.translatesAutoresizingMaskIntoConstraints = false
         icon.widthAnchor.constraint(equalToConstant: 36).isActive = true
+        // Tap → their circle with the save in it, then the map (Wes, 2026-11-07)
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevron.tintColor = Constants.Colors.secondaryLabel
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        row.addArrangedSubview(chevron)
+        row.setCustomSpacing(8, after: text)
         card.addSubview(row)
         NSLayoutConstraint.activate([
             row.topAnchor.constraint(equalTo: card.topAnchor, constant: 14),
@@ -189,7 +195,52 @@ final class FirstFavoriteResultViewController: BaseViewController, UIScrollViewD
             row.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -14),
             row.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -14)
         ])
+        card.isUserInteractionEnabled = true
+        card.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(placeCardTapped)))
+        card.accessibilityTraits = .button
         return card
+    }
+
+    // MARK: - Their circle, then the map
+
+    /// Their own save of this place: the one passed in, or found among their places
+    private func ownSave(completion: @escaping (Place?) -> Void) {
+        if place.isAddedByCurrentUser, place.circleId != nil { return completion(place) }
+        let key = place.globalPlaceId ?? place.id
+        PlaceService.shared.getMyPlacesForCheckIn { result in
+            DispatchQueue.main.async {
+                let mine = (try? result.get()) ?? []
+                completion(mine.first { ($0.globalPlaceId ?? $0.id) == key || $0.id == self.place.id })
+            }
+        }
+    }
+
+    @objc private func placeCardTapped() {
+        ownSave { [weak self] save in
+            guard let self, let circleId = save?.circleId else { return }
+            CircleService.shared.fetchCircleById(id: circleId) { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self, case .success(let circle) = result else { return }
+                    let detail = CircleDetailViewController(circle: circle)
+                    detail.mapPrompt = (title: FirstFavoriteCopy.seeOnMapTitle(placeName: self.place.name), action: { [weak self] in
+                        self?.seeOnMap(save ?? self?.place)
+                    })
+                    AnalyticsService.shared.logEvent("first_favorite_opened_circle", parameters: [:])
+                    self.navigationController?.pushViewController(detail, animated: true)
+                }
+            }
+        }
+    }
+
+    /// Home's map at neighborhood level around the place (the stores nearby
+    /// show as pins), then the rest of the first run
+    private func seeOnMap(_ saved: Place?) {
+        AnalyticsService.shared.logEvent("first_favorite_see_on_map", parameters: [:])
+        if let coordinate = (saved ?? place).location?.clLocation?.coordinate {
+            NotificationCenter.default.post(name: .focusHomeMap, object: nil,
+                                            userInfo: ["latitude": coordinate.latitude, "longitude": coordinate.longitude])
+        }
+        continueTapped()
     }
 
     /// Only when the store's rewards are live for this person

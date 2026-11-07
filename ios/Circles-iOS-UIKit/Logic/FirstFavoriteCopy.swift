@@ -94,4 +94,9 @@ enum FirstFavoriteCopy {
         let more = remaining == 1 ? "one more place" : "\(remaining == 2 ? "two" : String(remaining)) more places"
         return ("Keep building your map 🗺️", "You saved \(name). Add \(more) you love.")
     }
+
+    /// The circle screen's button on the first run (Wes, 2026-11-07)
+    static func seeOnMapTitle(placeName: String) -> String {
+        "See \(placeName) on your map"
+    }
 }

@@ -57,7 +57,9 @@ enum AccountSafetyPrompt {
                     done()
                     AlertPresenter.showSuccess(title: "You're all set", message: "Sign in with Face ID from now on.", from: presenter) { then?() }
                 case .failure(let error):
-                    // Closing Face ID's sheet isn't worth an alert
+                    // Closing Face ID's sheet isn't worth an alert (the
+                    // service reports it as .canceled, not ASAuthorization's 1001)
+                    if case PasskeyAuthService.PasskeyError.canceled? = error as? PasskeyAuthService.PasskeyError { then?(); return }
                     if (error as NSError).code == 1001 { then?(); return }
                     AlertPresenter.showError(message: FriendlyError.message(for: error), from: presenter) { then?() }
                 }
