@@ -1176,7 +1176,9 @@ FavCircles · Save the places you love`;
 
   // `fromName`: a sender label for mail one person sends through us ("Wes
   // via FavCircles"); the address is always ours.
-  async sendEmail({ to, subject: rawSubject, html, text, attachments, headers, userTriggered = false, fromName = null }) {
+  // `bcc`: a copy for the person it's sent on behalf of (Wes's store and
+  // personal emails land in his Gmail Sent, 2026-11-07)
+  async sendEmail({ to, subject: rawSubject, html, text, attachments, headers, userTriggered = false, fromName = null, bcc = null }) {
     const subject = oneLine(rawSubject);
     if (userTriggered && userMailDisabled()) {
       if (!killSwitchLogged) {
@@ -1199,7 +1201,8 @@ FavCircles · Save the places you love`;
         html: html,
         text: text || subject, // Fallback text if not provided
         ...(attachments && attachments.length ? { attachments } : {}),
-        ...(headers ? { headers } : {})
+        ...(headers ? { headers } : {}),
+        ...(bcc ? { bcc } : {})
       };
 
       console.log(`📧 Attempting to send email to ${to} with subject: ${subject}`);

@@ -15,6 +15,7 @@ const { initializeFirebase, getFirestore } = require('../config/firebase');
 initializeFirebase();
 const db = getFirestore();
 const { buildStoreFollowup } = require('../services/storeFollowupEmail');
+const WES_COPY = 'sgroiwes@gmail.com';
 
 function flag(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -49,7 +50,9 @@ async function findVenue(arg) {
   const emailService = require('../services/emailService');
   const result = await emailService.sendEmail({
     to, subject: email.subject, html: email.html, text: email.text,
-    attachments: email.attachments, fromName: 'Wes Sgroi'
+    attachments: email.attachments, fromName: 'Wes Sgroi',
+    // Wes gets every one, so it shows in his Gmail Sent (2026-11-07)
+    bcc: to === WES_COPY ? null : WES_COPY
   });
   if (!result?.success) throw new Error(`Not sent: ${JSON.stringify(result)}`);
   console.log(`Sent to ${to} (${result.messageId})`);
