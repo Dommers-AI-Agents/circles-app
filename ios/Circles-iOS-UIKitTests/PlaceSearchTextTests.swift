@@ -40,4 +40,13 @@ struct PlaceSearchTextTests {
         #expect(!place("Somewhere", description: "great pizza here").matches(searchQuery: "piza"))
         #expect(place("Somewhere", description: "great pizza here").matches(searchQuery: "pizza"))
     }
+
+    /// The catalog's 3-letter retry ("Carbon" → "car") keeps only near misses
+    /// (Wes, 2026-11-07: it listed a vet and an urgent care)
+    @Test func catalogRetryKeepsOnlyNearMisses() {
+        #expect(!Place.name("Carolina Veterinary Specialists Charlotte", matches: "Carbon"))
+        #expect(!Place.name("NextCare Urgent Care", matches: "Carbon"))
+        #expect(Place.name("Carbon Health", matches: "Carbon"))
+        #expect(Place.name("Pizzeria Uno", matches: "piza"))
+    }
 }

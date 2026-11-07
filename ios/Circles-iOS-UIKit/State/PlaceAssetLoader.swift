@@ -76,43 +76,55 @@ final class PlaceAssetLoader {
                 // Known to us even without a Google id: the save links to it
                 if case .success(let match?) = result { delegate.knownGlobalPlaceId = match.globalPlaceId }
 
-                if case .success(let match?) = result, let googlePlaceId = match.googlePlaceId, !googlePlaceId.isEmpty {
+                // Already in our database: never buy Google data for it again
+                // (Wes, 2026-11-07: "if the place already exists in our global
+                // place database, we should never be calling google api").
+                // Its photos and description fill the form; one with no Google
+                // listing and no photos gets only the free Look Around shot.
+                if case .success(let match?) = result {
+                    let googlePlaceId = match.googlePlaceId ?? ""
                     Logger.debug("✅ Venue already in our database (\(match.globalPlaceId)) — skipping Google Places")
-                    delegate.selectedGooglePlaceDetails = GooglePlaceDetails(
-                        placeID: googlePlaceId,
-                        name: match.name,
-                        address: match.address ?? address,
-                        coordinate: coordinate
-                    )
-                    // Canonical photos are Firebase URLs — reuse directly,
-                    // no download/re-upload needed
-                    if delegate.uploadedPhotoUrls.isEmpty && !match.photos.isEmpty {
-                        delegate.uploadedPhotoUrls = Array(match.photos.prefix(5))
-                        delegate.photosWereAutoPopulated = true
-                        Logger.debug("📸 Reusing \(delegate.uploadedPhotoUrls.count) canonical photos")
-                        // Show it too — URLs alone left the photo box stuck
-                        // on whatever the previous selection displayed
-                        if let firstUrl = delegate.uploadedPhotoUrls.first {
-                            self.loadImage(firstUrl) { [weak self] image in
-                                DispatchQueue.main.async {
-                                    guard let self = self, let delegate = self.delegate,
-                                          self.requestToken == token,
-                                          let image = image else { return }
-                                    delegate.selectedImage = image
-                                    delegate.showPipelinePhoto(image)
-                                }
-                            }
-                        }
+                    if !googlePlaceId.isEmpty {
+                        delegate.selectedGooglePlaceDetails = GooglePlaceDetails(
+                            placeID: googlePlaceId, name: match.name, address: match.address ?? address, coordinate: coordinate)
                     }
-                    // Reuse the canonical description too — beats the
-                    // synthesized "Category in City" placeholder
-                    delegate.upgradeDescriptionWithEditorialSummary(match.description)
+                    self.reuseKnownVenue(match, token: token)
+                    if googlePlaceId.isEmpty && match.photos.isEmpty && delegate.uploadedPhotoUrls.isEmpty {
+                        self.preloadAndUploadPhotosForPlace(
+                            GooglePlaceDetails(placeID: "", name: match.name, address: match.address ?? address, coordinate: coordinate),
+                            token: token)
+                    }
                     return
                 }
 
                 self.searchGoogleForPlaceAssets(name: name, coordinate: coordinate, address: address, token: token)
             }
         }
+    }
+
+    /// A venue we already have: its photos (Firebase URLs, reused as-is)
+    /// and its description go straight into the form.
+    private func reuseKnownVenue(_ match: KnownPlaceMatch, token: UUID) {
+        guard let delegate = delegate else { return }
+        if delegate.uploadedPhotoUrls.isEmpty && !match.photos.isEmpty {
+            delegate.uploadedPhotoUrls = Array(match.photos.prefix(5))
+            delegate.photosWereAutoPopulated = true
+            Logger.debug("📸 Reusing \(delegate.uploadedPhotoUrls.count) canonical photos")
+            // Show it too — URLs alone left the photo box stuck on whatever
+            // the previous selection displayed
+            if let firstUrl = delegate.uploadedPhotoUrls.first {
+                loadImage(firstUrl) { [weak self] image in
+                    DispatchQueue.main.async {
+                        guard let self = self, let delegate = self.delegate,
+                              self.requestToken == token, let image = image else { return }
+                        delegate.selectedImage = image
+                        delegate.showPipelinePhoto(image)
+                    }
+                }
+            }
+        }
+        // Beats the synthesized "Category in City" placeholder
+        delegate.upgradeDescriptionWithEditorialSummary(match.description)
     }
 
     /// The Google Places pipeline (Find Place → Details → photo upload),

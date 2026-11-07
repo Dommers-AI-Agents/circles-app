@@ -89,6 +89,27 @@ struct PlaceAssetLoaderTests {
         #expect(form.selectedGooglePlaceDetails?.placeID == "google-1")
     }
 
+    /// Wes, 2026-11-07: a place already in our database never costs a
+    /// Google call, even when it has no Google listing of its own.
+    @Test func aKnownVenueWithoutAGoogleListingUsesItsOwnPhotos() async {
+        let form = RecordingForm()
+        let loader = PlaceAssetLoader()
+        loader.delegate = form
+        loader.matchKnownPlace = { _, _, _, _, completion in
+            completion(.success(KnownPlaceMatch(globalPlaceId: "gp-apple", googlePlaceId: nil, name: "Corner Shop",
+                                                address: "2 Elm St", category: nil, description: "Ours", photos: ["a.jpg"])))
+        }
+        loader.loadImage = { _, completion in completion(UIImage()) }
+
+        loader.fetchPlaceAssets(name: "Corner Shop", coordinate: CLLocationCoordinate2D(latitude: 1, longitude: 2), address: nil)
+        await drainMainQueue()
+
+        #expect(form.knownGlobalPlaceId == "gp-apple")
+        #expect(form.selectedGooglePlaceDetails == nil)
+        #expect(form.uploadedPhotoUrls == ["a.jpg"])
+        #expect(form.descriptionUpgrades == ["Ours"])
+    }
+
     @Test func aResponseForAnEarlierSelectionIsIgnored() async {
         let form = RecordingForm()
         let loader = PlaceAssetLoader()

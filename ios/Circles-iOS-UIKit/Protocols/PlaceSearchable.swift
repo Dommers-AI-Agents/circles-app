@@ -28,6 +28,20 @@ extension Place {
         }
     }
 
+    /// The same rule over a bare name, for results that aren't Place yet
+    /// (catalog venues): every query word appears in the name, or is within
+    /// typo distance of one of its words.
+    static func name(_ name: String, matches query: String) -> Bool {
+        let haystack = PlaceSearchText.fold(name)
+        let needle = PlaceSearchText.fold(query)
+        guard !needle.isEmpty else { return true }
+        if haystack.contains(needle) { return true }
+        let words = haystack.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        return needle.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init).allSatisfy { token in
+            haystack.contains(token) || words.contains { fuzzyMatch(token: token, word: $0) }
+        }
+    }
+
     /// True when `token` is within typo distance of `word`, or of `word`'s
     /// prefix of the same length (so partially-typed words tolerate typos
     /// too: "piza" matches "pizzeria" via its "pizz" prefix).

@@ -454,7 +454,10 @@ extension CirclesHomeViewController {
     /// The server matches exact name-word PREFIXES, so a typo ("piza")
     /// returns nothing even though the local sections forgive it — when the
     /// full query comes back empty, retry ONCE with a 3-char prefix of the
-    /// longest word ("piz" does match pizza-named venues).
+    /// longest word ("piz" does match pizza-named venues). The retry's
+    /// answers keep only what the local matcher accepts for the typed query:
+    /// "Carbon" → "car" was listing Carolina Veterinary and NextCare Urgent
+    /// Care 17 miles away (Wes, 2026-11-07).
     private func fetchCatalog(serverQuery: String, typedQuery: String, reference: CLLocation,
                               generation: Int, allowFallback: Bool) {
         let caches = state.searchCaches
@@ -474,7 +477,11 @@ extension CirclesHomeViewController {
                                       reference: reference, generation: generation, allowFallback: false)
                     return
                 }
-                self.finish(.catalog, generation: generation, result: result.map { Array($0.prefix(8)) }) { places in
+                let isRetry = !allowFallback
+                let kept = result.map { places in
+                    Array((isRetry ? places.filter { Place.name($0.name, matches: typedQuery) } : places).prefix(8))
+                }
+                self.finish(.catalog, generation: generation, result: kept) { places in
                     caches.catalog.store(places, for: .init(channel: "catalog", query: typedQuery, origin: reference.coordinate))
                     self.suggestedPlaces = places
                     self.rebuildSuggestedRows()
