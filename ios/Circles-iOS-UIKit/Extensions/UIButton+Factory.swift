@@ -291,6 +291,60 @@ extension UIButton {
         return button
     }
 
+    /// A tappable card: a tinted icon tile, a title with a line under it, and
+    /// a chevron ("Add places from your photos" on Add Place).
+    static func cardButton(title: String, subtitle: String, systemName: String) -> UIButton {
+        var config = UIButton.Configuration.filled()
+        config.baseBackgroundColor = Constants.Colors.secondaryBackground
+        config.baseForegroundColor = Constants.Colors.label
+        config.cornerStyle = .large
+        config.title = title
+        config.subtitle = subtitle
+        config.titleAlignment = .leading
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+            var attributes = attributes
+            attributes.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+            return attributes
+        }
+        config.subtitleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+            var attributes = attributes
+            attributes.font = UIFont.systemFont(ofSize: 13)
+            attributes.foregroundColor = Constants.Colors.secondaryLabel
+            return attributes
+        }
+        config.titlePadding = 2
+        config.image = iconTile(systemName: systemName)
+        config.imagePadding = 12
+        config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 36)
+        let button = UIButton(configuration: config)
+        button.contentHorizontalAlignment = .leading
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right",
+                                                 withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)))
+        chevron.tintColor = Constants.Colors.secondaryLabel
+        chevron.isUserInteractionEnabled = false
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(chevron)
+        NSLayoutConstraint.activate([
+            chevron.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -14),
+            chevron.centerYAnchor.constraint(equalTo: button.centerYAnchor)
+        ])
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
+    /// A white symbol on a rounded brand-color tile, drawn once to pixels.
+    private static func iconTile(systemName: String, side: CGFloat = 40) -> UIImage? {
+        guard let symbol = UIImage(systemName: systemName,
+                                   withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold))?
+            .withTintColor(.white, renderingMode: .alwaysOriginal) else { return nil }
+        let size = CGSize(width: side, height: side)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            Constants.Colors.primary.setFill()
+            UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 10).fill()
+            symbol.draw(at: CGPoint(x: (side - symbol.size.width) / 2, y: (side - symbol.size.height) / 2))
+        }.withRenderingMode(.alwaysOriginal)
+    }
+
     /// Small secondary-coloured text under a field ("Edit list").
     static func captionLinkButton() -> UIButton {
         let button = UIButton(type: .system)

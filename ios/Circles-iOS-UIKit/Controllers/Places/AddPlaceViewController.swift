@@ -103,14 +103,22 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return view
     }()
     
-    // Hint label
+    /// The screen's heading: tap or search (Wes, 2026-11-07)
     let hintLabel: UILabel = {
         let label = UILabel()
-        label.text = "Search for it above, or tap it on the map"
-        label.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-        label.textColor = Constants.Colors.label
-        label.textAlignment = .center
-        label.numberOfLines = 2
+        let text = NSMutableAttributedString(string: "Tap a place or search\n", attributes: [
+            .font: UIFont.systemFont(ofSize: 24, weight: .bold),
+            .foregroundColor: Constants.Colors.label
+        ])
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.paragraphSpacingBefore = 4
+        text.append(NSAttributedString(string: "Tap it on the map, or type its name or address.", attributes: [
+            .font: UIFont.systemFont(ofSize: 15),
+            .foregroundColor: Constants.Colors.secondaryLabel,
+            .paragraphStyle: paragraph
+        ]))
+        label.attributedText = text
+        label.numberOfLines = 0
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
@@ -119,7 +127,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// (Wes, 2026-11-07: "show they can tap the place on the map").
     let mapTapHint: UILabel = {
         let label = PaddedPillLabel()
-        label.text = "👆 Tap a place to add it"
+        label.text = "👆 Tap a place"
         label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
         label.textColor = .white
         label.backgroundColor = UIColor.black.withAlphaComponent(0.65)
@@ -130,19 +138,17 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
 
     /// The Add from photos route (pick photos, a time period, build my map).
     /// Shown when the caller passes `onAddFromPhotos`.
-    lazy var addFromPhotosButton = UIButton.rowButton(title: "Add places from your photos", systemName: "photo.on.rectangle")
+    lazy var addFromPhotosButton = UIButton.cardButton(title: "Add places from your photos",
+                                                        subtitle: "Pick photos, a time period, or build your map",
+                                                        systemName: "photo.on.rectangle.angled")
     var onAddFromPhotos: (() -> Void)?
-    private var addFromPhotosHeight: NSLayoutConstraint?
 
     // Search container for visual emphasis
     let searchContainer: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 16
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 8
+        view.layer.cornerRadius = 14
+        view.layer.cornerCurve = .continuous
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -152,7 +158,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         let searchBar = UISearchBar()
         // No emoji in the placeholder — the .minimal style already draws a
         // magnifier, so an emoji produced a double icon
-        searchBar.placeholder = "Search address or place name"
+        searchBar.placeholder = "Search a name or address"
         searchBar.searchBarStyle = .minimal
         searchBar.searchTextField.backgroundColor = .clear
         searchBar.searchTextField.textColor = Constants.Colors.label
@@ -179,7 +185,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     let mapContainer: UIView = {
         let view = UIView()
         view.backgroundColor = .systemBackground
-        view.layer.cornerRadius = 12
+        view.layer.cornerRadius = 20
+        view.layer.cornerCurve = .continuous
+        view.layer.borderWidth = 0.5
+        view.layer.borderColor = UIColor.separator.cgColor
         view.layer.masksToBounds = true
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
@@ -215,14 +224,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }()
     
     // Manual entry toggle
+    /// "Can't find it?": a quiet caption that explains the two ways in.
     let manualEntryButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Can't find it? Add the address to the search bar above", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 14)
+        let button = UIButton.captionLinkButton()
+        button.setTitle("Can't find it? Tap its spot on the map and name it.", for: .normal)
         button.titleLabel?.numberOfLines = 0
-        button.titleLabel?.textAlignment = .center
-        button.setTitleColor(UIColor.systemBlue, for: .normal)
-        button.translatesAutoresizingMaskIntoConstraints = false
         return button
     }()
     
@@ -917,10 +923,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             hintLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             
             // Search container at top
-            searchContainer.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: Constants.Spacing.small),
+            searchContainer.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: Constants.Spacing.medium),
             searchContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
             searchContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
-            searchContainer.heightAnchor.constraint(equalToConstant: 56),
+            searchContainer.heightAnchor.constraint(equalToConstant: 52),
             
             // Search bar inside container
             searchBar.topAnchor.constraint(equalTo: searchContainer.topAnchor),
@@ -933,10 +939,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             // Category stack view
             
             // Map container
-            mapContainer.topAnchor.constraint(equalTo: searchContainer.bottomAnchor, constant: Constants.Spacing.small),
+            mapContainer.topAnchor.constraint(equalTo: searchContainer.bottomAnchor, constant: Constants.Spacing.medium),
             mapContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
             mapContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
-            mapContainer.heightAnchor.constraint(equalToConstant: 300),
+            mapContainer.heightAnchor.constraint(equalToConstant: 340),
             
             // Map view inside container
             mapView.topAnchor.constraint(equalTo: mapContainer.topAnchor),
@@ -951,19 +957,20 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             zoomToMeButton.heightAnchor.constraint(equalToConstant: 44),
             
             // Manual entry button
-            manualEntryButton.topAnchor.constraint(equalTo: mapContainer.bottomAnchor, constant: Constants.Spacing.small),
-            manualEntryButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
+            // Under the map: your photos as a card, then a quiet "can't find it"
+            manualEntryButton.topAnchor.constraint(equalTo: addFromPhotosButton.bottomAnchor, constant: Constants.Spacing.small),
+            manualEntryButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            manualEntryButton.trailingAnchor.constraint(lessThanOrEqualTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             
             mapTapHint.topAnchor.constraint(equalTo: mapContainer.topAnchor, constant: 12),
             mapTapHint.centerXAnchor.constraint(equalTo: mapContainer.centerXAnchor),
 
-            // Add from photos, under the map
-            addFromPhotosButton.topAnchor.constraint(equalTo: manualEntryButton.bottomAnchor, constant: Constants.Spacing.small),
+            addFromPhotosButton.topAnchor.constraint(equalTo: mapContainer.bottomAnchor, constant: Constants.Spacing.medium),
             addFromPhotosButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
             addFromPhotosButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
 
             // Form container
-            formContainer.topAnchor.constraint(equalTo: addFromPhotosButton.bottomAnchor, constant: Constants.Spacing.medium),
+            formContainer.topAnchor.constraint(equalTo: manualEntryButton.bottomAnchor, constant: Constants.Spacing.large),
             formContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
             formContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             
