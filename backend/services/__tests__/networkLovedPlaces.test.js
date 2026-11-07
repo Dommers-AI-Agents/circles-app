@@ -88,5 +88,43 @@ describe('forViewer', () => {
   test('nobody connected: nothing, without reading places', async () => {
     expect(await loved.forViewer('lonely')).toEqual([]);
   });
-});
 
+  // Nearby (no network yet): geohash of the default spot so the fake's range query finds them
+  const geofire = require('geofire-common');
+  const CLT = geofire.geohashForLocation([35.2271, -80.8431]);
+  const FAR = geofire.geohashForLocation([40.7128, -74.006]);
+
+  test('no network + fallback: places people saved nearby, unnamed, no test accounts, not your own', async () => {
+    await mockDb.collection('users').doc('new').set({ email: 'new@x.com' });
+    await mockDb.collection('users').doc('ann').set({ displayName: 'Ann', email: 'ann@x.com' });
+    await mockDb.collection('users').doc('bo').set({ displayName: 'Bo', email: 'bo@x.com' });
+    await mockDb.collection('users').doc('tst').set({ displayName: 'Tester', email: 'tester9@favcircles.com' });
+    await mockDb.collection('globalPlaces').doc('gp1').set({ name: 'Two Savers' });
+    await mockDb.collection('globalPlaces').doc('gp2').set({ name: 'With Photo', photos: [{ id: 'p', url: 'https://x/p.jpg' }] });
+    await mockDb.collection('globalPlaces').doc('gp3').set({ name: 'No Photo' });
+    await mockDb.collection('globalPlaces').doc('gp4').set({ name: 'Test Account Only' });
+    await mockDb.collection('globalPlaces').doc('gp5').set({ name: 'Far Away' });
+    await mockDb.collection('globalPlaces').doc('gp6').set({ name: 'Network Only' });
+    await circle('pa', 'ann', { privacy: 'public' }); await circle('pb', 'bo', { privacy: 'public' });
+    await circle('pt', 'tst', { privacy: 'public' }); await circle('na', 'ann');
+    await circle('pn', 'new', { privacy: 'public' });
+    const near = { geohash: CLT };
+    await save('a1', 'ann', 'gp1', 'pa', near); await save('b1', 'bo', 'gp1', 'pb', near);
+    await save('a3', 'ann', 'gp3', 'pa', near);
+    await save('a2', 'ann', 'gp2', 'pa', near);
+    await save('t4', 'tst', 'gp4', 'pt', near);
+    await save('a5', 'ann', 'gp5', 'pa', { geohash: FAR });
+    await save('a6', 'ann', 'gp6', 'na', near);           // their network only: a stranger can't see it
+    await save('n7', 'new', 'gp3', 'pn', near);           // the viewer's own save doesn't count
+
+    const page = await loved.pageForViewer('new', { fallback: 'community' });
+    expect(page.scope).toBe('community');
+    expect(page.places.map((p) => p.name)).toEqual(['Two Savers', 'With Photo', 'No Photo']);
+    expect(page.places[0]).toMatchObject({ saverCount: 2, savers: [] });
+    expect(page.places[2].viewerSaved).toBe(true);
+  });
+
+  test('an app that does not ask for the fallback gets the network answer, empty', async () => {
+    expect(await loved.pageForViewer('new')).toEqual({ scope: 'network', places: [] });
+  });
+});
