@@ -264,7 +264,11 @@ class VenueAdminDetailViewController: BaseViewController {
             if d.venue.contactName != nil || d.venue.contactEmail != nil { rows.append(.contact) }
             return rows
         case .codes:
-            // NFC stickers carry the window link, so only for a real place
+            // NFC stickers carry the window link, so only for a real place —
+            // and the generic Join FavCircles code, for flyers and coasters
+            if detail?.venue.genericJoin == true {
+                return [.windowCode, .nfcStickers, .appClipCard]
+            }
             return isVirtual
                 ? [.windowCode, .registerCode, .replaceRegisterCode, .appClipCard, .emailCodes]
                 : [.windowCode, .nfcStickers, .registerCode, .replaceRegisterCode, .appClipCard, .emailCodes]
@@ -676,7 +680,8 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
             showQR(register: false)
         case .nfcStickers:
             navigationController?.pushViewController(
-                VenueNFCStickersViewController(venueId: venueId, venueName: venueName), animated: true)
+                VenueNFCStickersViewController(venueId: venueId, venueName: venueName,
+                                               genericJoin: detail?.venue.genericJoin == true), animated: true)
         case .registerCode:
             showQR(register: true)
         case .replaceRegisterCode:

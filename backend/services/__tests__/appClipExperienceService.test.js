@@ -37,7 +37,9 @@ describe('appClipExperienceService copy', () => {
     for (const kind of svc.KINDS) {
       const copy = svc.copyFor({ venueName: 'FavCircles', genericJoin: true }, kind);
       expect(copy.title).toBe('Build your map.');
-      expect(copy.subtitle).toBe('Stay connected. Catch every moment.');
+      // The App Clip's default card words, not a store's "Save us" (2026-11-07)
+      expect(copy.subtitle).toBe('Never forget your favorite places.');
+      expect(copy.hook).toEqual(['The Road less', 'traveled is yours.', 'Save it.']);
       expect(copy.title.length).toBeLessThanOrEqual(svc.TITLE_MAX);
       expect(copy.subtitle.length).toBeLessThanOrEqual(svc.SUBTITLE_MAX);
       expect([copy.title, copy.subtitle, ...copy.hook, copy.lead].join(' ')).not.toMatch(/FavCircles/);

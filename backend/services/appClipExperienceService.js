@@ -87,8 +87,15 @@ function copyFor(venue, kind, { live = true } = {}) {
   const subtitle = 'Stay connected. Catch every moment.';
   const saveUs = ['Love it here?', 'Save us.'];
   // The generic "Join FavCircles" code (coasters, anything not one store's)
+  // Not one store's, so not "Save us": the App Clip's default card words
+  // (Wes, 2026-11-07: NFC stickers on any collateral, coasters, flyers)
   if (venue.genericJoin) {
-    return { title: 'Build your map.', subtitle, hook: saveUs, lead: 'Never forget your favorite places.' };
+    return {
+      title: 'Build your map.',
+      subtitle: 'Never forget your favorite places.',
+      hook: ['The Road less', 'traveled is yours.', 'Save it.'],
+      lead: null
+    };
   }
   const title = clip(venue.venueName || 'This store', TITLE_MAX);
   if (kind === 'register' && live) {
@@ -166,6 +173,13 @@ const mapPin = (x, y, scale, color) => `<g transform="translate(${x},${y}) scale
 // The hook in the App Clip cards' serif: white first line, gold second, and
 // an optional lead under a rule. Vertically centred either way.
 function hookSVG(copy) {
+  // Three lines (the generic card): two white, the last in gold, smaller
+  if (copy.hook.length === 3) {
+    const [one, two, gold] = copy.hook;
+    return `<text x="130" y="430" font-family="${SERIF}" font-weight="bold" font-size="128" fill="#ffffff">${esc(one)}</text>
+  <text x="130" y="590" font-family="${SERIF}" font-weight="bold" font-size="128" fill="#ffffff">${esc(two)}</text>
+  <text x="130" y="780" font-family="${SERIF}" font-weight="bold" font-size="140" fill="#F6C945">${esc(gold)}</text>`;
+  }
   const [ask, answer] = copy.hook;
   const top = copy.lead ? 470 : 540;
   return `<text x="130" y="${top}" font-family="${SERIF}" font-weight="bold" font-size="150" fill="#ffffff">${esc(ask)}</text>

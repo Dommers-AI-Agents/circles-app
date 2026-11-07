@@ -1765,6 +1765,8 @@ struct AdminVenueDetailVenue: Codable {
     let googlePlaceId: String?
     let globalPlaceId: String?
     let isVirtual: Bool?
+    /// The generic "Join FavCircles" code (JOINUS): NFC stickers for any collateral
+    var genericJoin: Bool? = nil
     let windowCode: String
     let registerCode: String
     let windowStickerUrl: String?

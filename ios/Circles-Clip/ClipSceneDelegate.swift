@@ -31,12 +31,17 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
             code = Self.stickerCode(fromPath: testURL.path)
         }
         #endif
+        // No code (the Default App Clip Link on an NFC sticker or QR, or
+        // TestFlight's row): the generic Join FavCircles flow, never a dead
+        // end (Wes, 2026-11-07)
+        if code == nil { code = Self.genericJoinCode }
         window.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, tag: activity.flatMap(Self.stickerTag(from:)), payload: activity?.appClipActivationPayload))
         window.makeKeyAndVisible()
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
-        guard let code = Self.stickerCode(from: userActivity) else { return }
+        guard let code = Self.stickerCode(from: userActivity)
+                ?? (userActivity.webpageURL?.host == "appclip.apple.com" ? Self.genericJoinCode : nil) else { return }
         window?.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, tag: Self.stickerTag(from: userActivity), payload: userActivity.appClipActivationPayload))
     }
 
@@ -48,6 +53,9 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
         nav.navigationBar.prefersLargeTitles = false
         return nav
     }
+
+    /// The generic "Join FavCircles" code (backend rewardConfig.GENERIC_JOIN_CODE)
+    static let genericJoinCode = "JOINUS"
 
     // Same /s/<CODE> shape the full app routes (SceneDelegate.handleUniversalLink)
     static func stickerCode(from activity: NSUserActivity) -> String? {

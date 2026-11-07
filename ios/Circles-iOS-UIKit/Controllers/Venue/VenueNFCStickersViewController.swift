@@ -32,9 +32,14 @@ class VenueNFCStickersViewController: BaseViewController {
         return formatter
     }()
 
-    init(venueId: String, venueName: String) {
+    /// The generic "Join FavCircles" code: every sticker joins FavCircles
+    /// through the App Clip, for any flyer, coaster or table (2026-11-07)
+    private let genericJoin: Bool
+
+    init(venueId: String, venueName: String, genericJoin: Bool = false) {
         self.venueId = venueId
         self.venueName = venueName
+        self.genericJoin = genericJoin
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -95,6 +100,8 @@ class VenueNFCStickersViewController: BaseViewController {
     /// points: the counter only), then its name (Wes, 2026-11-05)
     @objc private func addTapped() {
         guard NFCStickerSession.isAvailable else { return showError(NFCStickerSession.Failure.unavailable) }
+        // One kind: a tap joins FavCircles
+        if genericJoin { return askName(register: false) }
         AlertPresenter.showActionSheet(
             title: "Which sticker?",
             message: "Window stickers open \(venueName)'s card so people can save it (tables, table tents, the window). Register stickers earn points for a purchase, like the register card, so keep them at the counter.",
@@ -298,7 +305,8 @@ extension VenueNFCStickersViewController: UITableViewDataSource, UITableViewDele
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
         guard !stickers.isEmpty else { return nil }
         let device = NFCStickerSession.isAvailable ? "" : " Writing needs an iPhone; this device has no NFC."
-        return "Each sticker holds your window link plus its own name, so a tap opens \(venueName)'s card and counts here. Use NTAG213/215/216 stickers; on metal, use on-metal tags.\(device)"
+        let opens = genericJoin ? "the Join FavCircles App Clip" : "\(venueName)'s card"
+        return "Each sticker holds the link plus its own name, so a tap opens \(opens) and counts here. Use NTAG213/215/216 stickers; on metal, use on-metal tags.\(device)"
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {

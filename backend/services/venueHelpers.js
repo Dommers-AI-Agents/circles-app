@@ -54,6 +54,9 @@ const ownerVenueInfo = (venue) => ({
   globalPlaceId: venue.globalPlaceId,
   location: venue.location || null,
   isVirtual: venue.isVirtual === true,
+  // The generic "Join FavCircles" code (JOINUS): online-only, but its NFC
+  // stickers go on any collateral (Wes, 2026-11-07)
+  genericJoin: venue.genericJoin === true,
   windowCode: venue.windowCode,
   registerCode: venue.registerCode,
   // Exact URL encoded in the printed window sticker, so the in-app QR
