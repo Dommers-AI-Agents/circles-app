@@ -6,6 +6,7 @@ import PhotosUI
 /// address ("jsmith42"). First step of the first-session chain, only when
 /// the name still looks like that. A photo is optional.
 final class NameOnboardingViewController: BaseViewController, UITextFieldDelegate, PHPickerViewControllerDelegate {
+    private let scrollView = UIScrollView()
     override var loadsDataOnViewDidLoad: Bool { false }
 
     var onCompletion: (() -> Void)?
@@ -98,13 +99,25 @@ final class NameOnboardingViewController: BaseViewController, UITextFieldDelegat
         stack.setCustomSpacing(6, after: photoView)
         stack.setCustomSpacing(22, after: photoHint)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
+        // The fields scroll in the space above the buttons: with the keyboard
+        // up a smaller phone has no room for everything, and the buttons
+        // (riding on the keyboard) landed on Last name (2026-11-07)
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.keyboardDismissMode = .interactive
+        scrollView.alwaysBounceVertical = false
+        scrollView.addSubview(stack)
+        view.addSubview(scrollView)
         view.addSubview(continueButton)
         view.addSubview(skipButton)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 32),
-            stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: continueButton.topAnchor, constant: -12),
+            stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 32),
+            stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -12),
+            stack.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor, constant: -24),
             photoView.widthAnchor.constraint(equalToConstant: 96),
             photoView.heightAnchor.constraint(equalToConstant: 96),
             continueButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
@@ -143,6 +156,17 @@ final class NameOnboardingViewController: BaseViewController, UITextFieldDelegat
         continueButton.alpha = ok ? 1 : 0.5
     }
 
+    /// The keyboard shrinks the space above the buttons: keep the field being
+    /// typed in on screen once that's settled
+    func textFieldDidBeginEditing(_ textField: UITextField) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.view.layoutIfNeeded()
+            let rect = textField.convert(textField.bounds, to: self.scrollView).insetBy(dx: 0, dy: -12)
+            self.scrollView.scrollRectToVisible(rect, animated: true)
+        }
+    }
+
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         if textField === firstField { lastField.becomeFirstResponder() } else { saveTapped() }
         return true
@@ -172,10 +196,7 @@ final class NameOnboardingViewController: BaseViewController, UITextFieldDelegat
 
     /// Profile photos don't need to be big: 800 px on the long side.
     private static func profileJPEG(_ image: UIImage) -> Data? {
-        let scale = min(1, 800 / max(image.size.width, image.size.height))
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let resized = UIGraphicsImageRenderer(size: size).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
-        return resized.jpegData(compressionQuality: 0.8)
+        ImageUpload.jpeg(image, maxPixels: 800)
     }
 
     @objc private func saveTapped() {
