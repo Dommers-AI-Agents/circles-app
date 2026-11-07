@@ -9,6 +9,16 @@
  */
 module.exports = [
   {
+    date: '2026-11-07', emoji: '📍', title: 'Add a place in one tap',
+    body: 'Add Place now opens on the places you\'re near: save one with a tap, or search by name, pick a spot on the map, or add places from your photos.',
+    minVersion: '1.5.0'
+  },
+  {
+    date: '2026-11-07', emoji: '🧾', title: 'Points on delivery orders',
+    body: 'Ordered from a FavCircles store on DoorDash, Uber Eats or Grubhub? Send your receipt from the store\'s rewards page and earn your points.',
+    minVersion: '1.5.0'
+  },
+  {
     date: '2026-10-22', emoji: '🐶', title: 'Can I Pet Dat Dog',
     body: 'For dog people: post your pup in the Dog Park and tap Pet on everyone else\'s, get a funny dog thing every day, and keep your dog\'s vaccines, vet, insurance and the vet\'s paperwork in one place.',
     minVersion: '1.4.2', link: '/app/widget/dogs'
