@@ -17,9 +17,13 @@ enum AccountSafetyPrompt {
     }
 
     /// The email still waiting, if we haven't asked too many times
+    /// …and only for the account it was stashed for (2026-11-07)
     static var stashedEmail: String? {
-        guard UserDefaults.standard.integer(forKey: askedKey) < maxAsks else { return nil }
-        return UserDefaults.standard.string(forKey: emailKey)
+        guard UserDefaults.standard.integer(forKey: askedKey) < maxAsks,
+              let email = UserDefaults.standard.string(forKey: emailKey),
+              PasskeyAccountMatch.isForSignedInAccount(stashedEmail: email,
+                                                       signedInEmail: AuthService.shared.currentUser?.email) else { return nil }
+        return email
     }
 
     static func markAsked() {

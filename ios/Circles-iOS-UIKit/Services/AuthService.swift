@@ -569,6 +569,9 @@ class AuthService {
         ScreenSnapshot.clearAll()
         // The next account on this phone must report its own push permission
         UserDefaults.standard.removeObject(forKey: "lastReportedPushStatus")
+        // …and never gets this account's "set up Face ID" offer (2026-11-07)
+        UserDefaults.standard.removeObject(forKey: "pendingPasskeyOfferEmail")
+        AccountSafetyPrompt.done()
         // …and its own analytics / crash-report identity
         AnalyticsService.shared.setUserId(nil)
         // Handle notifications cleanup

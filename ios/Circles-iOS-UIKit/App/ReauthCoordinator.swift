@@ -38,6 +38,9 @@ final class ReauthCoordinator: SceneCoordinator {
               !email.isEmpty else { return }
         // Consume the pending flag regardless of outcome
         UserDefaults.standard.removeObject(forKey: "pendingPasskeyOfferEmail")
+        // Left over from another account on this device: not theirs to set up
+        guard PasskeyAccountMatch.isForSignedInAccount(stashedEmail: email,
+                                                       signedInEmail: AuthService.shared.currentUser?.email) else { return }
 
         // At most once a month per account (it used to be once ever, so a
         // "Not Now" on a busy day meant passwords forever)

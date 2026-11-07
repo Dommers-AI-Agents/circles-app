@@ -129,8 +129,8 @@ final class PasskeyAuthService: NSObject {
 
     /// Enrolls a passkey on the CURRENT signed-in account (Settings flow). Unlike
     /// registerPasskey this hits the authenticated add-options/add-verify
-    /// endpoints — no new account, no session minted. `accountName` is just the
-    /// label the system shows while saving the passkey (their email/name).
+    /// endpoints — no new account, no session minted. The device labels it with
+    /// the server's account name; `accountName` is only the fallback.
     func addPasskeyForCurrentUser(accountName: String, presentationAnchor: ASPresentationAnchor?, completion: @escaping (Result<Void, Error>) -> Void) {
         self.presentationAnchor = presentationAnchor
         self.addCompletion = completion
@@ -153,8 +153,10 @@ final class PasskeyAuthService: NSObject {
                     }
                     let provider = ASAuthorizationPlatformPublicKeyCredentialProvider(
                         relyingPartyIdentifier: Self.relyingPartyIdentifier)
+                    // The server's account name, never a stale guess (2026-11-07)
+                    let label = PasskeyAccountMatch.label(serverName: response.options.user?.name, fallback: accountName)
                     let request = provider.createCredentialRegistrationRequest(
-                        challenge: challenge, name: accountName, userID: userID)
+                        challenge: challenge, name: label, userID: userID)
                     self.pending = .addPasskey
                     self.perform(requests: [request])
                 case .failure(let error):
@@ -335,6 +337,8 @@ struct PasskeyOptionsResponse: Decodable {
     struct Options: Decodable {
         struct PasskeyUser: Decodable {
             let id: String
+            /// The account's email: what the device calls the passkey
+            let name: String?
         }
         struct AllowCredential: Decodable {
             let id: String   // base64url credentialID
