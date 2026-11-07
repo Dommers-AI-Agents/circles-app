@@ -90,9 +90,11 @@ function copyFor(venue, kind, { live = true } = {}) {
   // Not one store's, so not "Save us": the App Clip's default card words
   // (Wes, 2026-11-07: NFC stickers on any collateral, coasters, flyers)
   if (venue.genericJoin) {
+    // The title is also the camera's pill right after a scan (Wes, 2026-11-07:
+    // "Build your map" said nothing): a question, and the subtitle says why
     return {
-      title: 'Build your map.',
-      subtitle: 'Never forget your favorite places.',
+      title: 'What\u2019s your favorite place?',
+      subtitle: 'Every great place has a story. Remember yours.',
       hook: ['The Road less', 'traveled is yours.', 'Save it.'],
       lead: null
     };
