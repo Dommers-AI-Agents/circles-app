@@ -148,7 +148,12 @@ final class PhotoFillPicker: NSObject, PHPickerViewControllerDelegate {
                 guard let self, self.isCurrent, let form = self.form else { return }
                 self.apply(items, center: center, images: images, placeCount: groups.filter { $0.center != nil }.count, to: form)
             }
-            NearbyPOILookup.pointsOfInterest(near: center, radius: PhotoPlaceRanker.poiRadiusMeters, completion: finish)
+            // The bulk photo flow's ranking: cafés, restaurants and venues
+            // ahead of the office or shop next door, reach set by how sure
+            // the photo's location is
+            NearbyPOILookup.savablePlacesResult(near: center, uncertainty: group.uncertainty) { result in
+                finish((try? result.get()) ?? [])
+            }
             // No answer (offline, throttled): a pin where the photo was taken
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.lookupTimeout) { finish([]) }
         }
@@ -157,23 +162,38 @@ final class PhotoFillPicker: NSObject, PHPickerViewControllerDelegate {
     private func apply(_ items: [MKMapItem], center: CLLocationCoordinate2D, images: [UIImage],
                        placeCount: Int, to form: AddPlaceViewController) {
         form.cancelPhotoFill()
-        let pois = items.map { PhotoPlaceRanker.POI(name: $0.name ?? "", coordinate: $0.placemark.coordinate,
-                                                     isResidential: AppleMapItemFormFill.isResidentialAddress(name: $0.name)) }
-        let pick = PhotoPlaceRanker.rank(center: center, saved: [], pois: pois).first
-        form.enableManualEntry()
-        if case .poi(let index, _) = pick {
-            form.fillFormWithMapItem(items[index])
-        } else {
-            // Nothing listed there: a pin where the photos were taken
-            form.handleManualLocationTap(at: center)
-        }
         form.mapView.setRegion(MKCoordinateRegion(center: center, latitudinalMeters: 500, longitudinalMeters: 500), animated: true)
-        if let first = images.first { form.useFormPhoto(first) }
-        PendingPlacePhotos.shared.expect(Array(images.dropFirst()), near: center)
-        if placeCount > 1 {
-            AlertPresenter.showSuccess(title: "Photos from more than one place",
-                                       message: "Filled in the first place. Use Add places from your photos to save each of them.",
-                                       from: form)
+        // Fill first, then the photo: a fill brings its own picture, and the
+        // photo you picked should win
+        let commit: (MKMapItem?) -> Void = { [weak form] item in
+            guard let form else { return }
+            form.enableManualEntry()
+            if let item {
+                form.fillFormWithMapItem(item)
+            } else {
+                // Nothing listed there: a pin where the photo was taken
+                form.handleManualLocationTap(at: center)
+            }
+            if let first = images.first { form.useFormPhoto(first) }
+            PendingPlacePhotos.shared.expect(Array(images.dropFirst()), near: center)
+            if placeCount > 1 {
+                AlertPresenter.showSuccess(title: "Photos from more than one place",
+                                           message: "Filled in the first place. Use Add places from your photos to save each of them.",
+                                           from: form)
+            }
+        }
+        switch PhotoFillChoices.decide(candidateCount: items.count) {
+        case .pin:
+            commit(nil)
+        case .fill(let index):
+            commit(items[index])
+        case .ask(let count):
+            var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = items.prefix(count).map { item in
+                (PhotoFillChoices.rowTitle(name: item.name ?? "", kind: PhotoPlaceKind.label(item)), .default, { commit(item) })
+            }
+            actions.append((PhotoFillChoices.somewhereElse, .default, { commit(nil) }))
+            AlertPresenter.showActionSheet(title: PhotoFillChoices.title, message: PhotoFillChoices.message,
+                                           actions: actions, from: form, sourceView: form.mapContainer)
         }
     }
 }

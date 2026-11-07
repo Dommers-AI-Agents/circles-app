@@ -608,6 +608,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     var photoFillPicker: PhotoFillPicker?
     /// "Finding where your photo was taken…" over the map, with Cancel
     var photoFillStatusView: UIView?
+    /// The photo row's height: the Add Photo button's 100 pt, or the photo's
+    /// 200 pt once one shows. The Circle row hangs off it, so it can't land on
+    /// the photo (Wes, 2026-11-07: Circle was drawn over a photo from From Photo)
+    lazy var photoSlotHeight = addPhotoButton.heightAnchor.constraint(equalToConstant: 100)
+    /// Re-lays the form out whenever the photo shows or hides, wherever that happens
+    var photoVisibilityObservation: NSKeyValueObservation?
     
     let addPlaceButton: UIButton = {
         let button = UIButton(type: .system)
@@ -719,6 +725,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let height: CGFloat = photoImageView.isHidden ? 100 : 200
+        if photoSlotHeight.constant != height { photoSlotHeight.constant = height }
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         if OnboardingManager.shared.takeGuide(.addPlace) {
@@ -890,6 +902,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         )
         // Photos taken there (e.g. with no signal) → the place they were taken at
         installFromPhotoButton()
+        photoVisibilityObservation = photoImageView.observe(\.isHidden) { [weak self] _, _ in
+            self?.view.setNeedsLayout()
+        }
         setupAddFromPhotosButton()
         
         // Add subviews
@@ -1036,7 +1051,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             addPhotoButton.topAnchor.constraint(equalTo: photoLabel.bottomAnchor, constant: Constants.Spacing.small),
             addPhotoButton.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             addPhotoButton.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
-            addPhotoButton.heightAnchor.constraint(equalToConstant: 100),
+            photoSlotHeight,
             
             photoImageView.topAnchor.constraint(equalTo: photoLabel.bottomAnchor, constant: Constants.Spacing.small),
             photoImageView.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
