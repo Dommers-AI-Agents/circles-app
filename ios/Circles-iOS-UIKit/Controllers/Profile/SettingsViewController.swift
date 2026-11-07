@@ -35,6 +35,7 @@ class SettingsViewController: BaseTableViewController {
 
     private enum AdminRow: Int, CaseIterable {
         case dashboard
+        case joinCode       // the generic Join FavCircles code: its QR, NFC stickers, App Clip card
         case sellSheet      // the printable store-owner sell sheet, hosted on the website
     }
 
@@ -182,6 +183,24 @@ class SettingsViewController: BaseTableViewController {
 
     private func openAdminDashboard() {
         AdminDashboardOpener.open(from: self)
+    }
+
+    /// The generic Join FavCircles code's Store Admin page (QR, NFC stickers, App Clip card)
+    private func openJoinCode() {
+        RewardsService.shared.listVenues { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let venues):
+                    guard let join = venues.first(where: { $0.genericJoin == true }) else {
+                        return self.showError("The Join FavCircles code wasn't found.")
+                    }
+                    self.navigationController?.pushViewController(VenueAdminDetailViewController(venue: join), animated: true)
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -888,6 +907,10 @@ extension SettingsViewController {
                 config.text = "Store Sell Sheet"
                 config.secondaryText = "Open the PDF to print or share"
                 config.image = UIImage(systemName: "printer")
+            } else if AdminRow(rawValue: indexPath.row) == .joinCode {
+                config.text = "Join FavCircles Code"
+                config.secondaryText = "QR, NFC stickers and the App Clip card for any flyer or coaster"
+                config.image = UIImage(systemName: "wave.3.right")
             } else {
                 config.text = "Admin Dashboard"
                 config.secondaryText = "Growth, people, money, email & push"
@@ -937,7 +960,9 @@ extension SettingsViewController {
         
         switch section {
         case .admin:
-            if AdminRow(rawValue: indexPath.row) == .sellSheet {
+            if AdminRow(rawValue: indexPath.row) == .joinCode {
+                openJoinCode()
+            } else if AdminRow(rawValue: indexPath.row) == .sellSheet {
                 // Safari's share button has Print
                 let safari = SFSafariViewController(url: Self.sellSheetURL)
                 safari.preferredControlTintColor = Constants.Colors.primary

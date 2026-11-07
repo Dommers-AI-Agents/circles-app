@@ -1736,6 +1736,8 @@ struct AdminVenue: Codable {
     /// (the profile's store icon badge and Manage Store's Orders row)
     var orderingEnabled: Bool? = nil
     var newOrders: Int? = nil
+    /// The generic "Join FavCircles" code (JOINUS): not a store
+    var genericJoin: Bool? = nil
     /// Delivery receipts for points: "off" | "approve" | "auto", and how
     /// many wait for the team (2026-11-06)
     var deliveryReceipts: String? = nil

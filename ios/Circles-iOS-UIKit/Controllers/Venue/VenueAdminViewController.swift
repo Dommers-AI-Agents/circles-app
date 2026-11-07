@@ -94,7 +94,8 @@ class VenueAdminViewController: BaseViewController {
                 completion?()
                 switch result {
                 case .success(let venues):
-                    self?.venues = venues
+                    // The generic Join FavCircles code isn't a store: always first (Wes, 2026-11-07)
+                    self?.venues = venues.filter { $0.genericJoin == true } + venues.filter { $0.genericJoin != true }
                     self?.tableView.reloadData()
                     if venues.isEmpty {
                         self?.showEmptyState()
