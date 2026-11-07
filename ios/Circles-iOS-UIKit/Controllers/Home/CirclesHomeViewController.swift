@@ -1878,17 +1878,9 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         
         // Add Place: search (as always) or save the places your photos were
         // taken at — for days out with no signal (Wes, 2026-10-04)
-        quickAddPlaceButton.menu = UIMenu(children: [
-            UIAction(title: "Search for a place", image: UIImage(systemName: "magnifyingglass")) { [weak self] _ in
-                self?.quickAddPlaceButtonTapped()
-            },
-            // One entry for every photo way (Wes, 2026-10-17): pick photos,
-            // scan a time period, or build my map — explained on the next page
-            UIAction(title: "Add from photos", image: UIImage(systemName: "photo.on.rectangle")) { [weak self] _ in
-                self?.showAddFromPhotos()
-            }
-        ])
-        quickAddPlaceButton.showsMenuAsPrimaryAction = true
+        // The Add a place sheet (Wes, 2026-11-07): the places you're near,
+        // one tap each, then search by name, pick on the map, or your photos
+        quickAddPlaceButton.addTarget(self, action: #selector(showAddPlaceSheet), for: .touchUpInside)
         mapExpandButton.addTarget(self, action: #selector(expandMapButtonTapped), for: .touchUpInside)
         
         setupMapView()
@@ -3150,6 +3142,30 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         present(navController, animated: true)
     }
 
+    @objc func showAddPlaceSheet() {
+        let saved = Set(userOwnPlaces.map(\.name))
+        let sheet = AddPlaceSheetViewController(circles: circles, savedNames: saved)
+        sheet.onSearch = { [weak self] in self?.openAddPlace(.search) }
+        sheet.onMap = { [weak self] in self?.openAddPlace(.map) }
+        sheet.onPhotos = { [weak self] in self?.showAddFromPhotos() }
+        if let presentation = sheet.sheetPresentationController {
+            presentation.detents = [.medium()]
+            presentation.prefersGrabberVisible = true
+        }
+        present(sheet, animated: true)
+    }
+
+    /// Add Place opened a particular way (the sheet's search or map row)
+    private var nextAddPlaceMode: AddPlaceViewController.OpenMode = .standard
+    func openAddPlace(_ mode: AddPlaceViewController.OpenMode) {
+        nextAddPlaceMode = mode
+        quickAddPlaceButtonTapped()
+    }
+    private func takeAddPlaceMode() -> AddPlaceViewController.OpenMode {
+        defer { nextAddPlaceMode = .standard }
+        return nextAddPlaceMode
+    }
+
     @objc func quickAddPlaceButtonTapped() {
         // Debug: Log current circle state
         Logger.debug("🔍 DEBUG quickAddPlaceButtonTapped - circles.count: \(circles.count)")
@@ -3169,6 +3185,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         } else if circles.count == 1 {
             // If only one circle, go directly to add place
             let addPlaceVC = AddPlaceViewController(circleId: circles[0].id, circles: circles)
+            addPlaceVC.openMode = takeAddPlaceMode()
             navigationController?.pushViewController(addPlaceVC, animated: true)
         } else if let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey),
                   circles.contains(where: { $0.id == lastUsedId }) {
@@ -3176,6 +3193,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
             // The add screen's circle dropdown still lets them switch.
             let addPlaceVC = AddPlaceViewController(circleId: lastUsedId, circles: circles)
             addPlaceVC.circleWasRemembered = true
+            addPlaceVC.openMode = takeAddPlaceMode()
             navigationController?.pushViewController(addPlaceVC, animated: true)
         } else {
             // Show circle picker
@@ -3238,10 +3256,12 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     func showCirclePicker() {
         // Present circles in the user's own order (same as the profile grid).
         let pickerCircles = circles
+        let mode = takeAddPlaceMode()
         
         let circlePickerVC = CirclePickerViewController(circles: pickerCircles)
         circlePickerVC.onCircleSelected = { [weak self] circle in
             let addPlaceVC = AddPlaceViewController(circleId: circle.id, circles: pickerCircles)
+            addPlaceVC.openMode = mode
             self?.navigationController?.pushViewController(addPlaceVC, animated: true)
         }
         circlePickerVC.onCreateNewCircle = { [weak self] in

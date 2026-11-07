@@ -710,6 +710,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             postOrStashDeepLink(navName: Notification.Name.navigateToVenueReceipts.rawValue, pending: "venue-receipts:\(venueId)", object: venueId)
         case .placeApprovals(let placeId):
             postOrStashDeepLink(navName: Notification.Name.navigateToPlaceApprovals.rawValue, pending: "place-approvals:\(placeId ?? "all")", object: placeId)
+        case .googleMaps:
+            // The app when it's installed, else Google Maps on the web
+            DispatchQueue.main.async {
+                let app = URL(string: "comgooglemaps://")!
+                let web = URL(string: "https://www.google.com/maps")!
+                UIApplication.shared.open(UIApplication.shared.canOpenURL(app) ? app : web)
+            }
         case .adminDashboard:
             postOrStashDeepLink(navName: Notification.Name.navigateToAdminDashboard.rawValue, pending: "admin-dashboard:open")
         case .motivationSend(let lineId):

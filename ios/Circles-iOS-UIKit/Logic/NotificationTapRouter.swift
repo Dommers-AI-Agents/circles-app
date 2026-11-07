@@ -50,6 +50,8 @@ enum NotificationDestination: Equatable {
     case placeApprovals(placeId: String?)
     /// Super users: any other admin alert opens the dashboard, signed in
     case adminDashboard
+    /// The Google Maps app, to share a list into FavCircles (the import tip, 2026-11-07)
+    case googleMaps
     case suggestions(placeId: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).
     case circle(id: String, showComments: Bool?)
@@ -234,6 +236,10 @@ enum NotificationTapRouter {
 
         case "all_places_map":
             return .postOrStash(navName: "NavigateToAllPlacesMap", pending: "all-places-map", object: nil)
+
+        // "Did you know": share a Google Maps list to FavCircles
+        case "open_google_maps":
+            return .googleMaps
 
         case "create_wallet":
             return .postOrStash(navName: "NavigateToCreateWallet", pending: "create-wallet", object: nil)

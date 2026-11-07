@@ -153,3 +153,16 @@ struct ScreenGuideCopyTests {
         #expect(!ScreenGuideCopy.stops(.rewards)[2].message.contains("coming soon"))
     }
 }
+
+struct AddPlaceSheetTests {
+    @Test func nearestFewClosestFirstOnePerName() {
+        let names = AddPlaceSheetCopy.nearest([("Babaloo", 40), ("Fresh Monkee", 12), ("fresh monkee", 15), ("Port Coffee", 90),
+                                               ("A", 200), ("B", 210), ("C", 220)])
+        #expect(names == ["Fresh Monkee", "Babaloo", "Port Coffee", "A", "B"])
+        #expect(AddPlaceSheetCopy.saved(in: "Favorite Local Spots") == "Saved to Favorite Local Spots")
+    }
+
+    @Test func theImportTipOpensGoogleMaps() {
+        #expect(NotificationTapRouter.destination(for: ["type": "open_google_maps"]) == .googleMaps)
+    }
+}

@@ -531,6 +531,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// "From photos": open already filled with this business (applied once
     /// the screen is up), and after a save go back to the caller instead of
     /// on to the circle — the photo list continues from there.
+    /// How the Add Place sheet opened it (2026-11-07): typing in the search,
+    /// or straight to the map to tap a spot
+    enum OpenMode { case standard, search, map }
+    var openMode: OpenMode = .standard
+
     var prefillMapItem: MKMapItem?
     /// Where to start the map when there's no business to fill in
     var prefillCenter: CLLocationCoordinate2D?
@@ -663,6 +668,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        applyOpenMode()
         if OnboardingManager.shared.takeGuide(.addPlace) {
             ScreenGuide.runSimple(.addPlace, in: self, target: { [weak self] in self?.searchBar })
         }
@@ -2261,3 +2267,32 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
 /// `showPipelinePhoto`, `upgradeDescriptionWithEditorialSummary` already
 /// satisfy the loader's requirements by name.
 extension AddPlaceViewController: PlaceAssetLoaderDelegate {}
+
+// MARK: - Opened from the Add Place sheet
+
+extension AddPlaceViewController {
+    func applyOpenMode() {
+        let mode = openMode
+        openMode = .standard
+        switch mode {
+        case .standard:
+            return
+        case .search:
+            searchBar.becomeFirstResponder()
+        case .map:
+            let rect = mapView.convert(mapView.bounds, to: scrollView).insetBy(dx: 0, dy: -40)
+            scrollView.scrollRectToVisible(rect, animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+                guard let self, self.presentedViewController == nil else { return }
+                let bubble = BubbleView()
+                bubble.configureHint(title: "Tap the place on the map",
+                                     description: "Zoom in and tap its name or icon. It fills in for you.",
+                                     arrowDirection: .bottom)
+                bubble.onNext = { [weak bubble] in bubble?.dismiss { bubble?.removeFromSuperview() } }
+                self.view.addSubview(bubble)
+                bubble.pointTo(self.mapView, in: self.view)
+                bubble.show()
+            }
+        }
+    }
+}
