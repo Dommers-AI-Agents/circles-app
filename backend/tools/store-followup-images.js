@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Images for a store follow-up email (Wes, 2026-11-07): the store's own App
-// Clip card as iOS shows it after a scan, and its window QR code. The same
-// card is public at https://api.favcircles.com/app/clip-card/<windowCode>.jpg,
-// which is what the email links to.
+// Clip card as iOS shows it after a scan, and its window QR code. The card
+// also goes into the website at website/favcircles.com/store-cards/
+// <name>-<windowCode>.jpg; upload that file and link the email to
+// https://favcircles.com/store-cards/<same name> (no app needed to view it).
 //
 //   node tools/store-followup-images.js <stickerVenueId | name> <outDir>
 require('dotenv').config();
@@ -36,9 +37,17 @@ async function findVenue(arg) {
   fs.writeFileSync(path.join(outDir, 'window-qr.png'),
     await QRCode.toBuffer(windowLink, { width: 600, margin: 2, errorCorrectionLevel: 'M' }));
   const { title, subtitle } = copyFor(venue, 'window');
+  const slug = String(venue.venueName || 'store').toLowerCase().replace(/&/g, ' and ')
+    .normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'store';
+  const cardFile = `${slug}-${venue.windowCode}.jpg`;
+  const siteDir = path.join(__dirname, '../../website/favcircles.com/store-cards');
+  fs.mkdirSync(siteDir, { recursive: true });
+  fs.copyFileSync(path.join(outDir, 'clip-card.jpg'), path.join(siteDir, cardFile));
   console.log(JSON.stringify({
     venueId: venue.venueId, name: venue.venueName, address: venue.placeAddress || null,
-    windowLink, cardImageUrl: `https://api.favcircles.com/app/clip-card/${venue.windowCode}.jpg`,
+    windowLink,
+    websiteFile: `website/favcircles.com/store-cards/${cardFile}`,
+    cardPageUrl: `https://favcircles.com/store-cards/${cardFile}`,
     cardTitle: title, cardSubtitle: subtitle,
     claimed: Boolean(venue.ownerUserId), contactEmail: venue.contactEmail || null
   }, null, 2));
