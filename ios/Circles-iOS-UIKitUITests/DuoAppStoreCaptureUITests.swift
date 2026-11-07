@@ -11,7 +11,7 @@ import XCTest
 ///
 /// Commands: `expand-map`, `close-map`, `store-points`, `privacy`, `end`, plus
 /// generic ones for any screen: `tap:<label>`, `at:<x>,<y>` (0–1 of the
-/// screen), `type:<text>`, `swipe:up|down|left|right`, `dump`.
+/// screen), `type:<text>`, `swipe:up|down|left|right`, `press:<label>`, `swipeleft:<label>`, `dump`.
 /// Run with `-parallel-testing-enabled NO` so the app stays on the device being captured.
 final class DuoAppStoreCaptureUITests: XCTestCase {
     private let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("duo-capture", isDirectory: true)
@@ -89,6 +89,12 @@ final class DuoAppStoreCaptureUITests: XCTestCase {
             let parts = arg.split(separator: ",").compactMap { Double($0) }
             guard parts.count == 2 else { return }
             app.coordinate(withNormalizedOffset: CGVector(dx: parts[0], dy: parts[1])).tap()
+        case "press", "swipeleft":
+            // Long-press (context menus) or swipe one element (row actions)
+            let match = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", arg, arg))
+            let element = match.allElementsBoundByIndex.first { $0.isHittable } ?? match.firstMatch
+            guard element.waitForExistence(timeout: 4) else { return }
+            if verb == "press" { element.press(forDuration: 1.2) } else { element.swipeLeft() }
         case "type":
             app.typeText(arg)
         case "swipe":
