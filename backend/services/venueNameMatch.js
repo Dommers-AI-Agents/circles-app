@@ -52,8 +52,25 @@ const sharedWords = (a, b) => {
   return [...distinctiveWords(b)].filter((w) => left.has(w));
 };
 
-/** Same venue by name alone (distance is the caller's other half). */
-const namesLikelySameVenue = (a, b) => sharedWords(a, b).length >= MIN_SHARED;
+const allWords = (name) => new Set(String(name || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map(singular));
+const sameSet = (a, b) => a.size === b.size && [...a].every((w) => b.has(w));
+const contains = (big, small) => [...small].every((w) => big.has(w));
+
+/**
+ * Same venue by name alone (distance is the caller's other half): two
+ * distinctive words in common, or (Wes, 2026-11-07: "Port Coffee" and
+ * "Port Coffee Co", same pin) the same distinctive words where one name is
+ * the other plus extra words. "Port Bar" vs "Port Coffee" stays two venues.
+ */
+const namesLikelySameVenue = (a, b) => {
+  if (sharedWords(a, b).length >= MIN_SHARED) return true;
+  const da = distinctiveWords(a);
+  const db = distinctiveWords(b);
+  if (!da.size || !sameSet(da, db)) return false;
+  const wa = allWords(a);
+  const wb = allWords(b);
+  return contains(wa, wb) || contains(wb, wa);
+};
 
 /** Two Google ids that differ mean two venues, whatever the names say. */
 const googleIdsConflict = (a, b) => !!(a && b && a !== b);

@@ -123,6 +123,47 @@ const getDiscoverUsers = async (req, res) => {
       users = (await fetchDocsByIds(pageIds))
         .map((d) => shape(d, 'popular'))
         .sort((a, b) => (b.placesCount - a.placesCount) || ((b.followersCount || 0) - (a.followersCount || 0)));
+    } else if (type === 'welcome') {
+      // A new user's first people (Wes, 2026-11-07: the sheet showed one
+      // person). Most relevant first: people who saved a place they saved
+      // ("Also loves Fresh Monkee"), then people near them, then the biggest
+      // maps; active people lead within each group. Everyone listed has a map.
+      const WELCOME_POOL = 150;
+      const poolIds = rankedIds
+        .filter((id) => isSuggestable(id) && !hasActiveConnection(id))
+        .filter((id) => ((placeCounts.get(id) || {}).placesCount || 0) > 0)
+        .slice(0, WELCOME_POOL);
+      const [poolDocs, origin, shared] = await Promise.all([
+        fetchDocsByIds(poolIds),
+        effectiveCoords(userId, currentUserData),
+        require('../services/welcomePeople').sharedPlaceSavers(userId)
+      ]);
+      const here = origin || require('../config/defaultLocation').DEFAULT_LOCATION;
+      const placesOf = (id) => ((placeCounts.get(id) || {}).placesCount || 0);
+      const activity = (doc) => {
+        const lastActive = doc.data().lastActive ? Date.parse(doc.data().lastActive) : NaN;
+        const days = Number.isFinite(lastActive) ? (Date.now() - lastActive) / 86400000 : Infinity;
+        return placesOf(doc.id) + (days <= 7 ? 30 : days <= 30 ? 10 : 0);
+      };
+      const coordsOf = (data) => {
+        const gps = data.lastKnownLocation;
+        if (gps && Number.isFinite(gps.latitude)) return [gps.latitude, gps.longitude];
+        const a = data.assumedLocation;
+        return a && Number.isFinite(a.latitude) ? [a.latitude, a.longitude] : null;
+      };
+      users = poolDocs
+        .map((doc) => {
+          const coords = coordsOf(doc.data());
+          const km = coords ? geofire.distanceBetween([here.latitude, here.longitude], coords) : Infinity;
+          const placeName = shared.get(doc.id);
+          const group = placeName ? 0 : km <= 40 ? 1 : 2;
+          return { doc, group, km, placeName };
+        })
+        .sort((a, b) => (a.group - b.group) || (activity(b.doc) - activity(a.doc)))
+        .map(({ doc, group, placeName }) => shape(doc, 'welcome', {
+          suggestionReason: group === 0 ? `Also loves ${placeName}` : group === 1 ? 'Near you' : null
+        }));
+      console.log(`👋 Welcome people for ${userId}: pool ${poolIds.length}, shared ${shared.size}, located ${origin ? 'yes' : 'default'}`);
     } else if (type === 'nearby') {
       // Real geographic proximity — but with an ASSUMED location fallback.
       //

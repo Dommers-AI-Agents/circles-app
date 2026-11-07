@@ -19,6 +19,13 @@ describe('namesLikelySameVenue', () => {
     expect(namesLikelySameVenue('Starbucks', 'Starbucks Reserve Roastery')).toBe(false);
   });
 
+  test('one name is the other plus extra words, same distinctive words (Port Coffee, 2026-11-07)', () => {
+    expect(namesLikelySameVenue('Port Coffee', 'Port Coffee Co')).toBe(true);
+    expect(namesLikelySameVenue('Starbucks', 'Starbucks Coffee')).toBe(true);
+    expect(namesLikelySameVenue('Port Bar', 'Port Coffee')).toBe(false);
+    expect(namesLikelySameVenue('Coffee Shop', 'Coffee Shop Co')).toBe(false);
+  });
+
   test('plurals and punctuation fold', () => {
     expect(namesLikelySameVenue("Valente's Italian Deli", 'Valentes Italian Delis')).toBe(true);
   });
