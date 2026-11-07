@@ -1298,8 +1298,8 @@ class MessageCell: UITableViewCell {
         options.region = MKCoordinateRegion(center: coordinate, latitudinalMeters: 500, longitudinalMeters: 500)
         options.size = CGSize(width: 240, height: 150)
         options.traitCollection = traitCollection
-        MKMapSnapshotter(options: options).start { [weak self] snapshot, _ in
-            guard let snapshot else { return }
+        Task { @MainActor [weak self] in
+            guard let snapshot = await MapSnapshotRenderer.shared.map(options) else { return }
             // The pin in the middle
             let image = UIGraphicsImageRenderer(size: options.size).image { _ in
                 snapshot.image.draw(at: .zero)

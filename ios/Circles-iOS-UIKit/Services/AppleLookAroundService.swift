@@ -39,11 +39,8 @@ class AppleLookAroundService {
         // snapshotOptions.fieldOfView = 90
         // snapshotOptions.pitch = 0
         
-        // Create snapshotter and get the snapshot using async
-        let snapshotter = MKLookAroundSnapshotter(scene: scene, options: snapshotOptions)
-        let snapshot = try await snapshotter.snapshot
-        
-        return snapshot.image
+        // Held until MapKit finishes, one at a time (MapSnapshotRenderer)
+        return try await MapSnapshotRenderer.shared.lookAround(scene, options: snapshotOptions)
     }
     
     // MARK: - Get Look Around View Controller

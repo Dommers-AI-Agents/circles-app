@@ -12,8 +12,7 @@ enum PlaceMapSnapshot {
         options.size = size
         options.mapType = .standard
         options.pointOfInterestFilter = .includingAll
-        let snapshotter = MKMapSnapshotter(options: options)
-        guard let snapshot = try? await snapshotter.start() else { return nil }
+        guard let snapshot = await MapSnapshotRenderer.shared.map(options) else { return nil }
         return withPin(snapshot, at: coordinate)
     }
 

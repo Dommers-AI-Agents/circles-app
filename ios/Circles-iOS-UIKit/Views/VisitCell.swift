@@ -258,13 +258,9 @@ class VisitCell: UITableViewCell {
         options.size = CGSize(width: 60, height: 60)
         options.scale = UIScreen.main.scale
         
-        let snapshotter = MKMapSnapshotter(options: options)
-        snapshotter.start { [weak self] snapshot, error in
-            guard let snapshot = snapshot else { return }
-            
-            DispatchQueue.main.async {
-                self?.mapSnapshotView.image = snapshot.image
-            }
+        Task { @MainActor [weak self] in
+            guard let snapshot = await MapSnapshotRenderer.shared.map(options) else { return }
+            self?.mapSnapshotView.image = snapshot.image
         }
     }
     
