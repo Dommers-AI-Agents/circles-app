@@ -1,11 +1,20 @@
 import UIKit
 
-class CirclePickerViewController: UIViewController {
-    
+/// Pick a circle (Add Place, save from map/chat/place page). Inset-grouped
+/// rows on the sheet's own background, "New Circle" first when the caller can
+/// make one, search only once there are enough circles to need it.
+class CirclePickerViewController: BaseViewController {
+    override var loadsDataOnViewDidLoad: Bool { false }
+    override var showsLoadingIndicator: Bool { false }
+
+    private enum Section: Int, CaseIterable { case create, circles }
+
     // MARK: - Properties
     private let circles: [Circle]
     private var filteredCircles: [Circle]
     var onCircleSelected: ((Circle) -> Void)?
+    /// When nil the sheet offers no "New Circle" row (a caller that can't
+    /// make one used to show a button that only closed the sheet)
     var onCreateNewCircle: (() -> Void)?
     /// Sheet title; callers adding a specific place can say so.
     var pickerTitle = "Select Circle"
@@ -19,55 +28,53 @@ class CirclePickerViewController: UIViewController {
         let searchController = UISearchController(searchResultsController: nil)
         searchController.searchResultsUpdater = self
         searchController.obscuresBackgroundDuringPresentation = false
-        searchController.searchBar.placeholder = "Search circles..."
+        searchController.searchBar.placeholder = "Search circles"
         return searchController
     }()
 
     private let tableView: UITableView = {
-        let tableView = UITableView()
-        tableView.backgroundColor = Constants.Colors.background
-        tableView.separatorStyle = .none
+        let tableView = UITableView(frame: .zero, style: .insetGrouped)
+        tableView.backgroundColor = .clear
         tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 72
+        tableView.sectionHeaderTopPadding = 8
         return tableView
     }()
-    
-    private let createNewButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("+ Create New Circle", for: .normal)
-        button.setTitleColor(Constants.Colors.primary, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        button.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.1)
-        button.layer.cornerRadius = 12
-        button.translatesAutoresizingMaskIntoConstraints = false
-        return button
-    }()
-    
+
+    private var showsCreate: Bool { onCreateNewCircle != nil && (searchController.searchBar.text ?? "").isEmpty }
+
     // MARK: - Initialization
     init(circles: [Circle]) {
         self.circles = circles
         self.filteredCircles = circles
         super.init(nibName: nil, bundle: nil)
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
         setupTableView()
     }
-    
+
     // MARK: - UI Setup
     private func setupUI() {
-        view.backgroundColor = Constants.Colors.background
+        // The sheet's own (glass) background shows through; grouped elsewhere
+        if #available(iOS 26.0, *) {
+            view.backgroundColor = .clear
+        } else {
+            view.backgroundColor = .systemGroupedBackground
+        }
         title = pickerTitle
-        
-        // Add cancel button
+        navigationItem.largeTitleDisplayMode = .never
+
         navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .cancel,
+            barButtonSystemItem: .close,
             target: self,
             action: #selector(cancelButtonTapped)
         )
@@ -78,37 +85,26 @@ class CirclePickerViewController: UIViewController {
         info.accessibilityLabel = "What is a circle?"
         navigationItem.rightBarButtonItem = info
 
-        // Always-visible search bar under the title
-        navigationItem.searchController = searchController
-        navigationItem.hidesSearchBarWhenScrolling = false
-        definesPresentationContext = true
-        
-        // Add subviews
+        if CirclePickerRows.showsSearch(circleCount: circles.count) {
+            navigationItem.searchController = searchController
+            navigationItem.hidesSearchBarWhenScrolling = false
+            definesPresentationContext = true
+        }
+
         view.addSubview(tableView)
-        view.addSubview(createNewButton)
-        
-        // Setup constraints
         NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            tableView.topAnchor.constraint(equalTo: view.topAnchor),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tableView.bottomAnchor.constraint(equalTo: createNewButton.topAnchor, constant: -Constants.Spacing.medium),
-            
-            createNewButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
-            createNewButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
-            createNewButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -Constants.Spacing.medium),
-            createNewButton.heightAnchor.constraint(equalToConstant: 50)
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-        
-        // Add target for create button
-        createNewButton.addTarget(self, action: #selector(createNewButtonTapped), for: .touchUpInside)
     }
-    
+
     private func setupTableView() {
         tableView.delegate = self
         tableView.dataSource = self
-        tableView.register(CirclePickerCell.self, forCellReuseIdentifier: "CirclePickerCell")
-        tableView.contentInset = UIEdgeInsets(top: Constants.Spacing.small, left: 0, bottom: Constants.Spacing.small, right: 0)
+        tableView.register(CirclePickerCell.self, forCellReuseIdentifier: CirclePickerCell.reuseId)
+        tableView.register(CirclePickerCreateCell.self, forCellReuseIdentifier: CirclePickerCreateCell.reuseId)
         tableView.tableHeaderView = makePlaceHeader()
     }
 
@@ -158,8 +154,8 @@ class CirclePickerViewController: UIViewController {
             icon.widthAnchor.constraint(equalToConstant: 40),
             icon.heightAnchor.constraint(equalToConstant: 40),
             stack.topAnchor.constraint(equalTo: header.topAnchor, constant: Constants.Spacing.small),
-            stack.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: Constants.Spacing.medium + 4),
-            stack.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -Constants.Spacing.medium),
+            stack.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -20),
             stack.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -Constants.Spacing.small)
         ])
         let width = view.bounds.width
@@ -176,7 +172,7 @@ class CirclePickerViewController: UIViewController {
     @objc private func infoButtonTapped() {
         AlertPresenter.showInfo(
             title: "What's a circle?",
-            message: "A circle is a list of your places: a city, a trip, a neighborhood, a theme like \"Best Coffee\". Pick the circle this place belongs in, or tap Create New Circle to start one.\n\nEach circle has its own privacy: Public, My Network or Private. You can move a place to another circle later.",
+            message: "A circle is a list of your places: a city, a trip, a neighborhood, a theme like \"Best Coffee\". Pick the circle this place belongs in, or tap New Circle to start one.\n\nEach circle has its own privacy: Public, My Network or Private. You can move a place to another circle later.",
             from: self
         )
     }
@@ -196,27 +192,40 @@ class CirclePickerViewController: UIViewController {
 
 // MARK: - UITableViewDataSource
 extension CirclePickerViewController: UITableViewDataSource {
+    func numberOfSections(in tableView: UITableView) -> Int { Section.allCases.count }
+
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return filteredCircles.count
+        switch Section(rawValue: section) {
+        case .create: return showsCreate ? 1 : 0
+        case .circles: return filteredCircles.count
+        case .none: return 0
+        }
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "CirclePickerCell", for: indexPath) as! CirclePickerCell
-        let circle = filteredCircles[indexPath.row]
-        cell.configure(with: circle)
+        if Section(rawValue: indexPath.section) == .create {
+            return tableView.dequeueReusableCell(withIdentifier: CirclePickerCreateCell.reuseId, for: indexPath)
+        }
+        let cell = tableView.dequeueReusableCell(withIdentifier: CirclePickerCell.reuseId, for: indexPath) as! CirclePickerCell
+        cell.configure(with: filteredCircles[indexPath.row])
         return cell
+    }
+
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        guard Section(rawValue: section) == .circles, !filteredCircles.isEmpty else { return nil }
+        return "Your circles"
+    }
+
+    func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        guard Section(rawValue: section) == .circles, filteredCircles.isEmpty, !circles.isEmpty else { return nil }
+        return "No circles match."
     }
 }
 
 // MARK: - UISearchResultsUpdating
 extension CirclePickerViewController: UISearchResultsUpdating {
     func updateSearchResults(for searchController: UISearchController) {
-        let searchText = searchController.searchBar.text ?? ""
-        if searchText.isEmpty {
-            filteredCircles = circles
-        } else {
-            filteredCircles = circles.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-        }
+        filteredCircles = CirclePickerRows.filter(circles, query: searchController.searchBar.text ?? "")
         tableView.reloadData()
     }
 }
@@ -225,6 +234,10 @@ extension CirclePickerViewController: UISearchResultsUpdating {
 extension CirclePickerViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
+        if Section(rawValue: indexPath.section) == .create {
+            createNewButtonTapped()
+            return
+        }
         guard indexPath.row < filteredCircles.count else { return }
         let circle = filteredCircles[indexPath.row]
         // Dismissing while the search controller is active first tears down the
@@ -234,139 +247,151 @@ extension CirclePickerViewController: UITableViewDelegate {
             self?.onCircleSelected?(circle)
         }
     }
-    
-    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 80
-    }
 }
 
 // MARK: - CirclePickerCell
+/// Cover photo, name, "3 places · Private". Self-sizing, so nothing clips.
 class CirclePickerCell: UITableViewCell {
-    
-    // MARK: - UI Elements
-    private let containerView: UIView = {
-        let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 12
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
-    
-    private let iconImageView: UIImageView = {
+    static let reuseId = "CirclePickerCell"
+    private var imageURL: String?
+
+    private let coverView: UIImageView = {
         let imageView = UIImageView()
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
-        imageView.layer.cornerRadius = 25
+        imageView.layer.cornerRadius = 12
+        imageView.layer.cornerCurve = .continuous
         imageView.backgroundColor = Constants.Colors.tertiaryBackground
+        imageView.tintColor = Constants.Colors.primary
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
     }()
-    
+
     private let nameLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        label.font = .preferredFont(forTextStyle: .headline)
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = Constants.Colors.label
-        label.translatesAutoresizingMaskIntoConstraints = false
+        label.numberOfLines = 2
         return label
     }()
-    
+
     private let detailLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: 14)
+        label.font = .preferredFont(forTextStyle: .subheadline)
+        label.adjustsFontForContentSizeCategory = true
         label.textColor = Constants.Colors.secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
-    
-    private let chevronImageView: UIImageView = {
+
+    private let privacyIcon: UIImageView = {
         let imageView = UIImageView()
-        imageView.image = UIImage(systemName: "chevron.right")
-        imageView.tintColor = Constants.Colors.tertiaryLabel
+        imageView.tintColor = Constants.Colors.secondaryLabel
         imageView.contentMode = .scaleAspectFit
-        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(textStyle: .footnote)
+        imageView.setContentHuggingPriority(.required, for: .horizontal)
         return imageView
     }()
-    
-    // MARK: - Initialization
+
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        setupUI()
+        accessoryType = .disclosureIndicator
+
+        let detailRow = UIStackView(arrangedSubviews: [privacyIcon, detailLabel])
+        detailRow.spacing = 4
+        detailRow.alignment = .center
+        let text = UIStackView(arrangedSubviews: [nameLabel, detailRow])
+        text.axis = .vertical
+        text.spacing = 2
+        text.alignment = .leading
+        let row = UIStackView(arrangedSubviews: [coverView, text])
+        row.spacing = 14
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(row)
+        NSLayoutConstraint.activate([
+            coverView.widthAnchor.constraint(equalToConstant: 52),
+            coverView.heightAnchor.constraint(equalToConstant: 52),
+            row.topAnchor.constraint(equalTo: contentView.layoutMarginsGuide.topAnchor, constant: 2),
+            row.bottomAnchor.constraint(equalTo: contentView.layoutMarginsGuide.bottomAnchor, constant: -2),
+            row.leadingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.trailingAnchor)
+        ])
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
-    // MARK: - UI Setup
-    private func setupUI() {
-        backgroundColor = .clear
-        selectionStyle = .none
-        
-        contentView.addSubview(containerView)
-        containerView.addSubview(iconImageView)
-        containerView.addSubview(nameLabel)
-        containerView.addSubview(detailLabel)
-        containerView.addSubview(chevronImageView)
-        
-        NSLayoutConstraint.activate([
-            containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.xsmall),
-            containerView.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.medium),
-            containerView.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.medium),
-            containerView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Constants.Spacing.xsmall),
-            
-            iconImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: Constants.Spacing.medium),
-            iconImageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            iconImageView.widthAnchor.constraint(equalToConstant: 50),
-            iconImageView.heightAnchor.constraint(equalToConstant: 50),
-            
-            nameLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.medium),
-            nameLabel.leadingAnchor.constraint(equalTo: iconImageView.trailingAnchor, constant: Constants.Spacing.medium),
-            nameLabel.trailingAnchor.constraint(equalTo: chevronImageView.leadingAnchor, constant: -Constants.Spacing.medium),
-            
-            detailLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            detailLabel.leadingAnchor.constraint(equalTo: nameLabel.leadingAnchor),
-            detailLabel.trailingAnchor.constraint(equalTo: nameLabel.trailingAnchor),
-            detailLabel.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.medium),
-            
-            chevronImageView.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-            chevronImageView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.medium),
-            chevronImageView.widthAnchor.constraint(equalToConstant: 12),
-            chevronImageView.heightAnchor.constraint(equalToConstant: 20)
-        ])
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        imageURL = nil
+        coverView.image = nil
     }
-    
-    // MARK: - Configuration
+
     func configure(with circle: Circle) {
         nameLabel.text = circle.name
-        
-        // Set detail text with place count
         // The circle list sends placesCount, not the ids, so prefer it
         let placeCount = circle.placesCount ?? circle.places?.count ?? 0
-        detailLabel.text = "\(placeCount) place\(placeCount == 1 ? "" : "s")"
-        
-        // Load circle image
-        if let coverImage = circle.coverImage {
-            ImageService.shared.loadImage(from: coverImage) { [weak self] image in
+        detailLabel.text = CirclePickerRows.detail(placeCount: placeCount, privacy: circle.privacy)
+        privacyIcon.image = circle.privacy.tier.map { UIImage(systemName: $0.systemIconName) } ?? nil
+        privacyIcon.isHidden = privacyIcon.image == nil
+
+        if let cover = circle.coverImage, !cover.isEmpty {
+            imageURL = cover
+            coverView.contentMode = .scaleAspectFill
+            ImageService.shared.loadImage(from: cover) { [weak self] image in
                 DispatchQueue.main.async {
-                    self?.iconImageView.image = image
+                    guard let self, self.imageURL == cover else { return }
+                    self.coverView.image = image
                 }
             }
         } else {
-            // Set default icon based on category
-            iconImageView.image = UIImage(systemName: "circle.fill")
-            iconImageView.tintColor = Constants.Colors.primary
+            coverView.contentMode = .center
+            coverView.image = UIImage(systemName: "circle.grid.2x2.fill",
+                                      withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .semibold))
         }
     }
-    
-    // MARK: - Selection Animation
-    override func setHighlighted(_ highlighted: Bool, animated: Bool) {
-        super.setHighlighted(highlighted, animated: animated)
-        
-        UIView.animate(withDuration: 0.1) {
-            self.containerView.backgroundColor = highlighted ? 
-                Constants.Colors.tertiaryBackground : Constants.Colors.secondaryBackground
-            self.containerView.transform = highlighted ? 
-                CGAffineTransform(scaleX: 0.98, y: 0.98) : .identity
-        }
+}
+
+/// The first row: start a new circle
+final class CirclePickerCreateCell: UITableViewCell {
+    static let reuseId = "CirclePickerCreateCell"
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        let tile = UIImageView(image: UIImage(systemName: "plus",
+                                              withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .semibold)))
+        tile.contentMode = .center
+        tile.tintColor = .white
+        tile.backgroundColor = Constants.Colors.primary
+        tile.layer.cornerRadius = 12
+        tile.layer.cornerCurve = .continuous
+        tile.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = UILabel()
+        label.text = "New Circle"
+        label.font = .preferredFont(forTextStyle: .headline)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = Constants.Colors.primary
+
+        let row = UIStackView(arrangedSubviews: [tile, label])
+        row.spacing = 14
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(row)
+        NSLayoutConstraint.activate([
+            tile.widthAnchor.constraint(equalToConstant: 52),
+            tile.heightAnchor.constraint(equalToConstant: 52),
+            row.topAnchor.constraint(equalTo: contentView.layoutMarginsGuide.topAnchor, constant: 2),
+            row.bottomAnchor.constraint(equalTo: contentView.layoutMarginsGuide.bottomAnchor, constant: -2),
+            row.leadingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.leadingAnchor),
+            row.trailingAnchor.constraint(lessThanOrEqualTo: contentView.layoutMarginsGuide.trailingAnchor)
+        ])
+        accessibilityTraits = .button
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
