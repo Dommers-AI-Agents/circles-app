@@ -67,6 +67,9 @@ struct SubscriptionInfo: Codable {
     // must not fail the decode
     let autoRenewEnabled: Bool?
     let productId: String?
+    /// The phone's App Store subscription belongs to another account (2026-11-07)
+    var linkedElsewhere: Bool? = nil
+    var linkedEmailHint: String? = nil
     
     var daysLeftInTrial: Int? {
         guard status == .trial, let trialEnd = trialEndDate else { return nil }

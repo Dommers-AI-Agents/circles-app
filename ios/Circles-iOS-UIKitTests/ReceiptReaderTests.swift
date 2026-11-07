@@ -128,3 +128,13 @@ struct WelcomePeopleCopyTests {
         #expect(FirstFavoriteCopy.seeOnMapTitle(placeName: "Fresh Monkee") == "See Fresh Monkee on your map")
     }
 }
+
+struct SubscriptionMoveTests {
+    @Test func namesTheOtherAccountAndDecodesTheFlag() throws {
+        #expect(SubscriptionMoveCopy.message(emailHint: "s•••@gmail.com").contains("your other FavCircles account (s•••@gmail.com)"))
+        let json = #"{"status":"none","linkedElsewhere":true,"linkedEmailHint":"s•••@gmail.com","autoRenewEnabled":false}"#
+        let info = try JSONDecoder().decode(SubscriptionInfo.self, from: Data(json.utf8))
+        #expect(info.linkedElsewhere == true)
+        #expect(info.status == .none)
+    }
+}

@@ -437,6 +437,12 @@ class SubscriptionService: ObservableObject {
                         // premium status shown in the app
                         if !isBusinessReceipt {
                             self.updateLocalSubscriptionInfo(response.subscription)
+                            // On another account: say where, and offer to move it here
+                            if response.subscription.linkedElsewhere == true {
+                                SubscriptionMovePrompt.offer(emailHint: response.subscription.linkedEmailHint) {
+                                    self.moveSubscriptionHere(body: body)
+                                }
+                            }
                         }
                         continuation.resume(returning: true)
                     case .failure(let error):
@@ -451,6 +457,18 @@ class SubscriptionService: ObservableObject {
             }
         }
         return false
+    }
+
+    /// "Move it here": the same receipt, with the explicit ask to move it
+    private func moveSubscriptionHere(body: [String: Any]) {
+        var moved = body
+        moved["transferSubscription"] = true
+        APIService.shared.request(endpoint: "users/subscription/verify", method: .post, body: moved, requiresAuth: true) {
+            (result: Result<SubscriptionResponse, APIError>) in
+            if case .success(let response) = result {
+                self.updateLocalSubscriptionInfo(response.subscription)
+            }
+        }
     }
 
     /// The backend's verifyReceipt consumes the legacy app-receipt file, which
