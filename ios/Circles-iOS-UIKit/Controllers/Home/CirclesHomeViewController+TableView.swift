@@ -186,19 +186,22 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             if SearchSection(rawValue: indexPath.section) == .places {
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
                 cell.accessoryView = nil
-                // Tap opens the place; 'i' peeks at it without leaving the search
-                cell.accessoryType = .detailDisclosureButton
+                // Tap opens the place; a long press peeks at it without
+                // leaving the search (it replaced an 'i' beside the chevron)
+                cell.accessoryType = .disclosureIndicator
                 let places = visibleFilteredPlaces
                 guard indexPath.row < places.count else { return cell }
                 let place = places[indexPath.row]
 
                 var content = cell.defaultContentConfiguration()
                 content.attributedText = highlighted(place.name, query: query)
-                var subtitle = place.address
-                if let distance = searchDistances[place.id] {
-                    subtitle = "\(listDistanceFormatter.string(fromDistance: distance)) · \(subtitle)"
-                }
-                content.secondaryText = subtitle
+                let savers = searchSaverCounts[place.id]
+                    ?? .init(count: 1, includesYou: place.isAddedByCurrentUser,
+                             firstName: place.addedByUser?.displayName.split(separator: " ").first.map(String.init))
+                content.secondaryText = SearchRowSubtitle.make(
+                    distance: searchDistances[place.id].map { listDistanceFormatter.string(fromDistance: $0) },
+                    source: .saved(savers),
+                    address: place.address)
                 content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
                 content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
                 content.secondaryTextProperties.numberOfLines = 1
@@ -213,21 +216,18 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
             if SearchSection(rawValue: indexPath.section) == .suggested {
                 let cell = tableView.dequeueReusableCell(withIdentifier: "SearchResultCell", for: indexPath)
                 cell.accessoryView = nil
-                cell.accessoryType = .detailDisclosureButton
+                cell.accessoryType = .disclosureIndicator
                 guard indexPath.row < visibleSuggestedRows.count else { return cell }
                 let row = visibleSuggestedRows[indexPath.row]
                 let suggestion = row.place
 
                 var content = cell.defaultContentConfiguration()
                 content.attributedText = highlighted(suggestion.name, query: query)
-                var subtitle = suggestion.address
-                if let rating = suggestion.rating {
-                    subtitle = String(format: "★ %.1f · %@", rating, subtitle)
-                }
-                if let distance = suggestedDistances[row.id] {
-                    subtitle = "\(listDistanceFormatter.string(fromDistance: distance)) · \(subtitle)"
-                }
-                content.secondaryText = subtitle
+                var source: SearchRowSubtitle.Source = .favCircles
+                if case .apple = row { source = .appleMaps }
+                content.secondaryText = SearchRowSubtitle.make(
+                    distance: suggestedDistances[row.id].map { listDistanceFormatter.string(fromDistance: $0) },
+                    source: source, address: suggestion.address)
                 content.secondaryTextProperties.color = Constants.Colors.secondaryLabel
                 content.secondaryTextProperties.font = UIFont.systemFont(ofSize: 13)
                 // Catalog venues keep their sparkle; an Apple Maps venue is a
@@ -272,35 +272,51 @@ extension CirclesHomeViewController: UITableViewDelegate, UITableViewDataSource 
         return searchSectionTitle(section) == nil ? 0 : SearchSheetLayout.headerHeight
     }
 
-    /// The header over a results section, nil when it has no rows (or no header).
+    /// The header over a section, nil when it has no rows (or no header).
+    /// Results sections have none: the handle's chips (All | Places 6 |
+    /// Nearby 8) already name and count them, and each row's second line
+    /// says where it's from (Wes, 2026-11-07). Same rule as
+    /// SearchSheetLayout.contentHeight.
     func searchSectionTitle(_ section: Int) -> String? {
         let plan = searchPlan
         switch SearchSection(rawValue: section) {
-        case .widgets: return plan.widgetRows == 0 ? nil : plan.widgetsHeader
-        case .places: return plan.placeRows == 0 ? nil : plan.placesHeader
-        case .suggested: return plan.suggestedRows == 0 ? nil : plan.suggestedHeader
-        case .people: return plan.peopleRows == 0 ? nil : plan.peopleHeader
         case .recent: return plan.recentRows == 0 ? nil : "RECENT"
         case .browse: return plan.browseRows == 0 ? nil : "BROWSE NEARBY"
-        case .status, .none: return nil
+        case .widgets, .places, .suggested, .people, .status, .none: return nil
         }
     }
     
-    // The 'i' accessory on a search result: preview the place in a sheet
-    // without clearing the search — dismiss and the list is still there.
-    func tableView(_ tableView: UITableView, accessoryButtonTappedForRowWith indexPath: IndexPath) {
-        guard tableView == searchResultsTableView else { return }
+    /// The place behind a search result row (yours/your network's, or nearby).
+    func searchResultPlace(at indexPath: IndexPath) -> (place: Place, circle: Circle?)? {
         switch SearchSection(rawValue: indexPath.section) {
         case .places:
             let places = visibleFilteredPlaces
-            guard indexPath.row < places.count else { return }
+            guard indexPath.row < places.count else { return nil }
             let place = places[indexPath.row]
-            presentSearchPreview(place: place, circle: resolveCircle(for: place))
+            return (place, resolveCircle(for: place))
         case .suggested:
-            guard indexPath.row < visibleSuggestedRows.count else { return }
-            presentSearchPreview(place: visibleSuggestedRows[indexPath.row].place, circle: nil)
+            guard showAllRow(at: indexPath) == nil, indexPath.row < visibleSuggestedRows.count else { return nil }
+            return (visibleSuggestedRows[indexPath.row].place, nil)
         default:
-            break
+            return nil
+        }
+    }
+
+    // Long-press a place result: Peek (the half sheet, search kept) or Open.
+    // It replaced an 'i' button that sat beside the chevron (Wes, 2026-11-07).
+    func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath,
+                   point: CGPoint) -> UIContextMenuConfiguration? {
+        guard tableView == searchResultsTableView, let result = searchResultPlace(at: indexPath) else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            UIMenu(children: [
+                UIAction(title: "Peek", image: UIImage(systemName: "eye")) { _ in
+                    self?.presentSearchPreview(place: result.place, circle: result.circle)
+                },
+                UIAction(title: "Open", image: UIImage(systemName: "arrow.up.forward")) { _ in
+                    guard let self else { return }
+                    self.tableView(tableView, didSelectRowAt: indexPath)
+                }
+            ])
         }
     }
 

@@ -110,6 +110,8 @@ final class HomeState {
     var searchedUsers: [User] = []
     /// Meters from the search reference location, keyed by place id, for the PLACES rows.
     var searchDistances: [String: CLLocationDistance] = [:]
+    /// How many of your people saved each result's venue (keyed by the row's place id)
+    var searchSaverCounts: [String: SearchRowSubtitle.Savers] = [:]
     /// Global venues suggested for the query (the catalog channel).
     var suggestedPlaces: [GlobalPlace] = []
     /// Everything Apple Maps returned for the query near the origin. Split on
@@ -131,6 +133,7 @@ final class HomeState {
         filteredPlaces = []
         searchedUsers = []
         searchDistances = [:]
+        searchSaverCounts = [:]
         suggestedPlaces = []
         appleCandidates = []
         appleMatchedPlaceIds = []

@@ -223,6 +223,18 @@ final class SearchResultsSheetView: UIView {
         SearchSheetLayout.expandedHeight(available: availableHeight, content: contentHeight)
     }
 
+    /// Each resting height, for the drag to settle on. "Full" counts only
+    /// when it is really taller than half (short lists have two heights).
+    private var detentHeights: [SearchSheetState: CGFloat] {
+        let full = SearchSheetLayout.fullHeight(available: availableHeight, content: contentHeight)
+        var heights: [SearchSheetState: CGFloat] = [.collapsed: SearchSheetLayout.handleHeight, .expanded: expandedHeight]
+        if full > expandedHeight + 40 { heights[.full] = full }
+        return heights
+    }
+
+    /// The list was swiped up from its top: more of it (Wes, 2026-11-07)
+    var canGrow: Bool { state != .full && detentHeights[.full] != nil }
+
     private var targetHeight: CGFloat {
         SearchSheetLayout.height(for: state, available: availableHeight, content: contentHeight)
     }
@@ -236,7 +248,7 @@ final class SearchResultsSheetView: UIView {
     }
 
     private func updateChevron() {
-        let name = state == .expanded ? "chevron.down" : "chevron.up"
+        let name = state == .collapsed ? "chevron.up" : "chevron.down"
         chevron.image = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold))
     }
 
@@ -251,15 +263,13 @@ final class SearchResultsSheetView: UIView {
             dragStartHeight = heightConstraint.constant
         case .changed:
             let wanted = dragStartHeight - translation
-            heightConstraint.constant = min(max(wanted, SearchSheetLayout.handleHeight), expandedHeight)
+            let tallest = detentHeights.values.max() ?? expandedHeight
+            heightConstraint.constant = min(max(wanted, SearchSheetLayout.handleHeight), tallest)
             superview?.layoutIfNeeded()
         case .ended, .cancelled, .failed:
-            let next = SearchSheetDetentResolver.resolve(
-                from: state,
-                translationY: translation,
-                velocityY: pan.velocity(in: self).y,
-                travel: expandedHeight - SearchSheetLayout.handleHeight
-            )
+            let next = SearchSheetDetentResolver.resolve(currentHeight: heightConstraint.constant,
+                                                         velocityY: pan.velocity(in: self).y,
+                                                         heights: detentHeights)
             setState(next, animated: true)
         default:
             break

@@ -6,6 +6,8 @@ enum SearchSheetState: Equatable {
     case expanded
     /// Only the handle line ("26 places · 3 nearby") shows; the map has the room.
     case collapsed
+    /// Swiped up for more of the list: a thin strip of map stays (Wes, 2026-11-07)
+    case full
 }
 
 /// How tall the search results sheet is, given the room between the mode
@@ -26,14 +28,20 @@ struct SearchSheetLayout {
     /// Handle + one header + one row.
     static let minSheetHeight: CGFloat = handleHeight + headerHeight + rowHeight
     static let expandedFraction: CGFloat = 0.55
+    /// Map left above a sheet swiped all the way up
+    static let fullMapStrip: CGFloat = 56
     /// Search bar bottom → map top while searching.
     static let searchMapTopInset: CGFloat = 8
 
-    /// Handle plus every non-empty section (header + rows).
+    /// Handle plus every non-empty section. Results sections have no title
+    /// (the handle's chips name and count them, Wes 2026-11-07); recent
+    /// searches and browse keep theirs.
     static func contentHeight(for plan: HomeSearchPlan) -> CGFloat {
         var height = handleHeight
-        for rows in [plan.widgetRows, plan.placeRows, plan.suggestedSectionRows, plan.peopleSectionRows,
-                     plan.recentRows, plan.browseRows] where rows > 0 {
+        for rows in [plan.widgetRows, plan.placeRows, plan.suggestedSectionRows, plan.peopleSectionRows] where rows > 0 {
+            height += CGFloat(rows) * rowHeight
+        }
+        for rows in [plan.recentRows, plan.browseRows] where rows > 0 {
             height += headerHeight + CGFloat(rows) * rowHeight
         }
         // The status line has no header
@@ -47,10 +55,16 @@ struct SearchSheetLayout {
         return min(content, room)
     }
 
+    /// Swiped up: all the room but a thin strip of map, never taller than the content.
+    static func fullHeight(available: CGFloat, content: CGFloat) -> CGFloat {
+        min(content, max(expandedHeight(available: available, content: content), available - fullMapStrip))
+    }
+
     static func height(for state: SearchSheetState, available: CGFloat, content: CGFloat) -> CGFloat {
         switch state {
         case .collapsed: return handleHeight
         case .expanded: return expandedHeight(available: available, content: content)
+        case .full: return fullHeight(available: available, content: content)
         }
     }
 }

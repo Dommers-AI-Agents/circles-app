@@ -8,10 +8,13 @@ struct SearchSheetLayoutTests {
         HomeSearchPlan(placeRows: places, suggestedRows: nearby, peopleRows: people)
     }
 
+    /// Results sections have no titles (the chips name them); recent and browse keep theirs
     @Test func contentIsTheHandlePlusEachNonEmptySection() {
-        #expect(SearchSheetLayout.contentHeight(for: plan(places: 3, nearby: 3)) == 540)
-        #expect(SearchSheetLayout.contentHeight(for: plan(places: 1)) == 152)
-        #expect(SearchSheetLayout.contentHeight(for: plan(places: 0, people: 2)) == 224)
+        #expect(SearchSheetLayout.contentHeight(for: plan(places: 3, nearby: 3)) == 484)
+        #expect(SearchSheetLayout.contentHeight(for: plan(places: 1)) == 124)
+        #expect(SearchSheetLayout.contentHeight(for: plan(places: 0, people: 2)) == 196)
+        let idleExpected: CGFloat = 324   // handle 52 + RECENT 28 + 2 rows + BROWSE 28 + 1 row
+        #expect(SearchSheetLayout.contentHeight(for: .idle(recent: 2, browse: 1)) == idleExpected)
     }
 
     @Test func aboutHalfTheRoomButTheMapKeepsItsStrip() {

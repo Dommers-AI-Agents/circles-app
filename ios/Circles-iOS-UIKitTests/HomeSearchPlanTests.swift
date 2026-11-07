@@ -22,9 +22,6 @@ struct HomeSearchPlanTests {
         #expect(plan.suggestedRows == 3)
         // Counts are of everything found; All shows three nearby + "Show all 9"
         #expect(plan.handleTitle == "Places 26 | People 2 | Nearby 9")
-        #expect(plan.placesHeader == "PLACES (26)")
-        #expect(plan.peopleHeader == "PEOPLE (2)")
-        #expect(plan.suggestedHeader == "NEARBY (9)")
         #expect(plan.moreNearby)
         #expect(plan.suggestedSectionRows == 4)
         #expect(!plan.morePeople)

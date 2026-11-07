@@ -67,6 +67,8 @@ extension CirclesHomeViewController {
         userListView.isHidden = true
         listToggleButton.isHidden = true
         mapPlaceCountLabel.isHidden = true
+        mapViewController?.setFilterChipsHidden(true)
+        setAddPlaceCompact(true)
         UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
     }
 
@@ -83,7 +85,19 @@ extension CirclesHomeViewController {
         userListView.alpha = 1
         listToggleButton.isHidden = false
         mapPlaceCountLabel.isHidden = isShowingPlacesList
+        mapViewController?.setFilterChipsHidden(false)
+        setAddPlaceCompact(false)
         UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
+    }
+
+    /// While searching, Add Place shrinks to its + so the search bar gets
+    /// the room (Wes, 2026-11-07). The home tour points at this button, so
+    /// leaving the search always puts the full title back.
+    func setAddPlaceCompact(_ compact: Bool) {
+        quickAddPlaceButton.setTitle(compact ? nil : " Add Place", for: .normal)
+        quickAddPlaceButton.accessibilityLabel = "Add Place"
+        quickAddPlaceButton.constraints.first { $0.firstAttribute == .width && $0.secondItem == nil }?
+            .constant = compact ? 40 : 120
     }
 
 }
@@ -105,7 +119,9 @@ extension CirclesHomeViewController {
     func showSearchResults() {
         enterSearchLayout()
         let plan = searchPlan
-        searchResultsSheet.present(state: isSearchSheetCollapsed ? .collapsed : .expanded,
+        // A sheet swiped up stays up while results update
+        let open: SearchSheetState = searchResultsSheet.state == .full ? .full : .expanded
+        searchResultsSheet.present(state: isSearchSheetCollapsed ? .collapsed : open,
                                    availableHeight: searchSheetAvailableHeight())
         searchResultsSheet.setChips(plan.scopeChips.map {
             SearchResultsSheetView.Chip(tag: $0.rawValue, title: plan.chipTitle($0), isSelected: $0 == plan.scope)
@@ -217,13 +233,21 @@ extension CirclesHomeViewController {
         refreshMapDisplay(adjustRegion: adjust)
     }
 
-    /// Pulling the list down past its top is "give me the map".
+    /// Swiping the list itself resizes the sheet (Wes, 2026-11-07): up from
+    /// its top → more of the list; pulled down past its top → one step down
+    /// (full → half, half → just the handle and the map).
     func scrollViewWillEndDragging(_ scrollView: UIScrollView,
                                    withVelocity velocity: CGPoint,
                                    targetContentOffset: UnsafeMutablePointer<CGPoint>) {
         guard scrollView == searchResultsTableView else { return }
         if SearchSheetDetentResolver.shouldCollapse(forPullDownOffset: scrollView.contentOffset.y) {
-            collapseSearchSheet()
+            if SearchSheetDetentResolver.stepDown(from: searchResultsSheet.state) == .collapsed {
+                collapseSearchSheet()
+            } else {
+                searchResultsSheet.setState(.expanded, animated: true)
+            }
+        } else if velocity.y > 0.3, scrollView.contentOffset.y < 80, searchResultsSheet.canGrow {
+            searchResultsSheet.setState(.full, animated: true)
         }
     }
 }

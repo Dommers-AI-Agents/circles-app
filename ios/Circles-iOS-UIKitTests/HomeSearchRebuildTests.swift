@@ -123,6 +123,24 @@ struct RecentSearchListTests {
         store.record("ignored")
         #expect(store.list.queries.isEmpty)
     }
+
+    /// Recents survive a reinstall (Wes, 2026-11-07): every change is handed
+    /// to the account copy, and the account's list joins the phone's.
+    @Test func changesGoToTheAccountAndComeBack() {
+        let defaults = UserDefaults(suiteName: "RecentSearchListTests.\(UUID().uuidString)")!
+        var sent: [[String]] = []
+        let store = RecentSearchStore(defaults: defaults, userId: { "a" }, didSave: { sent.append($0.map(\.title)) })
+        store.record("bakery")
+        store.record("bars")
+        #expect(sent.last == ["bars", "bakery"])
+
+        let account = RecentSearchList([.query("tacos"), .query("bars")])
+        let merged = store.list.merging(account)
+        #expect(merged.queries == ["bars", "bakery", "tacos"])
+        store.replace(with: merged)
+        #expect(store.list.queries == ["bars", "bakery", "tacos"])
+        #expect(sent.count == 2)   // a restore isn't sent back up
+    }
 }
 
 struct SavedPlaceIndexTests {
@@ -221,6 +239,6 @@ struct HomeSearchPlanIdleAndStatusTests {
         let offline = HomeSearchPlan.make(matchedPlaces: 2, suggestedPlaces: 0, people: 0, status: .offline)
         #expect(offline.handleTitle == "Places 2")
         #expect(SearchSheetLayout.contentHeight(for: offline)
-                == SearchSheetLayout.handleHeight + SearchSheetLayout.headerHeight + 3 * SearchSheetLayout.rowHeight)
+                == SearchSheetLayout.handleHeight + 3 * SearchSheetLayout.rowHeight)
     }
 }

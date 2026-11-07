@@ -115,11 +115,13 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     /// Widgets the current text names — computed once per keystroke, read by every row
     var matchedWidgetsCache: [FavWidgetDescriptor] = []
     /// Recent home searches on this phone
-    let recentSearches = RecentSearchStore()
+    // Kept on the account too, so a reinstall brings them back (RecentSearchSync)
+    let recentSearches = RecentSearchStore(didSave: { RecentSearchSync.push($0) })
     // Search overlay distance/suggested state: distances (meters) keyed by
     // place id for the PLACES rows, plus the SUGGESTED fallback — global
     // venues fetched when the query matches nothing you or your network saved
     var searchDistances: [String: CLLocationDistance] { get { state.searchDistances } set { state.searchDistances = newValue } }
+    var searchSaverCounts: [String: SearchRowSubtitle.Savers] { get { state.searchSaverCounts } set { state.searchSaverCounts = newValue } }
     var suggestedPlaces: [GlobalPlace] { get { state.suggestedPlaces } set { state.suggestedPlaces = newValue } }
     var suggestedDistances: [String: CLLocationDistance] { get { state.suggestedDistances } set { state.suggestedDistances = newValue } }
     var appleCandidates: [Place] { get { state.appleCandidates } set { state.appleCandidates = newValue } }
@@ -1969,14 +1971,23 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         toolbar.sizeToFit()
         
         let flexSpace = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
-        let doneButton = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(dismissKeyboard))
+        // Drops the keyboard so the map and the list both show (Wes,
+        // 2026-11-07: a keyboard-down picture, not a ✓ or "Show map")
+        let doneButton = UIBarButtonItem(image: UIImage(systemName: "keyboard.chevron.compact.down"), style: .done,
+                                         target: self, action: #selector(dismissKeyboard))
+        doneButton.accessibilityLabel = "Hide keyboard"
         
         toolbar.items = [flexSpace, doneButton]
         searchBar.inputAccessoryView = toolbar
+
+        // After a reinstall, the account's recent picks come back
+        RecentSearchSync.restoreOnce(into: recentSearches)
     }
     
     @objc func dismissKeyboard() {
-        // Called from Done button, always dismiss
+        // Called from the keyboard's hide button, always dismiss. The camera
+        // stays where it is (Wes, 2026-11-07: fitting every match zoomed out
+        // to half the continent)
         searchBar.resignFirstResponder()
     }
     

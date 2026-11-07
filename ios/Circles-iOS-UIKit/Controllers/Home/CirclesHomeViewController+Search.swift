@@ -98,7 +98,7 @@ extension CirclesHomeViewController: UISearchBarDelegate {
     }
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        // Same as the Done button: keyboard down, the list stays open (Wes).
+        // Same as the keyboard's hide button: keyboard down, the list stays open (Wes)
         recordRecentSearch()
         searchBar.resignFirstResponder()
         updateEmptyState()
@@ -217,6 +217,10 @@ extension CirclesHomeViewController {
         // One row per real-world venue, however many people saved it (the
         // same collapse the map's list uses).
         let deduped = Place.dedupedByVenue(matched, preferredOwnerId: AuthService.shared.getUserId() ?? "")
+        // "Saved by 5" on each row: counted before the saves collapse
+        let savers = SearchRowSubtitle.savers(in: matched)
+        searchSaverCounts = Dictionary(deduped.compactMap { place in savers[place.venueDedupeKey].map { (place.id, $0) } },
+                                       uniquingKeysWith: { first, _ in first })
 
         // Nearest first, with the distance shown on each row ("looking for
         // pizza NEAR ME" is the whole query).

@@ -73,19 +73,32 @@ struct RecentSearchList: Equatable {
     }
 
     func removing(_ query: String) -> RecentSearchList { removing(.query(query)) }
+
+    /// This phone's list with the account's after it (a reinstall, a second
+    /// phone): one copy of each thing, this phone's order first.
+    func merging(_ other: RecentSearchList) -> RecentSearchList {
+        var seen = Set<String>()
+        return RecentSearchList((items + other.items).filter { seen.insert($0.key).inserted })
+    }
 }
 
-/// UserDefaults persistence for `RecentSearchList`, keyed by user id. Per
-/// account, on this phone only — never sent anywhere. The older list of
-/// typed text (`homeRecentSearches.<uid>`) is left behind on purpose: it was
-/// mostly half-typed letters.
+/// UserDefaults persistence for `RecentSearchList`, keyed by user id; the
+/// phone's copy. The account keeps one too (RecentSearchSync, Wes 2026-11-07:
+/// a reinstall lost them), so `didSave` reports every change. The older list
+/// of typed text (`homeRecentSearches.<uid>`) is left behind on purpose: it
+/// was mostly half-typed letters.
 final class RecentSearchStore {
     private let defaults: UserDefaults
     private let userId: () -> String?
 
-    init(defaults: UserDefaults = .standard, userId: @escaping () -> String? = { AuthService.shared.getUserId() }) {
+    /// Every change, for the account copy (RecentSearchSync)
+    private let didSave: ([RecentSearchItem]) -> Void
+
+    init(defaults: UserDefaults = .standard, userId: @escaping () -> String? = { AuthService.shared.getUserId() },
+         didSave: @escaping ([RecentSearchItem]) -> Void = { _ in }) {
         self.defaults = defaults
         self.userId = userId
+        self.didSave = didSave
     }
 
     private var key: String? { userId().map { "homeRecentItems.\($0)" } }
@@ -109,6 +122,12 @@ final class RecentSearchStore {
     func remove(_ query: String) { remove(.query(query)) }
 
     private func save(_ list: RecentSearchList) {
+        replace(with: list)
+        didSave(list.items)
+    }
+
+    /// The account's copy came back (RecentSearchSync): stored, not echoed up again.
+    func replace(with list: RecentSearchList) {
         guard let key, let data = try? JSONEncoder().encode(list.items) else { return }
         defaults.set(data, forKey: key)
     }

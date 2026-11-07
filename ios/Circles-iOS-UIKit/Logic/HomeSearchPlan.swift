@@ -165,11 +165,8 @@ struct HomeSearchPlan: Equatable {
                        browseRows: max(browse, 0))
     }
 
-    // Section headers count everything of their kind: "PLACES (26)"
-    var placesHeader: String { "PLACES (\(placesTotal))" }
-    var peopleHeader: String { "PEOPLE (\(peopleTotal))" }
-    var suggestedHeader: String { "NEARBY (\(suggestedTotal))" }
-    var widgetsHeader: String { "WIDGETS (\(widgetsTotal))" }
+    // Results sections have no titles of their own: the chips below name
+    // and count them (Wes, 2026-11-07: "PLACES (6)" under "Places 6").
 
     /// The handle's chips — only when there is more than one kind to pick
     /// between; one kind needs no filter (the handle line says it instead).

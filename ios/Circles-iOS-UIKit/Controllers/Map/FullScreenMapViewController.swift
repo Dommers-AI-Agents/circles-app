@@ -365,6 +365,14 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         zoomToFilteredPlaces()
     }
 
+    /// The home hides the Everyone / Category / Places dropdowns while a
+    /// search is up: they filter the map, not the search (Wes, 2026-11-07).
+    func setFilterChipsHidden(_ hidden: Bool) {
+        guard showsFilterChips, isViewLoaded, filterChipsContainer.superview != nil else { return }
+        filterChipsContainer.isUserInteractionEnabled = !hidden
+        UIView.animate(withDuration: 0.2) { self.filterChipsContainer.alpha = hidden ? 0 : 1 }
+    }
+
     private func makeFilterDropdown() -> UIButton {
         var config = UIButton.Configuration.plain()
         config.image = UIImage(systemName: "chevron.down",
