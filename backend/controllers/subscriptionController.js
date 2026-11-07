@@ -393,7 +393,27 @@ exports.verifySubscription = async (req, res) => {
             const isSandbox = environment === 'Sandbox';
             const wasProduction = (existingData.subscriptionEnvironment || 'Production') === 'Production';
             const hadRealEntitlement = !!existingData.appleOriginalTransactionId || hasManualPremium;
-            if (isSandbox && wasProduction && hadRealEntitlement) {
+            // One App Store subscription, one account (services/subscriptionOwnership)
+            const ownership = isSandbox ? { action: 'apply' } : await require('../services/subscriptionOwnership').decide(admin.firestore(), {
+                originalTransactionId: consumerEntry.original_transaction_id,
+                userId,
+                alreadyHeldHere: existingData.appleOriginalTransactionId === consumerEntry.original_transaction_id,
+                transfer: req.body && req.body.transferSubscription === true
+            });
+            if (ownership.action === 'moved') {
+                console.log(`🔁 Subscription ${consumerEntry.original_transaction_id} moved ${ownership.from} → ${userId}`);
+            }
+            if (ownership.action === 'blocked') {
+                console.warn(`🔒 Subscription ${consumerEntry.original_transaction_id} belongs to another account; not applied to ${userId}`);
+                consumerResponse = {
+                    status: existingData.subscriptionStatus === 'active' || existingData.subscriptionStatus === 'trial'
+                        ? existingData.subscriptionStatus : 'none',
+                    expiryDate: existingData.subscriptionExpiryDate || null,
+                    autoRenewEnabled: false,
+                    linkedElsewhere: true,
+                    linkedEmailHint: ownership.emailHint
+                };
+            } else if (isSandbox && wasProduction && hadRealEntitlement) {
                 // Do NOT return here: the same receipt may also carry a
                 // business purchase whose response (assembled above) must
                 // still reach the client.
