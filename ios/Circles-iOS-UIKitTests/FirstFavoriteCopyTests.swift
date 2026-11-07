@@ -44,4 +44,11 @@ struct FirstFavoriteCopyTests {
         #expect(FirstFavoriteCopy.similarCategories(to: .fitness) == ["fitness", "restaurant", "cafe"])
         #expect(FirstFavoriteCopy.similarCategories(to: nil).count == 3)
     }
+
+    @Test func nearbyStatusNamesWhereAndTheEmptySearch() {
+        #expect(FirstFavoriteCopy.nearbyStatus(knowsLocation: true) == "Places near you. Tap one you love, or search for it.")
+        #expect(FirstFavoriteCopy.nearbyStatus(knowsLocation: false) == "Places around Charlotte. Search for the one you love.")
+        #expect(FirstFavoriteCopy.nearbyStatus(knowsLocation: true, emptyQuery: "Zzyzx") == "No places found for \u{201C}Zzyzx\u{201D}. Places near you:")
+        #expect(FirstFavoriteCopy.nearbyStatus(knowsLocation: false, emptyQuery: "  ") == "Places around Charlotte. Search for the one you love.")
+    }
 }

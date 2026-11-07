@@ -25,6 +25,18 @@ enum FirstFavoriteCopy {
         Chip(title: "💪 Gym", query: "Gym")
     ]
 
+    /// The line over the nearby list, which fills the screen whenever there's
+    /// nothing else to show (Wes, 2026-11-07: "The list should never be
+    /// empty"). Names the search that found nothing, so the list reads as the
+    /// answer to it.
+    static func nearbyStatus(knowsLocation: Bool, emptyQuery: String? = nil) -> String {
+        let places = knowsLocation ? "Places near you" : "Places around Charlotte"
+        if let query = emptyQuery?.trimmingCharacters(in: .whitespaces), !query.isEmpty {
+            return "No places found for \u{201C}\(query)\u{201D}. \(places):"
+        }
+        return knowsLocation ? "Places near you. Tap one you love, or search for it." : "Places around Charlotte. Search for the one you love."
+    }
+
     static func confirmTitle(placeName: String) -> String {
         "Save \(placeName) as your first favorite?"
     }

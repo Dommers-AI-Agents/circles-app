@@ -41,6 +41,9 @@ final class FirstFavoriteViewController: BaseViewController {
     // MARK: - State
 
     private var results: [MKMapItem] = []
+    /// Places around the origin, shown whenever there's no search to show:
+    /// on open, after clearing the box, and when a search finds nothing
+    private var nearby: [MKMapItem] = []
     private var savingKey: String?
     private var searchTimer: Timer?
     private var lastQuery = ""
@@ -164,6 +167,7 @@ final class FirstFavoriteViewController: BaseViewController {
         resultsTableView.delegate = self
         resultsTableView.dataSource = self
         resolveOrigin()
+        loadNearby()
         loadCircles()
     }
 
@@ -280,7 +284,9 @@ final class FirstFavoriteViewController: BaseViewController {
         let hadOrigin = origin != nil
         origin = location
         // Re-run what's on screen around the real spot
-        if !hadOrigin, !lastQuery.isEmpty { performSearch(query: lastQuery) }
+        guard !hadOrigin else { return }
+        loadNearby()
+        if lastQuery.count >= 2 { performSearch(query: lastQuery) }
     }
 
     @objc private func useLocationTapped() {
@@ -335,13 +341,75 @@ final class FirstFavoriteViewController: BaseViewController {
         searchField.resignFirstResponder()
     }
 
+    // MARK: - Nearby
+
+    /// The kinds of places people love most; Apple's points of interest
+    /// around the origin, no query needed
+    private static let nearbyCategories: [MKPointOfInterestCategory] = [
+        .cafe, .restaurant, .bakery, .brewery, .winery, .nightlife, .park, .fitnessCenter, .foodMarket, .museum
+    ]
+
+    /// Fills `nearby`, nearest first. Wider if the first ring is thin, then a
+    /// plain "Restaurant" search, so there's always something to tap.
+    private func loadNearby(radius: CLLocationDistance = 3_000) {
+        let here = searchOrigin
+        let request = MKLocalPointsOfInterestRequest(center: here.coordinate, radius: radius)
+        request.pointOfInterestFilter = MKPointOfInterestFilter(including: Self.nearbyCategories)
+        MKLocalSearch(request: request).start { [weak self] response, _ in
+            DispatchQueue.main.async {
+                // A newer origin (real fix after the signup zipcode) owns the list
+                guard let self, here.distance(from: self.searchOrigin) < 1 else { return }
+                let items = response?.mapItems ?? []
+                if items.count < 8, radius < 20_000 {
+                    if !items.isEmpty { self.showNearby(items, from: here) }
+                    self.loadNearby(radius: radius * 3)
+                } else if items.isEmpty {
+                    self.loadNearbyFallback(from: here)
+                } else {
+                    self.showNearby(items, from: here)
+                }
+            }
+        }
+    }
+
+    private func loadNearbyFallback(from here: CLLocation) {
+        let region = MKCoordinateRegion(center: here.coordinate, latitudinalMeters: 30_000, longitudinalMeters: 30_000)
+        AppleMapsService.shared.searchPlaces(query: "Restaurant", region: region) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let items) = result, !items.isEmpty else { return }
+                self.showNearby(items, from: here)
+            }
+        }
+    }
+
+    private func showNearby(_ items: [MKMapItem], from here: CLLocation) {
+        nearby = sortedNearest(items, to: here)
+        // Only replaces the list while no search owns it
+        if lastQuery.count < 2 || results.isEmpty { displayNearby() }
+    }
+
+    private func displayNearby() {
+        let failed = lastQuery.count >= 2 ? lastQuery : nil
+        results = nearby
+        setStatus(nearby.isEmpty && failed == nil ? "Finding places near you…"
+                  : FirstFavoriteCopy.nearbyStatus(knowsLocation: origin != nil, emptyQuery: failed))
+        resultsTableView.reloadData()
+    }
+
+    private func sortedNearest(_ items: [MKMapItem], to here: CLLocation) -> [MKMapItem] {
+        items.sorted {
+            here.distance(from: CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude))
+                < here.distance(from: CLLocation(latitude: $1.placemark.coordinate.latitude, longitude: $1.placemark.coordinate.longitude))
+        }
+    }
+
+    // MARK: - Search
+
     private func performSearch(query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         lastQuery = trimmed
         guard trimmed.count >= 2 else {
-            results = []
-            resultsTableView.reloadData()
-            setStatus(nil)
+            displayNearby()
             return
         }
         setStatus("Searching near you…")
@@ -351,18 +419,20 @@ final class FirstFavoriteViewController: BaseViewController {
             DispatchQueue.main.async {
                 guard let self, self.lastQuery == trimmed else { return }
                 switch result {
-                case .success(let items):
+                case .success(let items) where !items.isEmpty:
                     // Nearest first: the place they love is usually close
-                    self.results = items.sorted {
-                        here.distance(from: CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude))
-                            < here.distance(from: CLLocation(latitude: $1.placemark.coordinate.latitude, longitude: $1.placemark.coordinate.longitude))
-                    }
-                    self.setStatus(items.isEmpty ? "No places found for “\(trimmed)”. Try the full name." : nil)
-                case .failure:
+                    self.results = self.sortedNearest(items, to: here)
+                    self.setStatus(nil)
+                    self.resultsTableView.reloadData()
+                case .success:
+                    // Nothing for that search: the places nearby, never a blank list
                     self.results = []
+                    self.displayNearby()
+                case .failure:
+                    self.results = self.nearby
                     self.setStatus("Couldn't search right now. Check your connection and try again.")
+                    self.resultsTableView.reloadData()
                 }
-                self.resultsTableView.reloadData()
             }
         }
     }
