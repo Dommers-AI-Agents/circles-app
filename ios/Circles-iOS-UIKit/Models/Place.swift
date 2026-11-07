@@ -500,7 +500,11 @@ enum PlaceCategory: String, Codable, CaseIterable {
     /// switch in two search cells before this; one table, one answer.
     var symbolName: String {
         switch self {
-        case .restaurant, .cafe, .bar: return "fork.knife"
+        // The map pins' shapes (systemIconName): a café's row shows a cup,
+        // not a fork and knife (Wes, 2026-11-07, "coffee" search)
+        case .restaurant: return "fork.knife"
+        case .cafe: return "cup.and.saucer"
+        case .bar: return "wineglass"
         case .hotel: return "bed.double"
         case .retail: return "bag"
         case .service: return "wrench.and.screwdriver"
