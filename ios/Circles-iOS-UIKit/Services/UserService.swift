@@ -530,8 +530,8 @@ class UserService {
     // MARK: - Helper Methods
     
     private func uploadProfileImage(_ imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
-        // Convert to base64
-        let base64String = imageData.base64EncodedString()
+        // Always under upload/image's limit, whichever screen picked the photo
+        let base64String = ImageUpload.fitting(imageData, maxPixels: 1024).base64EncodedString()
         
         // Upload to backend
         api.request(

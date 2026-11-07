@@ -178,10 +178,7 @@ class MediaProcessingService {
             return image
         }
         
-        let renderer = UIGraphicsImageRenderer(size: newSize)
-        return renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: newSize))
-        }
+        return ImageUpload.scaled(image, maxPixels: max(newSize.width, newSize.height))
     }
     
     /// Get original file size for compression ratio calculation

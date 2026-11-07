@@ -173,11 +173,7 @@ final class SendReceiptViewController: BaseViewController {
 
     /// At most 2,000 px on the long edge: enough to read, small to send
     private static func jpeg(_ image: UIImage) -> Data? {
-        let longEdge = max(image.size.width, image.size.height)
-        let scale = min(1, 2000 / max(longEdge, 1))
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let resized = UIGraphicsImageRenderer(size: size).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
-        return resized.jpegData(compressionQuality: 0.75)
+        ImageUpload.jpeg(image, maxPixels: 2000, quality: 0.75, maxBytes: .max)
     }
 }
 

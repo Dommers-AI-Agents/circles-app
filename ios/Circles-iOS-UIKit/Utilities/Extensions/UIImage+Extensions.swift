@@ -20,8 +20,11 @@ extension UIImage {
             height: size.height * scaleFactor
         )
         
-        // Create renderer with new size
-        let renderer = UIGraphicsImageRenderer(size: scaledSize)
+        // One pixel per point: a size-only renderer draws at the screen's
+        // scale, 3× the pixels on most phones (ImageUpload)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: scaledSize, format: format)
         
         // Render the resized image
         let resizedImage = renderer.image { _ in

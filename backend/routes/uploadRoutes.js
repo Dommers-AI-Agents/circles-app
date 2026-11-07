@@ -47,7 +47,8 @@ router.post('/image', perUserLimit({ bucket: 'image-upload', windowMs: 3600000, 
       console.error(`Image too large: ${imageSizeMB.toFixed(2)} MB (${imageSizeKB.toFixed(0)} KB)`);
       return res.status(413).json({
         success: false,
-        message: `Image too large: ${imageSizeMB.toFixed(2)} MB. Maximum allowed size is ${maxSizeMB} MB. Please ensure iOS app is compressing images properly.`
+        // People read this (2026-11-07): no sizes or app internals
+        message: 'That photo is too big to upload. Please try again or pick a different photo.'
       });
     }
     

@@ -143,12 +143,6 @@ final class PlacePhotoOutbox {
 
     /// Stored as a JPEG no larger than the app uploads anyway.
     private static func jpeg(_ image: UIImage) -> Data? {
-        let maxSide: CGFloat = 2048
-        let longest = max(image.size.width, image.size.height)
-        guard longest > maxSide else { return image.jpegData(compressionQuality: 0.8) }
-        let scale = maxSide / longest
-        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let resized = UIGraphicsImageRenderer(size: size).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
-        return resized.jpegData(compressionQuality: 0.8)
+        ImageUpload.jpeg(image, maxPixels: 2048, maxBytes: .max)
     }
 }
