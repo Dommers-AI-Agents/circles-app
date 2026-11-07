@@ -45,11 +45,20 @@ const createAttributedPhoto = ({ url, uploadedBy = null, uploadedByName = null, 
 
 const urlOf = (photo) => (typeof photo === 'string' ? photo : (photo && photo.url) || null);
 const isRemoved = (photo) => !!(photo && typeof photo === 'object' && photo.removedAt);
+/**
+ * A raw Google Place Photo link (photoreference + our API key). Google's
+ * references expire, so these break (HTTP 400) and leave an empty card, and
+ * they carry the server key; every writer re-hosts instead. An August 2026
+ * import left some in place libraries (Canopy, 2026-11-07). Never shown,
+ * never counted as a photo, never stored.
+ */
+const isRawGooglePhotoUrl = (url) => typeof url === 'string' && /maps\.googleapis\.com\/maps\/api\/place\/photo/.test(url);
 
 /** Whether `viewerId` sees this pool entry at all. */
 const canSee = (photo, viewerId) => {
   if (!photo || !urlOf(photo)) return false;
   if (isRemoved(photo)) return false;
+  if (isRawGooglePhotoUrl(urlOf(photo))) return false;
   if (typeof photo === 'object' && photo.private === true) {
     return !!viewerId && isSameUser(photo.uploadedBy, viewerId);
   }
@@ -307,7 +316,7 @@ async function append(globalPlaceId, entry) {
   let added = false;
   await mutatePhotos(globalPlaceId, (photos) => {
     existing = photos.find((p) => urlOf(p) === entry.url) || null;
-    if (existing) return photos;
+    if (existing || isRawGooglePhotoUrl(entry.url)) return photos;
     added = true;
     return [...photos, entry];
   });
@@ -333,8 +342,8 @@ async function adoptSavePhotos({ globalPlaceId, user, photos = [], ownUrls = [],
   const userId = user && (user.uid || user.id);
   const out = { added: 0, removed: 0 };
   if (!globalPlaceId || !userId) return out;
-  const own = new Set((ownUrls || []).filter((u) => typeof u === 'string' && u));
-  const incoming = (photos || []).map(urlOf).filter(Boolean);
+  const own = new Set((ownUrls || []).filter((u) => typeof u === 'string' && u && !isRawGooglePhotoUrl(u)));
+  const incoming = (photos || []).map(urlOf).filter((u) => u && !isRawGooglePhotoUrl(u));
   try {
     await mutatePhotos(globalPlaceId, (list) => {
       const hasPublic = list.some((p) => canSee(p, null));
@@ -399,7 +408,7 @@ async function saveIdsForPlace(globalPlaceId, placeData) {
 
 module.exports = {
   // rules
-  urlOf, isRemoved, canSee, visiblePhotos, hasVisiblePhotos, hiddenUrls, coverUrl, venueCoverUrl, reordered, movedToFront, permissionsFor,
+  urlOf, isRemoved, isRawGooglePhotoUrl, canSee, visiblePhotos, hasVisiblePhotos, hiddenUrls, coverUrl, venueCoverUrl, reordered, movedToFront, permissionsFor,
   // data
   effectivelyPrivate, saveIsPrivate, venueForPlace, rightsFor, uploaderSaveIsPrivate, mutatePhotos, reorder, setCover, remove, setLiked, append, adoptSavePhotos, saveIdsForPlace
 };

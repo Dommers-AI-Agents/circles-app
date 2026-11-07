@@ -192,3 +192,19 @@ test('hasVisiblePhotos ignores removed and private entries', () => {
   expect(svc.hasVisiblePhotos([{ id: 'c', url: 'https://x/c.jpg' }])).toBe(true);
   expect(svc.hasVisiblePhotos(['https://x/legacy.jpg'])).toBe(true);
 });
+
+// Canopy, 2026-11-07: an August import left raw Google photo links (expired
+// references → HTTP 400) in the library, so the card was empty and the save's
+// real photos were never brought in because the library didn't look empty.
+test('a raw Google photo link is never shown, never counts as a photo, and never stored', async () => {
+  const raw = 'https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=AWC&key=K';
+  expect(svc.hasVisiblePhotos([{ id: 'g', url: raw, uploadedBy: null, source: 'legacy_import' }])).toBe(false);
+  expect(svc.coverUrl([{ id: 'g', url: raw }, P('real')])).toBe('https://x/real.jpg');
+
+  await seed([{ id: 'g', url: raw, uploadedBy: null, source: 'legacy_import' }]);
+  await svc.adoptSavePhotos({ globalPlaceId: 'gp', user: { uid: 'cust' }, photos: ['https://x/save.jpg', raw] });
+  expect(stored().photos.map((p) => p.url)).toEqual([raw, 'https://x/save.jpg']);
+  await seed([]);
+  expect((await svc.append('gp', { id: 'n', url: raw })).added).toBe(false);
+  expect(stored().photos).toEqual([]);
+});
