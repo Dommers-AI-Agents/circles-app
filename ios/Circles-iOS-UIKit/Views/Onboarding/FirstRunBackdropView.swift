@@ -87,6 +87,9 @@ final class GradientView: UIView {
 
     var colors: [UIColor] = [] { didSet { applyColors() } }
     var locations: [NSNumber]? { didSet { gradient.locations = locations } }
+    /// Direction, in unit coordinates (default top to bottom)
+    var startPoint: CGPoint { get { gradient.startPoint } set { gradient.startPoint = newValue } }
+    var endPoint: CGPoint { get { gradient.endPoint } set { gradient.endPoint = newValue } }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)

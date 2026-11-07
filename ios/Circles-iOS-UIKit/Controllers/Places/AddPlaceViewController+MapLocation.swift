@@ -294,6 +294,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
 
     func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
         hideMapTapHint()
+        if !(view.annotation is MKUserLocation) { cancelPhotoFill() }
         // Any annotation selection consumes the tap — the manual fallback
         // must not fire on top of it
         pendingManualMapTap?.cancel()

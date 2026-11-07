@@ -107,14 +107,14 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     let hintLabel: UILabel = {
         let label = UILabel()
         let text = NSMutableAttributedString(string: "Tap a place or search\n", attributes: [
-            .font: UIFont.systemFont(ofSize: 24, weight: .bold),
-            .foregroundColor: Constants.Colors.label
+            .font: UIFont.systemFont(ofSize: 22, weight: .bold),
+            .foregroundColor: UIColor.white
         ])
         let paragraph = NSMutableParagraphStyle()
         paragraph.paragraphSpacingBefore = 4
-        text.append(NSAttributedString(string: "Tap it on the map, or type its name or address.", attributes: [
-            .font: UIFont.systemFont(ofSize: 15),
-            .foregroundColor: Constants.Colors.secondaryLabel,
+        text.append(NSAttributedString(string: "On the map, or by name or address.", attributes: [
+            .font: UIFont.systemFont(ofSize: 15, weight: .medium),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.85),
             .paragraphStyle: paragraph
         ]))
         label.attributedText = text
@@ -123,6 +123,37 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
+    /// The colored card at the top: icon, heading and the search field
+    /// (Wes, 2026-11-07: "add some color… a pretty icon").
+    let headerCard: GradientView = {
+        let view = GradientView()
+        view.colors = [Constants.Colors.primary, UIColor.systemIndigo]
+        view.startPoint = CGPoint(x: 0, y: 0)
+        view.endPoint = CGPoint(x: 1, y: 1)
+        view.layer.cornerRadius = 22
+        view.layer.cornerCurve = .continuous
+        view.clipsToBounds = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+
+    /// A map pin on a frosted tile, the card's icon
+    let headerIcon: UIImageView = {
+        let symbol = UIImage(systemName: "mappin.and.ellipse",
+                             withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .semibold))
+        let view = UIImageView(image: symbol)
+        view.tintColor = .white
+        view.contentMode = .center
+        view.backgroundColor = UIColor.white.withAlphaComponent(0.2)
+        view.layer.cornerRadius = 14
+        view.layer.cornerCurve = .continuous
+        view.layer.borderWidth = 1
+        view.layer.borderColor = UIColor.white.withAlphaComponent(0.35).cgColor
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isAccessibilityElement = false
+        return view
+    }()
+
     /// On the map until it's first tapped: says the map is tappable
     /// (Wes, 2026-11-07: "show they can tap the place on the map").
     let mapTapHint: UILabel = {
@@ -146,9 +177,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     // Search container for visual emphasis
     let searchContainer: UIView = {
         let view = UIView()
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 14
-        view.layer.cornerCurve = .continuous
+        // Clear: the search bar draws its own field, and a filled box
+        // behind it read as a second search bar (Wes, 2026-11-07)
+        view.backgroundColor = .clear
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
@@ -575,6 +606,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         circleButton.layer.borderColor = (circleWasRemembered ? Constants.Colors.primary : UIColor.systemBlue.withAlphaComponent(0.3)).cgColor
     }
     var photoFillPicker: PhotoFillPicker?
+    /// "Finding where your photo was taken…" over the map, with Cancel
+    var photoFillStatusView: UIView?
     
     let addPlaceButton: UIButton = {
         let button = UIButton(type: .system)
@@ -863,8 +896,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
         
-        contentView.addSubview(hintLabel)
-        contentView.addSubview(searchContainer)
+        contentView.addSubview(headerCard)
+        headerCard.addSubview(headerIcon)
+        headerCard.addSubview(hintLabel)
+        headerCard.addSubview(searchContainer)
         searchContainer.addSubview(searchBar)
         contentView.addSubview(mapContainer)
         mapContainer.addSubview(mapView)
@@ -918,14 +953,25 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
             
             // Hint label
-            hintLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
-            hintLabel.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
-            hintLabel.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
+            // The colored card: icon and heading, then the search field
+            headerCard.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
+            headerCard.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            headerCard.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
+            headerIcon.topAnchor.constraint(equalTo: headerCard.topAnchor, constant: 18),
+            headerIcon.leadingAnchor.constraint(equalTo: headerCard.leadingAnchor, constant: 16),
+            headerIcon.widthAnchor.constraint(equalToConstant: 52),
+            headerIcon.heightAnchor.constraint(equalToConstant: 52),
+            { let c = hintLabel.centerYAnchor.constraint(equalTo: headerIcon.centerYAnchor); c.priority = .defaultHigh; return c }(),
+            hintLabel.topAnchor.constraint(greaterThanOrEqualTo: headerCard.topAnchor, constant: 14),
+            hintLabel.leadingAnchor.constraint(equalTo: headerIcon.trailingAnchor, constant: 14),
+            hintLabel.trailingAnchor.constraint(equalTo: headerCard.trailingAnchor, constant: -16),
             
             // Search container at top
-            searchContainer.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: Constants.Spacing.medium),
-            searchContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
-            searchContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
+            searchContainer.topAnchor.constraint(equalTo: headerIcon.bottomAnchor, constant: 16),
+            searchContainer.topAnchor.constraint(greaterThanOrEqualTo: hintLabel.bottomAnchor, constant: 14),
+            searchContainer.leadingAnchor.constraint(equalTo: headerCard.leadingAnchor, constant: 12),
+            searchContainer.trailingAnchor.constraint(equalTo: headerCard.trailingAnchor, constant: -12),
+            searchContainer.bottomAnchor.constraint(equalTo: headerCard.bottomAnchor, constant: -12),
             searchContainer.heightAnchor.constraint(equalToConstant: 52),
             
             // Search bar inside container
@@ -939,7 +985,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             // Category stack view
             
             // Map container
-            mapContainer.topAnchor.constraint(equalTo: searchContainer.bottomAnchor, constant: Constants.Spacing.medium),
+            mapContainer.topAnchor.constraint(equalTo: headerCard.bottomAnchor, constant: Constants.Spacing.medium),
             mapContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
             mapContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             mapContainer.heightAnchor.constraint(equalToConstant: 340),
@@ -1185,6 +1231,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
         hideMapTapHint()
+        cancelPhotoFill()
         let location = gesture.location(in: mapView)
         let coordinate = mapView.convert(location, toCoordinateFrom: mapView)
 
@@ -1542,7 +1589,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             self.formContainer.isUserInteractionEnabled = true
             self.addPlaceButton.isEnabled = true
             self.addPlaceButton.alpha = 1.0
-            self.hintLabel.alpha = 0
         } completion: { _ in
             // Scroll to show the form
             let formRect = self.formContainer.convert(self.formContainer.bounds, to: self.scrollView)
@@ -1613,6 +1659,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     }
 
     func selectSearchResult(_ result: MKLocalSearchCompletion) {
+        cancelPhotoFill()   // picked another way: a photo fill still working mustn't overwrite it
         knownGlobalPlaceId = nil
         // Hide search results
         searchResultsTableView.isHidden = true

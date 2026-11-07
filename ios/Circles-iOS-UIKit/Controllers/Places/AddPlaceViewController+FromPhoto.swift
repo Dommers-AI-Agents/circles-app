@@ -15,12 +15,76 @@ extension AddPlaceViewController {
             primaryAction: UIAction { [weak self] _ in self?.fromPhotoTapped() })
     }
 
+    /// Says what it does before the picker opens (Wes, 2026-11-07: tapping
+    /// the icon should explain itself).
     private func fromPhotoTapped() {
+        AlertPresenter.showConfirmation(
+            title: "Fill this in from a photo",
+            message: "Pick a photo you took at the place. FavCircles reads where it was taken and fills in the business there, with your photo as its picture.\n\nTo add lots of places from your photos at once, use Add places from your photos.",
+            confirmTitle: "Choose a Photo",
+            cancelTitle: "Not Now",
+            from: self,
+            onConfirm: { [weak self] in self?.presentPhotoFillPicker() })
+    }
+
+    private func presentPhotoFillPicker() {
         let helper = PhotoFillPicker(form: self)
-        photoFillPicker = helper   // kept alive while the picker is up
+        photoFillPicker = helper   // kept alive while it works
         let picker = PHPickerViewController(configuration: PhotoMetadataReader.pickerConfiguration(limit: 10))
         picker.delegate = helper
         present(picker, animated: true)
+    }
+
+    /// Stops a photo fill still working: the person picked a place another
+    /// way, or tapped Cancel. Its late answer is ignored.
+    func cancelPhotoFill() {
+        photoFillPicker = nil
+        hidePhotoFillStatus()
+    }
+
+    /// A bar over the map while the photo is read and looked up. It doesn't
+    /// block the screen: search or tap the map meanwhile, or Cancel.
+    func showPhotoFillStatus() {
+        hidePhotoFillStatus()
+        mapTapHint.isHidden = true
+        let spinner = UIActivityIndicatorView(style: .medium)
+        spinner.color = .white
+        spinner.startAnimating()
+        let label = UILabel()
+        label.text = "Finding where your photo was taken…"
+        label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        label.textColor = .white
+        label.numberOfLines = 2
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let cancel = UIButton.smallActionButton(title: "Cancel", style: .secondary)
+        cancel.addAction(UIAction { [weak self] _ in self?.cancelPhotoFill() }, for: .touchUpInside)
+        let stack = UIStackView(arrangedSubviews: [spinner, label, cancel])
+        stack.axis = .horizontal
+        stack.spacing = 10
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let bar = UIView()
+        bar.backgroundColor = UIColor.black.withAlphaComponent(0.75)
+        bar.layer.cornerRadius = 16
+        bar.layer.cornerCurve = .continuous
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.addSubview(stack)
+        mapContainer.addSubview(bar)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: bar.topAnchor, constant: 10),
+            stack.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -10),
+            stack.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -10),
+            bar.topAnchor.constraint(equalTo: mapContainer.topAnchor, constant: 12),
+            bar.leadingAnchor.constraint(equalTo: mapContainer.leadingAnchor, constant: 12),
+            bar.trailingAnchor.constraint(equalTo: mapContainer.trailingAnchor, constant: -12)
+        ])
+        photoFillStatusView = bar
+    }
+
+    func hidePhotoFillStatus() {
+        photoFillStatusView?.removeFromSuperview()
+        photoFillStatusView = nil
     }
 
     /// The picked photo as the form's own photo (same path as Add Photo).
@@ -48,48 +112,68 @@ final class PhotoFillPicker: NSObject, PHPickerViewControllerDelegate {
 
     init(form: AddPlaceViewController) { self.form = form }
 
+    /// Apple Maps gets this long to answer before the photo's spot is used
+    static let lookupTimeout: TimeInterval = 12
+
+    /// Still the fill the form is waiting for (not cancelled or replaced)
+    private var isCurrent: Bool { form?.photoFillPicker === self }
+
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.dismiss(animated: true)
-        guard let form, !results.isEmpty else { return }
-        let loading = AlertPresenter.showLoading(message: "Finding where these were taken…", from: form)
+        guard let form, !results.isEmpty else { form?.photoFillPicker = nil; return }
+        // A bar over the map, not a blocking alert: an alert put up while the
+        // picker was still closing could miss its dismissal and spin forever
+        // (Wes, 2026-11-07)
+        form.showPhotoFillStatus()
         PhotoMetadataReader.load(results) { [weak self] picked in
-            guard let self, let form = self.form else { loading.dismiss(animated: true); return }
+            guard let self, self.isCurrent, let form = self.form else { return }
             let groups = PhotoPlaceGrouper.group(picked.enumerated().map {
                 PhotoPlaceGrouper.Fix(id: $0.offset, coordinate: $0.element.coordinate, takenAt: $0.element.takenAt,
                                   accuracy: $0.element.accuracy)
             })
             guard let group = groups.first(where: { $0.center != nil }), let center = group.center else {
-                loading.dismiss(animated: true) {
-                    AlertPresenter.showError(title: "No location in these photos",
-                                             message: "They don't say where they were taken (the photo's location may be turned off). Search for the place instead.",
-                                             from: form)
-                }
+                form.cancelPhotoFill()
+                AlertPresenter.showError(title: picked.isEmpty ? "Couldn't open that photo" : "No location in this photo",
+                                         message: picked.isEmpty
+                                            ? "It may still be downloading from iCloud. Try again in a moment, or search for the place instead."
+                                            : "It doesn't say where it was taken (the photo's location may be turned off). Search for the place instead.",
+                                         from: form)
                 return
             }
             let images = group.photoIds.map { picked[$0].image }
-            NearbyPOILookup.pointsOfInterest(near: center, radius: PhotoPlaceRanker.poiRadiusMeters) { items in
-                loading.dismiss(animated: true) {
-                    let pois = items.map { PhotoPlaceRanker.POI(name: $0.name ?? "", coordinate: $0.placemark.coordinate,
-                                                                 isResidential: AppleMapItemFormFill.isResidentialAddress(name: $0.name)) }
-                    let pick = PhotoPlaceRanker.rank(center: center, saved: [], pois: pois).first
-                    form.enableManualEntry()
-                    if case .poi(let index, _) = pick {
-                        form.fillFormWithMapItem(items[index])
-                    } else {
-                        // Nothing listed there: a pin where the photos were taken
-                        form.handleManualLocationTap(at: center)
-                    }
-                    form.mapView.setRegion(MKCoordinateRegion(center: center, latitudinalMeters: 500, longitudinalMeters: 500), animated: true)
-                    form.useFormPhoto(images[0])
-                    PendingPlacePhotos.shared.expect(Array(images.dropFirst()), near: center)
-                    if groups.filter({ $0.center != nil }).count > 1 {
-                        AlertPresenter.showSuccess(title: "Photos from more than one place",
-                                                   message: "Filled in the first place. Use Add Place → From photos on the home screen to save each of them.",
-                                                   from: form)
-                    }
-                    self.form?.photoFillPicker = nil
-                }
+            var answered = false
+            let finish: ([MKMapItem]) -> Void = { [weak self] items in
+                guard !answered else { return }
+                answered = true
+                guard let self, self.isCurrent, let form = self.form else { return }
+                self.apply(items, center: center, images: images, placeCount: groups.filter { $0.center != nil }.count, to: form)
             }
+            NearbyPOILookup.pointsOfInterest(near: center, radius: PhotoPlaceRanker.poiRadiusMeters, completion: finish)
+            // No answer (offline, throttled): a pin where the photo was taken
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.lookupTimeout) { finish([]) }
+        }
+    }
+
+    private func apply(_ items: [MKMapItem], center: CLLocationCoordinate2D, images: [UIImage],
+                       placeCount: Int, to form: AddPlaceViewController) {
+        form.cancelPhotoFill()
+        let pois = items.map { PhotoPlaceRanker.POI(name: $0.name ?? "", coordinate: $0.placemark.coordinate,
+                                                     isResidential: AppleMapItemFormFill.isResidentialAddress(name: $0.name)) }
+        let pick = PhotoPlaceRanker.rank(center: center, saved: [], pois: pois).first
+        form.enableManualEntry()
+        if case .poi(let index, _) = pick {
+            form.fillFormWithMapItem(items[index])
+        } else {
+            // Nothing listed there: a pin where the photos were taken
+            form.handleManualLocationTap(at: center)
+        }
+        form.mapView.setRegion(MKCoordinateRegion(center: center, latitudinalMeters: 500, longitudinalMeters: 500), animated: true)
+        if let first = images.first { form.useFormPhoto(first) }
+        PendingPlacePhotos.shared.expect(Array(images.dropFirst()), near: center)
+        if placeCount > 1 {
+            AlertPresenter.showSuccess(title: "Photos from more than one place",
+                                       message: "Filled in the first place. Use Add places from your photos to save each of them.",
+                                       from: form)
         }
     }
 }
