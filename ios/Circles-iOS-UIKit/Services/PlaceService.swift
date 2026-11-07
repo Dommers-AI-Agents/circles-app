@@ -1853,9 +1853,12 @@ struct PlaceComment: Codable, Identifiable {
     
     // Helper properties
     var isLikedByCurrentUser: Bool {
-        guard let currentUserId = AuthService.shared.getUserId(),
-              let likes = likes else { return false }
-        return likes.contains(currentUserId)
+        isLiked(by: AuthService.shared.getUserId())
+    }
+
+    func isLiked(by userId: String?) -> Bool {
+        guard let userId, let likes else { return false }
+        return likes.contains(userId)
     }
     
     var displayLikesCount: Int {
@@ -1865,14 +1868,15 @@ struct PlaceComment: Codable, Identifiable {
     /// This person's heart on or off, with the count the server gave (or a
     /// step up/down while the tap is in flight). A comment screen keeps the
     /// result, so the heart shows (Wes, 2026-11-03: it reloaded the old copy).
-    func withLike(_ liked: Bool, count: Int? = nil) -> PlaceComment {
+    /// `me` is read once: before and after must be about the same person.
+    func withLike(_ liked: Bool, count: Int? = nil, me: String? = AuthService.shared.getUserId()) -> PlaceComment {
         var copy = self
-        guard let me = AuthService.shared.getUserId() else { return copy }
+        guard let me else { return copy }
         var ids = (likes ?? []).filter { $0 != me }
         if liked { ids.append(me) }
         copy.likes = ids
         let was = displayLikesCount
-        let wasLiked = isLikedByCurrentUser
+        let wasLiked = isLiked(by: me)
         copy.likesCount = count ?? max(0, was + (liked == wasLiked ? 0 : (liked ? 1 : -1)))
         return copy
     }
