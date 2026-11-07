@@ -3,7 +3,7 @@ jest.mock('../rewardService', () => ({
   stickerUrl: (code) => `https://api.favcircles.com/s/${code}`,
   effectiveEarnRate: (venue) => venue.earnRate || 10
 }));
-jest.mock('../placePhotoService', () => ({ coverUrl: () => null }));
+jest.mock('../placePhotoService', () => ({ coverUrl: () => null, venueCoverUrl: async () => null }));
 jest.mock('../appStoreConnect/ascClient', () => ({ configured: () => false, get: jest.fn(), post: jest.fn(), patch: jest.fn() }));
 const svc = require('../appClipExperienceService');
 
@@ -47,6 +47,14 @@ describe('appClipExperienceService copy', () => {
     const jpeg = await svc.headerImagePNG({ venueName: 'FavCircles', genericJoin: true }, 'window', null);
     const meta = await require('sharp')(jpeg).metadata();
     expect([meta.format, meta.width, meta.height]).toEqual(['jpeg', 1800, 1200]);
+  });
+
+  test('a store\'s card preview (for follow-up emails) is a 900 px JPEG of the whole card', async () => {
+    const jpeg = await svc.cardPreviewJPEG({ venueName: 'Pasta & Provisions', windowCode: 'ABC123' }, 'window');
+    const meta = await require('sharp')(jpeg).metadata();
+    expect(meta.format).toBe('jpeg');
+    expect(meta.width).toBe(900);
+    expect(meta.height).toBe(Math.round(900 * 1100 / 1200));
   });
 
   test('business category follows the store\'s category, shops otherwise', () => {

@@ -361,6 +361,32 @@ async function removeExperience(id) {
 
 const coverUrlFor = (venue) => placePhotos.venueCoverUrl(venue);
 
+/// The card as iOS draws it after a scan — picture, title, subtitle, Open —
+/// as a 900 px JPEG: a store sees its own card in a follow-up email
+/// (GET /app/clip-card/<code>.jpg, Wes 2026-11-07).
+async function cardPreviewJPEG(venue, kind = 'window', { width = 900 } = {}) {
+  const { title, subtitle } = copyFor(venue, kind);
+  const header = await headerImagePNG(venue, kind, await coverUrlFor(venue));
+  const CW = 1200;
+  const HH = 800; // the 3:2 header at card width
+  const PANEL = 300;
+  const top = await sharp(header).resize(CW, HH).png().toBuffer();
+  const panel = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${PANEL}">
+    <rect width="${CW}" height="${PANEL}" fill="#ffffff"/>
+    <text x="56" y="96" font-family="${SANS}" font-weight="bold" font-size="54" fill="#111111">${esc(title)}</text>
+    <text x="56" y="160" font-family="${SANS}" font-size="38" fill="#6b6b70">${esc(subtitle)}</text>
+    <rect x="56" y="200" width="${CW - 112}" height="76" rx="38" fill="#0A84FF"/>
+    <text x="${CW / 2}" y="251" text-anchor="middle" font-family="${SANS}" font-weight="bold" font-size="38" fill="#ffffff">Open</text>
+  </svg>`;
+  const rounded = Buffer.from(`<svg width="${CW}" height="${HH + PANEL}"><rect width="${CW}" height="${HH + PANEL}" rx="48" fill="#fff"/></svg>`);
+  const card = await sharp({ create: { width: CW, height: HH + PANEL, channels: 4, background: '#ffffff' } })
+    .composite([{ input: top, top: 0, left: 0 }, { input: Buffer.from(panel), top: HH, left: 0 }])
+    .png().toBuffer();
+  // Round the corners at full size first: sharp resizes before it composites
+  const cornered = await sharp(card).composite([{ input: rounded, blend: 'dest-in' }]).png().toBuffer();
+  return sharp(cornered).flatten({ background: '#ffffff' }).resize(width).jpeg({ quality: 82 }).toBuffer();
+}
+
 function fingerprintFor(venue, kind, code, coverUrl, { live = true } = {}) {
   const rewarding = kind === 'register' && live;
   const points = rewarding ? rewardService.effectiveEarnRate(venue) : '';
@@ -447,4 +473,4 @@ function publishNewVenueQuiet(venueId) {
   })().catch((error) => console.error('⚠️ App Clip card publish failed for new store', venueId, error.message));
 }
 
-module.exports = { KINDS, HEADER_VERSION, copyFor, businessCategoryFor, wrapName, headerImagePNG, fingerprintFor, syncVenue, syncVenueQuiet, publishNewVenueQuiet, removeExperience, TITLE_MAX, SUBTITLE_MAX };
+module.exports = { KINDS, HEADER_VERSION, copyFor, cardPreviewJPEG, businessCategoryFor, wrapName, headerImagePNG, fingerprintFor, syncVenue, syncVenueQuiet, publishNewVenueQuiet, removeExperience, TITLE_MAX, SUBTITLE_MAX };

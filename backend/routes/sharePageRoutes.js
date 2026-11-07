@@ -195,6 +195,25 @@ ${photoUrl ? `<meta property="og:image" content="${esc(photoUrl)}">` : ''}
 // renders this — the Universal Link opens the widget's page directly. This is
 // what everyone else sees, and its job is the App Store, because these links
 // are shared precisely with people who don't have FavCircles yet.
+// A store's own App Clip card as a picture, for follow-up emails to stores
+// (Wes, 2026-11-07). Public: anyone who scans the code sees this card anyway.
+router.get('/app/clip-card/:code', async (req, res) => {
+  try {
+    const code = String(req.params.code).replace(/\.jpe?g$/i, '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 16);
+    const rewardService = require('../services/rewardService');
+    const venue = code ? await rewardService.findVenueByCode(code) : null;
+    if (!venue) return res.status(404).send('No card for this code');
+    const { cardPreviewJPEG } = require('../services/appClipExperienceService');
+    const jpeg = await cardPreviewJPEG(venue, venue.kind === 'register' ? 'register' : 'window');
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(jpeg);
+  } catch (error) {
+    console.error('Clip card image failed:', error.message);
+    res.status(500).send('Could not draw this card');
+  }
+});
+
 router.get('/app/widget/:id', async (req, res) => {
   const id = String(req.params.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
   const appStoreUrl = APP_STORE_URL;
