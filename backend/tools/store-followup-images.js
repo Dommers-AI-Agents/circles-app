@@ -37,9 +37,7 @@ async function findVenue(arg) {
   fs.writeFileSync(path.join(outDir, 'window-qr.png'),
     await QRCode.toBuffer(windowLink, { width: 600, margin: 2, errorCorrectionLevel: 'M' }));
   const { title, subtitle } = copyFor(venue, 'window');
-  const slug = String(venue.venueName || 'store').toLowerCase().replace(/&/g, ' and ')
-    .normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'store';
-  const cardFile = `${slug}-${venue.windowCode}.jpg`;
+  const cardFile = require('../services/storeFollowupEmail').cardSlug(venue);
   const siteDir = path.join(__dirname, '../../website/favcircles.com/store-cards');
   fs.mkdirSync(siteDir, { recursive: true });
   fs.copyFileSync(path.join(outDir, 'clip-card.jpg'), path.join(siteDir, cardFile));
