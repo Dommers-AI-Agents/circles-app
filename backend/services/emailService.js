@@ -1063,7 +1063,10 @@ FavCircles · Save the places you love`;
       redemptions: stats?.redemptions || 0
     };
 
-    const subject = `Your FavCircles sticker results for ${monthKey} — ${venue.venueName}`;
+    // "2026-10" → "October 2026"
+    const [year, month] = String(monthKey).split('-').map(Number);
+    const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    const subject = `Your FavCircles store report for ${monthLabel} — ${venue.venueName}`;
 
     const row = (label, value) => `
       <tr>
@@ -1073,12 +1076,12 @@ FavCircles · Save the places you love`;
 
     const html = `
       <div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#3182CE">FavCircles Sticker Report — ${escapeHtml(monthKey)}</h2>
+        <h2 style="color:#3182CE">FavCircles Store Report — ${escapeHtml(monthLabel)}</h2>
         <p>Hi${venue.contactName ? ' ' + escapeHtml(venue.contactName) : ''},</p>
-        <p>Here's how the FavCircles sticker at <strong>${escapeHtml(venue.venueName)}</strong> performed last month:</p>
+        <p>Here's how FavCircles did for <strong>${escapeHtml(venue.venueName)}</strong> last month:</p>
         <table style="border-collapse:collapse;width:100%;background:#fafafa;border-radius:8px">
-          ${row('QR scans', safeStats.scans)}
-          ${row('New app signups from your sticker', safeStats.signups)}
+          ${row('QR code scans', safeStats.scans)}
+          ${row('New FavCircles signups at your store', safeStats.signups)}
           ${row('People who saved your place', safeStats.saves)}
           ${row('Verified repeat visits', safeStats.visits)}
           ${row('Rewards redeemed at your counter', safeStats.redemptions)}
@@ -1088,7 +1091,7 @@ FavCircles · Save the places you love`;
         <p style="color:#888;font-size:13px">Questions or want to change your offers? Just reply to this email.</p>
       </div>`;
 
-    const text = `FavCircles Sticker Report ${monthKey} — ${venue.venueName}
+    const text = `FavCircles Store Report ${monthLabel} — ${venue.venueName}
 QR scans: ${safeStats.scans}
 New signups: ${safeStats.signups}
 Place saves: ${safeStats.saves}

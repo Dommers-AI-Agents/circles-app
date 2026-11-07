@@ -92,6 +92,12 @@ exports.buildSuggestions = scheduledTask({
   }
 });
 
+// Every other Saturday (services/emailCadence): the "your map" email
+exports.mapDigest = scheduledTask({
+  name: 'map-digest', log: '🗺️ Map digest triggered via API', failure: 'Failed to send map digest emails',
+  run: async () => ({ message: 'Map digest done', result: await require('../../services/mapDigestService').runDigest() })
+});
+
 exports.followSuggestions = scheduledTask({
   name: 'follow-suggestions', log: '👋 Follow-suggestion email run triggered via API', failure: 'Failed to send follow-suggestion emails',
   run: async (req) => {
@@ -142,8 +148,8 @@ exports.specialEvent = scheduledTask({
 exports.sendVenueReports = scheduledTask({
   name: 'venue reports', log: '🏪 Venue sticker reports triggered via API', failure: 'Failed to send venue reports',
   run: async () => {
-    const { monthKey, sent, skipped, failures } = await sendVenueReports();
-    return { message: `Venue reports for ${monthKey}: ${sent} sent, ${skipped} skipped (no email), ${failures.length} failed`, failures };
+    const { monthKey, sent, skipped, quiet, failures } = await sendVenueReports();
+    return { message: `Venue reports for ${monthKey}: ${sent} sent, ${quiet} quiet (nothing to report), ${skipped} skipped (no email), ${failures.length} failed`, failures };
   }
 });
 

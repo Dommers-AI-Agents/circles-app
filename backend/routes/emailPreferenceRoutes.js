@@ -12,7 +12,7 @@ const router = express.Router();
 const KNOWN_KINDS = new Set([followSuggestions.PREFERENCE_KEY, 'weeklyMapDigest', 'productUpdates', 'activityEmails']);
 const LABELS = {
   [followSuggestions.PREFERENCE_KEY]: '"People you may know" emails',
-  weeklyMapDigest: 'the weekly map email',
+  weeklyMapDigest: 'the map email',
   productUpdates: 'product update emails',
   activityEmails: 'emails about messages, followers and comments'
 };

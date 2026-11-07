@@ -87,7 +87,7 @@ class ScheduledNotifications {
     const job = cron.schedule('0 10 * * 0', async () => {
       console.log('🗺️ Running weekly map digest emails...');
       try {
-        await require('./mapDigestService').runWeeklyDigest();
+        await require('./mapDigestService').runDigest();
       } catch (error) {
         console.error('❌ Weekly map digest failed:', error);
       }

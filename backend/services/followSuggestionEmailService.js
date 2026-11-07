@@ -26,6 +26,7 @@ const MIN_DAYS_BETWEEN_EMAILS = 6;   // weekly job + a little slack
 const DEFAULT_MAX_ACCOUNT_AGE_DAYS = 60;
 const PREFERENCE_KEY = 'followSuggestions';
 const { isHiddenAccount } = require('./hiddenAccounts');
+const { recentlyEmailed } = require('./emailCadence');
 const SEND_GAP_MS = 3000;            // between messages — the SMTP host dislikes bursts
 const RETRY_DELAY_MS = 8000;         // one retry per address after a failure
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -56,7 +57,7 @@ const daysBetween = (a, b) => Math.abs(a.getTime() - b.getTime()) / 86400000;
  */
 const selectCandidates = (users, { now = new Date(), maxAgeDays = maxAccountAgeDays(), defaultIds = new Set() } = {}) => {
   const selected = [];
-  const skipped = { following_enough: 0, no_usable_email: 0, internal: 0, too_old: 0, opted_out: 0, sent_recently: 0 };
+  const skipped = { following_enough: 0, no_usable_email: 0, internal: 0, too_old: 0, opted_out: 0, sent_recently: 0, other_email_recently: 0 };
   for (const user of users) {
     // The default accounts are followed by everyone at signup — they don't count
     // (one real follow used to switch this email off)
@@ -73,6 +74,8 @@ const selectCandidates = (users, { now = new Date(), maxAgeDays = maxAccountAgeD
     if (user.emailPreferences && user.emailPreferences[PREFERENCE_KEY] === false) { skipped.opted_out++; continue; }
     const lastSentAt = toDate(user.followSuggestionEmail && user.followSuggestionEmail.lastSentAt);
     if (lastSentAt && daysBetween(now, lastSentAt) < MIN_DAYS_BETWEEN_EMAILS) { skipped.sent_recently++; continue; }
+    // Never the day after another recap email (services/emailCadence)
+    if (recentlyEmailed(user, now.getTime())) { skipped.other_email_recently++; continue; }
     selected.push({ ...user, email, followingCount });
   }
   return { selected, skipped };

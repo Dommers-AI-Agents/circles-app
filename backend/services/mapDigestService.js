@@ -1,7 +1,8 @@
 // backend/services/mapDigestService.js
 //
-// Weekly "your personal map" email — the product's core idea, reinforced:
-// first and foremost you are building YOUR OWN map. Each week the digest
+// "Your personal map" email, every other Saturday (services/emailCadence):
+// the product's core idea, reinforced — first and foremost you are building
+// YOUR OWN map. Each time the digest
 // picks one of the user's map views that actually looks great ("All your
 // favorite bars — one map", "Your restaurants in Charlotte") renders it as
 // an image, and mails it with open/share links.
@@ -17,10 +18,34 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 const emailService = require('./emailService');
 const { uploadImage } = require('./storage');
 const { pagedQuery } = require('../utils/firestorePaging');
+const { isHiddenAccount } = require('./hiddenAccounts');
+const { recentlyEmailed, toMs } = require('./emailCadence');
 
 const db = getFirestore();
 
 const BRAND_BLUE = '#3478F6';
+// Every other week, on Saturdays (services/emailCadence)
+const MIN_DAYS_BETWEEN_DIGESTS = 13;
+// Stop starting sends after this long so the scheduler call answers inside
+// Cloud Run's request timeout; the per-user stamp lets the next run carry on
+const SEND_DEADLINE_MS = 240 * 1000;
+const POSTAL_ADDRESS = 'FavCircles · PO Box 1540, Charlotte, NC 28203';
+const PREFERENCE_KEY = 'weeklyMapDigest';
+// Lazy: followSuggestionEmailService touches Firestore on load
+const unsubscribeUrl = (userId) => require('./followSuggestionEmailService').unsubscribeUrl(userId, PREFERENCE_KEY);
+
+/** Why this user gets no map email this run, or null to send. Pure. */
+const digestSkipReason = (user, now = Date.now()) => {
+  if (user.emailPreferences && user.emailPreferences[PREFERENCE_KEY] === false) return 'opted_out';
+  const email = (user.email || '').trim();
+  if (!email || email.endsWith('@privaterelay.appleid.com')) return 'no_usable_email';
+  if (isHiddenAccount(user)) return 'internal';
+  const last = toMs(user.mapDigest && user.mapDigest.lastSentAt);
+  if (last !== null && now - last < MIN_DAYS_BETWEEN_DIGESTS * 86400000) return 'sent_recently';
+  // Thursday's "People you may know" is two days back: the map waits a week
+  if (recentlyEmailed(user, now, 3)) return 'other_email_recently';
+  return null;
+};
 
 // category value -> what a human calls a group of them
 const CATEGORY_PLURAL = {
@@ -185,7 +210,7 @@ class MapDigestService {
     return url;
   }
 
-  buildEmailHtml({ user, view, imageUrl }) {
+  buildEmailHtml({ user, view, imageUrl, unsub = unsubscribeUrl(user.id) }) {
     const firstName = (user.displayName || 'there').split(' ')[0];
     const count = view.places.length;
     const sampleNames = view.places.slice(0, 6).map((p) => p.name);
@@ -233,20 +258,18 @@ class MapDigestService {
 
   <div style="padding:0 24px 26px;color:#999;font-size:12px;text-align:center;">
     <p style="margin:0;">You're getting this because every place you save builds your personal map on FavCircles.</p>
-    <p style="margin:6px 0 0;">Prefer not to get the weekly map? Manage emails in the app: Profile → Settings → Notifications.</p>
+    <p style="margin:6px 0 0;"><a href="${unsub}" style="color:#999;">Don't send me the map email</a></p>
+    <p style="margin:6px 0 0;">${POSTAL_ADDRESS}</p>
   </div>
 </div>`;
   }
 
   /** Build + send one user's digest. Returns a result descriptor. */
-  async sendDigestToUser(user, { toOverride = null } = {}) {
-    if (user.emailPreferences && user.emailPreferences.weeklyMapDigest === false) {
-      return { userId: user.id, sent: false, reason: 'opted_out' };
-    }
-    const email = toOverride || user.email;
-    if (!email || email.endsWith('@privaterelay.appleid.com')) {
-      return { userId: user.id, sent: false, reason: 'no_usable_email' };
-    }
+  async sendDigestToUser(user, { toOverride = null, stamp = !toOverride } = {}) {
+    // A test copy (toOverride) skips the rules and leaves no stamp
+    const skip = toOverride ? null : digestSkipReason(user);
+    if (skip) return { userId: user.id, sent: false, reason: skip };
+    const email = toOverride || user.email.trim();
 
     const places = await this.mappedPlaces(user.id);
     const views = this.buildCandidateViews(places);
@@ -260,7 +283,8 @@ class MapDigestService {
     const view = views[week % Math.min(views.length, 4)];
 
     const imageUrl = await this.hostedViewImage(view, user.id);
-    const html = this.buildEmailHtml({ user, view, imageUrl });
+    const unsub = unsubscribeUrl(user.id);
+    const html = this.buildEmailHtml({ user, view, imageUrl, unsub });
     const count = view.places.length;
     const subject = view.city
       ? `${count} favorite ${view.plural} in ${view.city} — your map 🗺️`
@@ -270,36 +294,54 @@ class MapDigestService {
       to: email,
       subject,
       html,
-      text: `${view.headline} — ${count} places on your FavCircles map. Open the app to see it: https://api.favcircles.com/app/map?focus=${view.category}`
+      text: `${view.headline} — ${count} places on your FavCircles map. Open the app to see it: https://api.favcircles.com/app/map?focus=${view.category}\n\nDon't send me the map email: ${unsub}\n${POSTAL_ADDRESS}`,
+      headers: { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
     });
+    if (stamp) {
+      await db.collection(COLLECTIONS.USERS).doc(user.id).set({
+        mapDigest: { lastSentAt: new Date().toISOString(), count: ((user.mapDigest || {}).count || 0) + 1 }
+      }, { merge: true });
+    }
 
     return { userId: user.id, sent: true, headline: view.headline, count, imageUrl };
   }
 
-  /** Weekly pass over active users. Gated behind WEEKLY_MAP_DIGEST_ENABLED. */
-  async runWeeklyDigest() {
-    const results = { sent: 0, skipped: 0 };
-    // Viral-growth review 2026-10-01: a page of users at a time, not one
-    // snapshot of every user doc held for the whole (slow, paced) run.
-    for await (const docs of pagedQuery(db.collection(COLLECTIONS.USERS)))
-    for (const doc of docs) {
-      const user = { id: doc.id, ...doc.data() };
-      try {
-        const r = await this.sendDigestToUser(user);
-        if (r.sent) {
-          results.sent++;
-          console.log(`🗺️ Map digest sent to ${user.email}: ${r.headline} (${r.count})`);
-        } else {
-          results.skipped++;
+  /**
+   * The every-other-Saturday pass (POST /api/tasks/map-digest). Each user is
+   * stamped as they're sent, so a run cut off by the deadline, or a rerun,
+   * carries on with exactly who is left.
+   */
+  async runDigest({ deadlineMs = SEND_DEADLINE_MS, now = Date.now } = {}) {
+    const startedAt = now();
+    const results = { sent: 0, skipped: {}, failed: 0 };
+    const skip = (reason) => { results.skipped[reason] = (results.skipped[reason] || 0) + 1; };
+    for await (const docs of pagedQuery(db.collection(COLLECTIONS.USERS))) {
+      for (const doc of docs) {
+        const user = { id: doc.id, ...doc.data() };
+        const reason = digestSkipReason(user);
+        if (reason) { skip(reason); continue; }
+        if (now() - startedAt >= deadlineMs) {
+          results.deferred = true;
+          console.log(`🗺️ Map digest: deadline reached after ${results.sent} sent; the next run carries on`);
+          return results;
         }
-        // Gentle pacing for the SMTP server and the OSM tile servers
-        await new Promise((res) => setTimeout(res, 1500));
-      } catch (e) {
-        results.skipped++;
-        console.error(`🗺️ Map digest failed for ${user.id}:`, e.message);
+        try {
+          const r = await this.sendDigestToUser(user);
+          if (r.sent) {
+            results.sent++;
+            console.log(`🗺️ Map digest sent to ${user.id}: ${r.headline} (${r.count})`);
+          } else {
+            skip(r.reason);
+          }
+          // Gentle pacing for the SMTP server and the OSM tile servers
+          await new Promise((res) => setTimeout(res, 1500));
+        } catch (e) {
+          results.failed++;
+          console.error(`🗺️ Map digest failed for ${user.id}:`, e.message);
+        }
       }
     }
-    console.log(`🗺️ Weekly map digest complete: ${results.sent} sent, ${results.skipped} skipped`);
+    console.log(`🗺️ Map digest complete: ${results.sent} sent, ${results.failed} failed, skipped ${JSON.stringify(results.skipped)}`);
     return results;
   }
 }
@@ -308,4 +350,5 @@ module.exports = new MapDigestService();
 // Shared with the product-update email's "your map" section.
 module.exports.distanceKm = distanceKm;
 module.exports.cityFromAddress = cityFromAddress;
+module.exports.digestSkipReason = digestSkipReason;
 module.exports.CATEGORY_PLURAL = CATEGORY_PLURAL;
