@@ -28,7 +28,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
         
         var footer: String? {
             switch self {
-            case .dailySummary: return "Every Monday: what happened in your network this week, plus your FavCoins 🌵"
+            case .dailySummary: return "Every Wednesday: what happened in your network this week, plus your FavCoins 🌵"
             case .activityNotifications:
                 guard DwellCheckInMonitor.shared.isSupported else { return "Notifications about places and circles." }
                 return "Notifications about places and circles. \"Alert me at saved places\" lets you know when you walk into a place you've saved, even with the app closed — it needs location set to Always."

@@ -42,8 +42,11 @@ const digestSkipReason = (user, now = Date.now()) => {
   if (isHiddenAccount(user)) return 'internal';
   const last = toMs(user.mapDigest && user.mapDigest.lastSentAt);
   if (last !== null && now - last < MIN_DAYS_BETWEEN_DIGESTS * 86400000) return 'sent_recently';
-  // Thursday's "People you may know" is two days back: the map waits a week
-  if (recentlyEmailed(user, now, 3)) return 'other_email_recently';
+  if (recentlyEmailed(user, now)) return 'other_email_recently';
+  // Thursday's "People you may know" is exactly two days back: the map waits
+  // a week. (Wednesday's letter, at any local hour, is further back.)
+  const thursday = toMs(user.followSuggestionEmail && user.followSuggestionEmail.lastSentAt);
+  if (thursday !== null && now - thursday < 3 * 86400000) return 'other_email_recently';
   return null;
 };
 

@@ -12,28 +12,28 @@ const service = require('../dailySummaryService');
 const prefs = (summaryTime, timezone) => ({ notificationPreferences: { summaryTime, timezone } });
 
 describe('isUsersSummaryHour (weekly)', () => {
-  // 2026-09-14 is a Monday. 16:00Z = 12:00 New York, 09:00 Los Angeles.
-  const mondayNoonET = new Date('2026-09-14T16:00:00Z');
-  const tuesdayNoonET = new Date('2026-09-15T16:00:00Z');
+  // 2026-09-16 is a Wednesday. 16:00Z = 12:00 New York, 09:00 Los Angeles.
+  const wednesdayNoonET = new Date('2026-09-16T16:00:00Z');
+  const thursdayNoonET = new Date('2026-09-17T16:00:00Z');
 
-  it('fires on Monday at the preferred local hour', () => {
-    expect(service.isUsersSummaryHour(prefs('12:00', 'America/New_York'), mondayNoonET)).toBe(true);
+  it('fires on Wednesday at the preferred local hour', () => {
+    expect(service.isUsersSummaryHour(prefs('12:00', 'America/New_York'), wednesdayNoonET)).toBe(true);
   });
   it('is timezone-aware: noon ET is 9am in LA', () => {
-    expect(service.isUsersSummaryHour(prefs('12:00', 'America/Los_Angeles'), mondayNoonET)).toBe(false);
-    expect(service.isUsersSummaryHour(prefs('09:00', 'America/Los_Angeles'), mondayNoonET)).toBe(true);
+    expect(service.isUsersSummaryHour(prefs('12:00', 'America/Los_Angeles'), wednesdayNoonET)).toBe(false);
+    expect(service.isUsersSummaryHour(prefs('09:00', 'America/Los_Angeles'), wednesdayNoonET)).toBe(true);
   });
   it('does not fire on other weekdays even at the right hour', () => {
-    expect(service.isUsersSummaryHour(prefs('12:00', 'America/New_York'), tuesdayNoonET)).toBe(false);
+    expect(service.isUsersSummaryHour(prefs('12:00', 'America/New_York'), thursdayNoonET)).toBe(false);
   });
   it('defaults to 12:00 New York and survives a bad timezone', () => {
-    expect(service.isUsersSummaryHour({}, mondayNoonET)).toBe(true);
-    expect(service.isUsersSummaryHour(prefs('12:00', 'Mars/Olympus'), mondayNoonET)).toBe(true);
+    expect(service.isUsersSummaryHour({}, wednesdayNoonET)).toBe(true);
+    expect(service.isUsersSummaryHour(prefs('12:00', 'Mars/Olympus'), wednesdayNoonET)).toBe(true);
   });
-  it('crosses the date line correctly: Monday 10:00 in Tokyo is Sunday in New York', () => {
-    const tokyoMonday10 = new Date('2026-09-14T01:00:00Z');
-    expect(service.isUsersSummaryHour(prefs('10:00', 'Asia/Tokyo'), tokyoMonday10)).toBe(true);
-    expect(service.isUsersSummaryHour(prefs('21:00', 'America/New_York'), tokyoMonday10)).toBe(false);
+  it('crosses the date line correctly: Wednesday 10:00 in Tokyo is Tuesday in New York', () => {
+    const tokyoWednesday10 = new Date('2026-09-16T01:00:00Z');
+    expect(service.isUsersSummaryHour(prefs('10:00', 'Asia/Tokyo'), tokyoWednesday10)).toBe(true);
+    expect(service.isUsersSummaryHour(prefs('21:00', 'America/New_York'), tokyoWednesday10)).toBe(false);
   });
 });
 

@@ -20,7 +20,7 @@ class DailySummaryService {
     this.batchSize = 50; // Process users in batches (stats + push fan-out; email is pooled)
     this.windowDays = 7;
     // Local weekday the recap goes out (0 = Sunday … 6 = Saturday)
-    this.summaryWeekday = 1; // Monday
+    this.summaryWeekday = 3; // Wednesday (Wes, 2026-11-06; services/emailCadence)
   }
 
   // Send weekly summaries to all eligible users.
@@ -93,7 +93,7 @@ class DailySummaryService {
 
   // Generate and send summary for individual user. `stamp: false` sends
   // without marking the week done (test route) so a manual check never
-  // suppresses the real Monday send.
+  // suppresses the real Wednesday send.
   async generateAndSendSummary(user, { stamp = true } = {}) {
     try {
       const userId = user.id;
@@ -525,7 +525,7 @@ class DailySummaryService {
   }
 
   // True when the user's local clock is currently in the hour of their chosen
-  // summaryTime AND it's summary day (Monday) where they are. Invalid/missing
+  // summaryTime AND it's summary day (Wednesday) where they are. Invalid/missing
   // timezone falls back to America/New_York, which matches the historical
   // noon-ET behavior.
   // True when some UTC offset (−12:00 … +14:00, every 15 minutes — every real
@@ -556,7 +556,7 @@ class DailySummaryService {
 
   // Check if user already received this week's summary. A rolling 6-day
   // window instead of a calendar compare: timezone-proof, and it still lets
-  // next Monday's send through even across DST shifts. Reads ONLY the new
+  // next week's send through even across DST shifts. Reads ONLY the new
   // lastWeeklySummary stamp: the retired daily job kept writing
   // lastDailySummary right up to the deploy, and honoring it would have
   // silently skipped everyone's first Monday.

@@ -2,8 +2,9 @@
 // 2026-11-06: "someone isn't getting them Sunday Monday Tuesday… we need a
 // better cadence").
 //
-//   Monday    the weekly letter (dailySummaryService, each user's local hour)
-//   Thursday  "People you may know" (new accounts following few people)
+//   Wednesday the weekly letter (dailySummaryService, each user's local hour)
+//   Thursday  "People you may know" (new accounts following few people;
+//             its job is paused while there are few new users, 2026-11-06)
 //   Saturday  the map email, every other week (mapDigestService)
 //
 // The schedule lives on the Cloud Scheduler jobs; this rule is the backstop:

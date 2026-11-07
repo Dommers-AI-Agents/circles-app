@@ -1,4 +1,4 @@
-// The week's recap emails are spread out (Wes, 2026-11-06): letter Monday,
+// The week's recap emails are spread out (Wes, 2026-11-06): letter Wednesday,
 // "People you may know" Thursday, the map every other Saturday, and never
 // two of them a day apart.
 jest.mock('../../config/firebase', () => ({ getFirestore: () => ({}) }));
@@ -28,8 +28,9 @@ test('the map email: every other week, never right after Thursday, never to test
   expect(digestSkipReason(user({ mapDigest: { lastSentAt: daysAgo(14) } }), now)).toBeNull();
   // Thursday 10 ET → Saturday 10 ET: wait a week
   expect(digestSkipReason(user({ followSuggestionEmail: { lastSentAt: daysAgo(2) } }), now)).toBe('other_email_recently');
-  // Monday's letter is five days back: fine
-  expect(digestSkipReason(user({ lastWeeklySummary: daysAgo(5) }), now)).toBeNull();
+  // Wednesday's letter, even sent late at night in Hawaii, is over two days back: fine
+  expect(digestSkipReason(user({ lastWeeklySummary: daysAgo(2.25) }), now)).toBeNull();
+  expect(digestSkipReason(user({ lastWeeklySummary: daysAgo(3) }), now)).toBeNull();
   expect(digestSkipReason(user({ emailPreferences: { weeklyMapDigest: false } }), now)).toBe('opted_out');
   expect(digestSkipReason(user({ email: 'x@privaterelay.appleid.com' }), now)).toBe('no_usable_email');
   expect(digestSkipReason(user({ isTestAccount: true }), now)).toBe('internal');
