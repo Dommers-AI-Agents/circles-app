@@ -36,7 +36,7 @@ describe('appClipExperienceService copy', () => {
   test('the generic join card says what FavCircles is for, never its name, and no line repeats another', async () => {
     for (const kind of svc.KINDS) {
       const copy = svc.copyFor({ venueName: 'FavCircles', genericJoin: true }, kind);
-      expect(copy.title).toBe('What\u2019s your favorite place?');
+      expect(copy.title).toBe('What\u2019s your favorite spot?');
       // The App Clip's default card words, not a store's "Save us" (2026-11-07)
       expect(copy.subtitle).toBe('Every great place has a story. Remember yours.');
       expect(copy.hook).toEqual(['The Road less', 'traveled is yours.', 'Save it.']);

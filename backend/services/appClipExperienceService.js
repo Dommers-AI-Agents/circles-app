@@ -93,7 +93,7 @@ function copyFor(venue, kind, { live = true } = {}) {
     // The title is also the camera's pill right after a scan (Wes, 2026-11-07:
     // "Build your map" said nothing): a question, and the subtitle says why
     return {
-      title: 'What\u2019s your favorite place?',
+      title: 'What\u2019s your favorite spot?',
       subtitle: 'Every great place has a story. Remember yours.',
       hook: ['The Road less', 'traveled is yours.', 'Save it.'],
       lead: null
