@@ -8,7 +8,11 @@ describe('store follow-up email', () => {
   test('the card is in the email itself, and every link goes straight to us (no redirects)', async () => {
     const email = await buildStoreFollowup(venue, { ownerName: 'Vickie' });
     expect(email.html).toContain('src="cid:storecard"');
-    expect(email.attachments).toEqual([expect.objectContaining({ cid: 'storecard', contentType: 'image/jpeg' })]);
+    expect(email.html).toContain('src="cid:storeqr"');
+    expect(email.attachments).toEqual([
+      expect.objectContaining({ cid: 'storecard', contentType: 'image/jpeg' }),
+      expect.objectContaining({ cid: 'storeqr', contentType: 'image/png' })
+    ]);
     const hrefs = [...email.html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
     expect(hrefs).toEqual(expect.arrayContaining([
       'https://favcircles.com/store-cards/pasta-and-provisions-3OZM82.jpg',

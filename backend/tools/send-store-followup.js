@@ -41,7 +41,8 @@ async function findVenue(arg) {
   const outDir = flag('out') || fs.mkdtempSync(path.join(os.tmpdir(), 'store-followup-'));
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, 'card.jpg'), email.attachments[0].content);
-  fs.writeFileSync(path.join(outDir, 'preview.html'), email.html.replace('cid:storecard', 'card.jpg'));
+  fs.writeFileSync(path.join(outDir, 'qr.png'), email.attachments[1].content);
+  fs.writeFileSync(path.join(outDir, 'preview.html'), email.html.replace('cid:storecard', 'card.jpg').replace('cid:storeqr', 'qr.png'));
   console.log(`Store: ${venue.venueName}\nSubject: ${email.subject}\nCard on the website: ${email.cardUrl}\nPreview: ${path.join(outDir, 'preview.html')}`);
   if (!process.argv.includes('--send')) { console.log('Not sent (add --send).'); process.exit(0); }
   if (!to) throw new Error('--to is required to send');

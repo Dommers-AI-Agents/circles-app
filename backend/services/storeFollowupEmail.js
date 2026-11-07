@@ -5,6 +5,7 @@
 // turned every link into a google.com redirect with a "Redirect Notice").
 const { cardPreviewJPEG } = require('./appClipExperienceService');
 const rewardService = require('./rewardService');
+const QRCode = require('qrcode');
 const { escapeHtml: esc } = require('../utils/text');
 
 const SITE = 'https://favcircles.com';
@@ -49,6 +50,8 @@ async function buildStoreFollowup(venue, { ownerName = null, cardJpeg = null } =
   const tryLink = rewardService.stickerUrl(venue.windowCode);
   const cardUrl = `${SITE}/store-cards/${cardSlug(venue)}`;
   const jpeg = cardJpeg || await cardPreviewJPEG(venue, 'window');
+  // Scanned with an iPhone's camera, it opens the card itself (2026-11-07)
+  const qrPng = await QRCode.toBuffer(tryLink, { width: 480, margin: 2, errorCorrectionLevel: 'M' });
   const hi = ownerName ? `Hi ${String(ownerName).trim()},` : 'Hi there,';
   const subject = `${store} on FavCircles: here's your store's card`;
 
@@ -59,7 +62,9 @@ async function buildStoreFollowup(venue, { ownerName = null, cardJpeg = null } =
 <p style="${p}">Thanks for taking a few minutes with me at ${esc(store)}. As promised, here is what your customers see when they scan your FavCircles code or tap your NFC sticker:</p>
 <p style="${p}"><a href="${cardUrl}"><img src="cid:storecard" width="440" alt="${esc(store)}'s FavCircles card" style="display:block;width:100%;max-width:440px;height:auto;border:0;border-radius:18px"></a></p>
 <p style="${p}">It's your own store card, with your photo and your name, not a generic app download. One tap on Open saves ${esc(store)} to their favorites, and they can share it with friends right away. There's nothing to download first.</p>
-<p style="${p}">Want to try it yourself? Open this link on an iPhone: <a href="${tryLink}">${esc(tryLink.replace(/^https:\/\//, ''))}</a></p>
+<p style="margin:0 0 8px">Want to try it yourself? Scan this with your iPhone camera:</p>
+<p style="margin:0 0 8px"><img src="cid:storeqr" width="160" height="160" alt="QR code for ${esc(store)}'s FavCircles card" style="display:block;width:160px;height:160px;border:0"></p>
+<p style="${p}">Or open this link on an iPhone: <a href="${tryLink}">${esc(tryLink.replace(/^https:\/\//, ''))}</a></p>
 <p style="margin:0 0 6px"><b>FREE FOR EVERY STORE</b></p>
 <ul style="margin:0 0 16px;padding-left:20px">${list(FREE)}</ul>
 <p style="margin:0 0 6px"><b>FavCircles BUSINESS</b> (free for 3 months, then $49.99 a month)</p>
@@ -78,7 +83,7 @@ ${cardUrl}
 
 It's your own store card, with your photo and your name, not a generic app download. One tap on Open saves ${store} to their favorites, and they can share it with friends right away. There's nothing to download first.
 
-Want to try it yourself? Open this link on an iPhone: ${tryLink}
+Want to try it yourself? Scan the QR code in this email with your iPhone camera, or open this link on an iPhone: ${tryLink}
 
 FREE FOR EVERY STORE
 ${bullets(FREE)}
@@ -102,7 +107,10 @@ ${SIGNATURE.email}`;
 
   return {
     subject, html, text, cardUrl, tryLink,
-    attachments: [{ filename: cardSlug(venue), content: jpeg, contentType: 'image/jpeg', cid: 'storecard' }]
+    attachments: [
+      { filename: cardSlug(venue), content: jpeg, contentType: 'image/jpeg', cid: 'storecard' },
+      { filename: `${cardSlug(venue).replace(/\.jpg$/, '')}-qr.png`, content: qrPng, contentType: 'image/png', cid: 'storeqr' }
+    ]
   };
 }
 
