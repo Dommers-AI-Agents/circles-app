@@ -16,6 +16,17 @@ protocol FullScreenMapViewControllerDelegate: AnyObject {
     /// its distance list live and — from the modal — to mirror the query back
     /// so the search survives dismissal until the user clears it.
     func mapViewController(_ controller: FullScreenMapViewController, didApplySearchQuery query: String?)
+    /// Every loaded place and whose each one is, for ranking the people
+    /// dropdown by places in view. The embedded home map only holds the
+    /// current person's places, so the home supplies its whole set. nil =
+    /// count the map's own places.
+    func mapViewControllerPeoplePlaces(_ controller: FullScreenMapViewController) -> MapPeoplePlaces?
+}
+
+/// Places to count for the people dropdown, and whose each place is.
+struct MapPeoplePlaces {
+    let places: [Place]
+    let author: (Place) -> String?
 }
 
 // Default no-ops so existing conformers don't need to handle every event
@@ -24,6 +35,7 @@ extension FullScreenMapViewControllerDelegate {
     func mapViewController(_ controller: FullScreenMapViewController, didChangeConnectionFilter connectionId: String?) {}
     func mapViewControllerDidChangeChipFilters(_ controller: FullScreenMapViewController) {}
     func mapViewController(_ controller: FullScreenMapViewController, didApplySearchQuery query: String?) {}
+    func mapViewControllerPeoplePlaces(_ controller: FullScreenMapViewController) -> MapPeoplePlaces? { nil }
 }
 
 enum MapViewMode {
@@ -2183,7 +2195,31 @@ extension FullScreenMapViewController: MapFilterMenuBuilderDelegate {
         state.places = places
         state.connections = connections
         state.facetBase = applyOriginFilter(connectionScopedPlaces())
+        state.placesInViewByPerson = placesInViewByPerson()
         return state
+    }
+
+    /// Each person's places inside the current view, under the category and
+    /// region chips, for ranking the people dropdown. The modal counts its own
+    /// places (the server's per-person lists, else who added it), the same
+    /// attribution its people filter uses; the embedded map asks its host.
+    private func placesInViewByPerson() -> [String: Int] {
+        let source: MapPeoplePlaces
+        if !isPresentedModally, let hosted = delegate?.mapViewControllerPeoplePlaces(self) {
+            source = hosted
+        } else {
+            var bucketOwner: [String: String] = [:]
+            for (personId, list) in connectionPlaces {
+                for place in list { bucketOwner[place.id] = personId }
+            }
+            source = MapPeoplePlaces(places: places + connectionPlaces.values.flatMap { $0 },
+                                     author: { bucketOwner[$0.id] ?? $0.addedBy })
+        }
+        let rect = mapView.visibleMapRect
+        return MapPeopleInView.counts(applyChipFilters(source.places), author: source.author) { place in
+            guard let coordinate = place.location?.clLocation?.coordinate else { return false }
+            return rect.contains(MKMapPoint(coordinate))
+        }
     }
 
     func menuBuilder(_ builder: MapFilterMenuBuilder, perform action: MapFilterMenuAction) {

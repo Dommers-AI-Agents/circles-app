@@ -42,6 +42,9 @@ final class MapFilterMenuBuilder {
         /// Places under the current connection scope and origin filter — the
         /// base the category and region menus facet from.
         var facetBase: [Place] = []
+        /// Places each person has in the map's current view (normalized user
+        /// id → count), for ranking the people rows. Empty = keep row order.
+        var placesInViewByPerson: [String: Int] = [:]
     }
 
     weak var delegate: MapFilterMenuBuilderDelegate?
@@ -64,9 +67,10 @@ final class MapFilterMenuBuilder {
 
     // MARK: - Connection menu
 
-    /// Everyone / My Connections / My Places, then each person in the home
-    /// connections row's order — the same ranking, so the list reads identically
-    /// everywhere. Each person shows their avatar, so it scans by face not name.
+    /// Everyone / My Connections / My Places, then each person: those with
+    /// places in the current view first, most first ("12 places here"), then
+    /// the rest in the home connections row's order. Each person shows their
+    /// avatar, so it scans by face not name.
     func connectionMenuElements() -> [UIMenuElement] {
         let state = self.state
         // "My Places" wears YOUR face — same circular treatment as everyone
@@ -177,30 +181,35 @@ final class MapFilterMenuBuilder {
             }
         }
 
-        // Person rows: ranked connections first (same order as the home row),
-        // then everyone else you follow — the map can scope to any of them.
+        // Person rows: ranked connections (the home row's order), then
+        // everyone else you follow — the map can scope to any of them. Then
+        // whoever has places in the current view moves up, most first.
         let currentUserId = AuthService.shared.getUserId() ?? ""
+        var people: [(id: String, user: User)] = []
         var listedIds = Set<String>()
         for connection in HorizontalUserListView.rankedConnections(state.connections) {
             guard let user = connection.connectedUser else { continue }
             let otherId = connection.otherUserId(currentUserId: currentUserId)
             listedIds.insert(otherId)
-            actions.append(UIAction(title: user.displayName,
-                                    image: menuAvatar(for: user),
-                                    state: state.selectedConnectionId == otherId ? .on : .off) { [weak self] _ in
-                self?.perform(.selectConnection(id: otherId, user: user))
-            })
+            people.append((otherId, user))
         }
         for user in NetworkManager.shared.followingUsers {
             guard !user.id.isEmpty,
                   !listedIds.contains(user.id),
                   !IDNormalizer.isSameUser(user.id, currentUserId) else { continue }
             listedIds.insert(user.id)
-            actions.append(UIAction(title: user.displayName,
-                                    image: menuAvatar(for: user),
-                                    state: state.selectedConnectionId == user.id ? .on : .off) { [weak self] _ in
-                self?.perform(.selectConnection(id: user.id, user: user))
-            })
+            people.append((user.id, user))
+        }
+        let counts = state.placesInViewByPerson
+        for person in MapPeopleInView.ordered(people, id: { $0.id }, counts: counts) {
+            let count = MapPeopleInView.count(for: person.id, in: counts)
+            let action = UIAction(title: person.user.displayName,
+                                  subtitle: MapPeopleInView.subtitle(count: count),
+                                  image: menuAvatar(for: person.user),
+                                  state: state.selectedConnectionId == person.id ? .on : .off) { [weak self] _ in
+                self?.perform(.selectConnection(id: person.id, user: person.user))
+            }
+            actions.append(action)
         }
         return actions
     }

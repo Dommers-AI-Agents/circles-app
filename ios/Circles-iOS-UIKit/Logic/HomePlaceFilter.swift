@@ -67,17 +67,22 @@ struct HomePlaceFilter {
         }
     }
 
+    /// Whose place a pin is on the home map: the owner of its circle when
+    /// known, else who added it. The people dropdown counts by the same rule.
+    static func author(of place: Place, networkCircleOwners: [String: String]) -> String? {
+        if let circleId = place.circleId, let owner = networkCircleOwners[circleId] {
+            return owner
+        }
+        return place.addedBy
+    }
+
     static func apply(_ input: [Place], context: Context) -> [Place] {
         let places = excludingHiddenOrigins(
             excludingHiddenCircles(input, hiddenIds: context.hiddenCircleIds),
             hidden: context.hiddenOrigins, currentUserId: context.currentUserId)
 
-        /// Owner of the place's circle when known, else who added it.
         func author(of place: Place) -> String? {
-            if let circleId = place.circleId, let owner = context.networkCircleOwners[circleId] {
-                return owner
-            }
-            return place.addedBy
+            Self.author(of: place, networkCircleOwners: context.networkCircleOwners)
         }
 
         var scoped: [Place]
