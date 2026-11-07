@@ -293,6 +293,7 @@ extension AddPlaceViewController: MKMapViewDelegate {
     }
 
     func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+        hideMapTapHint()
         // Any annotation selection consumes the tap — the manual fallback
         // must not fire on top of it
         pendingManualMapTap?.cancel()

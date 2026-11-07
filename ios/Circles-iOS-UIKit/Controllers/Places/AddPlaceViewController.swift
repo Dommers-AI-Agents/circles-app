@@ -106,15 +106,34 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     // Hint label
     let hintLabel: UILabel = {
         let label = UILabel()
-        label.text = "Tap a place on the map or use the search bar to add it"
-        label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        label.textColor = .systemGray
+        label.text = "Search for it above, or tap it on the map"
+        label.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        label.textColor = Constants.Colors.label
         label.textAlignment = .center
         label.numberOfLines = 2
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
     
+    /// On the map until it's first tapped: says the map is tappable
+    /// (Wes, 2026-11-07: "show they can tap the place on the map").
+    let mapTapHint: UILabel = {
+        let label = PaddedPillLabel()
+        label.text = "👆 Tap a place to add it"
+        label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        label.textColor = .white
+        label.backgroundColor = UIColor.black.withAlphaComponent(0.65)
+        label.isUserInteractionEnabled = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    /// The Add from photos route (pick photos, a time period, build my map).
+    /// Shown when the caller passes `onAddFromPhotos`.
+    lazy var addFromPhotosButton = UIButton.rowButton(title: "Add places from your photos", systemName: "photo.on.rectangle")
+    var onAddFromPhotos: (() -> Void)?
+    private var addFromPhotosHeight: NSLayoutConstraint?
+
     // Search container for visual emphasis
     let searchContainer: UIView = {
         let view = UIView()
@@ -531,11 +550,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     /// "From photos": open already filled with this business (applied once
     /// the screen is up), and after a save go back to the caller instead of
     /// on to the circle — the photo list continues from there.
-    /// How the Add Place sheet opened it (2026-11-07): typing in the search,
-    /// or straight to the map to tap a spot
-    enum OpenMode { case standard, search, map }
-    var openMode: OpenMode = .standard
-
     var prefillMapItem: MKMapItem?
     /// Where to start the map when there's no business to fill in
     var prefillCenter: CLLocationCoordinate2D?
@@ -668,7 +682,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        applyOpenMode()
         if OnboardingManager.shared.takeGuide(.addPlace) {
             ScreenGuide.runSimple(.addPlace, in: self, target: { [weak self] in self?.searchBar })
         }
@@ -838,6 +851,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         )
         // Photos taken there (e.g. with no signal) → the place they were taken at
         installFromPhotoButton()
+        setupAddFromPhotosButton()
         
         // Add subviews
         view.addSubview(scrollView)
@@ -849,7 +863,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         contentView.addSubview(mapContainer)
         mapContainer.addSubview(mapView)
         mapContainer.addSubview(zoomToMeButton)
+        mapContainer.addSubview(mapTapHint)
         contentView.addSubview(manualEntryButton)
+        contentView.addSubview(addFromPhotosButton)
         contentView.addSubview(formContainer)
         view.addSubview(saveFooterBar)
         saveFooterBar.addSubview(addPlaceButton)
@@ -938,8 +954,16 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             manualEntryButton.topAnchor.constraint(equalTo: mapContainer.bottomAnchor, constant: Constants.Spacing.small),
             manualEntryButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
             
+            mapTapHint.topAnchor.constraint(equalTo: mapContainer.topAnchor, constant: 12),
+            mapTapHint.centerXAnchor.constraint(equalTo: mapContainer.centerXAnchor),
+
+            // Add from photos, under the map
+            addFromPhotosButton.topAnchor.constraint(equalTo: manualEntryButton.bottomAnchor, constant: Constants.Spacing.small),
+            addFromPhotosButton.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
+            addFromPhotosButton.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
+
             // Form container
-            formContainer.topAnchor.constraint(equalTo: manualEntryButton.bottomAnchor, constant: Constants.Spacing.medium),
+            formContainer.topAnchor.constraint(equalTo: addFromPhotosButton.bottomAnchor, constant: Constants.Spacing.medium),
             formContainer.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor),
             formContainer.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor),
             
@@ -1153,6 +1177,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     
     @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
+        hideMapTapHint()
         let location = gesture.location(in: mapView)
         let coordinate = mapView.convert(location, toCoordinateFrom: mapView)
 
@@ -2267,32 +2292,3 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
 /// `showPipelinePhoto`, `upgradeDescriptionWithEditorialSummary` already
 /// satisfy the loader's requirements by name.
 extension AddPlaceViewController: PlaceAssetLoaderDelegate {}
-
-// MARK: - Opened from the Add Place sheet
-
-extension AddPlaceViewController {
-    func applyOpenMode() {
-        let mode = openMode
-        openMode = .standard
-        switch mode {
-        case .standard:
-            return
-        case .search:
-            searchBar.becomeFirstResponder()
-        case .map:
-            let rect = mapView.convert(mapView.bounds, to: scrollView).insetBy(dx: 0, dy: -40)
-            scrollView.scrollRectToVisible(rect, animated: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
-                guard let self, self.presentedViewController == nil else { return }
-                let bubble = BubbleView()
-                bubble.configureHint(title: "Tap the place on the map",
-                                     description: "Zoom in and tap its name or icon. It fills in for you.",
-                                     arrowDirection: .bottom)
-                bubble.onNext = { [weak bubble] in bubble?.dismiss { bubble?.removeFromSuperview() } }
-                self.view.addSubview(bubble)
-                bubble.pointTo(self.mapView, in: self.view)
-                bubble.show()
-            }
-        }
-    }
-}
