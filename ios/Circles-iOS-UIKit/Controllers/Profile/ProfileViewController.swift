@@ -897,6 +897,9 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        if AuthService.shared.isMe(user?.id) || user == nil, OnboardingManager.shared.takeGuide(.profile) {
+            ScreenGuide.runSimple(.profile, in: self)
+        }
 
         // StoreKit may not have resolved the subscription when the view was
         // built — re-check now that it's had time to.

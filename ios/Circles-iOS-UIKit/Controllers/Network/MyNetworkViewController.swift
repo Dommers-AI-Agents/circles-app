@@ -190,6 +190,7 @@ class MyNetworkViewController: BaseViewController {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        if OnboardingManager.shared.takeGuide(.findPeople) { ScreenGuide.runSimple(.findPeople, in: self) }
         
         // Clear newly accepted connection highlight after a delay
         if UserDefaults.standard.string(forKey: "newlyAcceptedConnectionId") != nil {

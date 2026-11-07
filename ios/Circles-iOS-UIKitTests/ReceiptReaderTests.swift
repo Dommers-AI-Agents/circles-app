@@ -138,3 +138,18 @@ struct SubscriptionMoveTests {
         #expect(info.status == .none)
     }
 }
+
+struct ScreenGuideCopyTests {
+    @Test func everyScreenTheTourOpensExplainsItselfAndOffersANextStep() {
+        for kind in [ScreenGuideKind.rewards, .checkIn, .findPeople, .profile, .addPlace, .ownPlace] {
+            #expect(!ScreenGuideCopy.stops(kind).isEmpty)
+            #expect(!ScreenGuideCopy.finish(kind).back.isEmpty)
+        }
+        // Store Rewards ends on the Piggy Bank, then a place they love
+        #expect(ScreenGuideCopy.stops(.rewards).last?.title == "Your Piggy Bank")
+        #expect(ScreenGuideCopy.finish(.rewards).next == ScreenGuideCopy.addPlaceNext)
+        #expect(ScreenGuideCopy.stops(.ownPlace, placeName: "Ilios").first?.title == "Check in at Ilios")
+        // FavCoins are live crypto, never "coming soon"
+        #expect(!ScreenGuideCopy.stops(.rewards)[2].message.contains("coming soon"))
+    }
+}

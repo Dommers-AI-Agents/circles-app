@@ -86,6 +86,26 @@ final class RewardsHubViewController: BaseViewController {
         showTab(initialTab)
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // The tour's "Show me": Store Rewards, codes, then the Piggy Bank, then
+        // a place they love (ScreenGuide, 2026-11-07)
+        guard OnboardingManager.shared.takeGuide(.rewards) else { return }
+        let copy = ScreenGuideCopy.stops(.rewards)
+        let tab = { [weak self] (tab: Tab) in
+            guard let self else { return }
+            self.segmentedControl.selectedSegmentIndex = tab.rawValue
+            self.showTab(tab)
+        }
+        ScreenGuide.run([
+            ScreenGuide.Stop(copy: copy[0], target: { [weak self] in self?.segmentedControl }, prepare: { tab(.rewards) }),
+            ScreenGuide.Stop(copy: copy[1], target: { nil }, prepare: { tab(.rewards) }),
+            ScreenGuide.Stop(copy: copy[2], target: { [weak self] in self?.segmentedControl }, prepare: { tab(.piggyBank) })
+        ], finish: ScreenGuideCopy.finish(.rewards), in: self,
+           onNext: { [weak self] in if let self { ScreenGuide.addPlace(from: self) } },
+           onBack: { [weak self] in if let self { ScreenGuide.backToTour(from: self) } })
+    }
+
     @objc private func tabChanged() {
         showTab(Tab(rawValue: segmentedControl.selectedSegmentIndex) ?? .rewards)
     }

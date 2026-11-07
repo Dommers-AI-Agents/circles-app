@@ -136,6 +136,7 @@ class CheckInViewController: BaseViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        if OnboardingManager.shared.takeGuide(.checkIn) { ScreenGuide.runSimple(.checkIn, in: self) }
 
         // A prefilled place needs no list; location still resolves in the
         // background so the check-in carries coordinates.

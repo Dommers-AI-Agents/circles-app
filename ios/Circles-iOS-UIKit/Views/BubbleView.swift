@@ -250,7 +250,7 @@ class BubbleView: UIView {
     /// `nextTitle` is "Next", or "Done"/"Keep going" on the last of a run.
     func configureTour(title: String, description: String, arrowDirection: ArrowDirection,
                        stepText: String?, canGoBack: Bool, learnMore: Bool, video: Bool,
-                       skipTitle: String = "Skip", nextTitle: String = "Next") {
+                       skipTitle: String = "Skip", nextTitle: String = "Next", learnMoreTitle: String? = nil) {
         configure(title: title, description: description, arrowDirection: arrowDirection)
         stepLabel.text = stepText
         stepLabel.isHidden = stepText == nil
@@ -261,6 +261,8 @@ class BubbleView: UIView {
         titleTop.isActive = true
         backButton.isHidden = !canGoBack
         learnMoreButton.isHidden = !learnMore
+        // A screen guide's next step reads as itself ("Add a place you love ›")
+        if let learnMoreTitle { learnMoreButton.setTitle("\(learnMoreTitle) \u{203A}", for: .normal) }
         videoButton.isHidden = !video
         linksStack.isHidden = !learnMore && !video
         buttonsTop.isActive = false

@@ -477,6 +477,7 @@ class PlaceDetailViewController: BaseViewController {
         if hasAppeared, placeVenueData?.isOwner == true || placeVenueData?.myOrder != nil || !(placeVenueData?.myOrders ?? []).isEmpty { venueLoader.loadVenueRewards() }
         hasAppeared = true
         openPendingPhotoIfReady()
+        runOwnPlaceGuideIfSent()
         if showCommentsOnAppear {
             showCommentsOnAppear = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
@@ -4051,5 +4052,35 @@ extension PlaceDetailViewController: PlaceNotesEditControllerDelegate {
             addNotesButton.isHidden = false
             notesEditButton.isHidden = true
         }
+    }
+}
+
+// MARK: - Guide: what you can do with the place you just added
+
+extension PlaceDetailViewController {
+    /// Right after adding a place from the tour's guide (ScreenGuide,
+    /// 2026-11-07): check in, photos, directions and friends, share, then back
+    /// to the tour
+    func runOwnPlaceGuideIfSent() {
+        guard place.isAddedByCurrentUser, OnboardingManager.shared.takeGuide(.ownPlace) else { return }
+        let copy = ScreenGuideCopy.stops(.ownPlace, placeName: place.name)
+        let scrollTo = { [weak self] (view: UIView) in
+            guard let self else { return }
+            let rect = view.convert(view.bounds, to: self.scrollView).insetBy(dx: 0, dy: -120)
+            self.scrollView.scrollRectToVisible(rect, animated: false)
+        }
+        let top = { [weak self] in
+            guard let self else { return }
+            self.scrollView.setContentOffset(CGPoint(x: 0, y: -self.scrollView.adjustedContentInset.top), animated: false)
+        }
+        let visible = { (view: UIView) -> UIView? in view.isHidden || view.window == nil ? nil : view }
+        ScreenGuide.run([
+            ScreenGuide.Stop(copy: copy[0], target: { [weak self] in self.flatMap { visible($0.checkInHereButton) } }, prepare: top),
+            ScreenGuide.Stop(copy: copy[1], target: { [weak self] in self.flatMap { visible($0.addPhotoButton) } }, prepare: top),
+            ScreenGuide.Stop(copy: copy[2], target: { [weak self] in self.flatMap { visible($0.directionsRowButton) } },
+                             prepare: { [weak self] in if let self { scrollTo(self.directionsRowButton) } }),
+            ScreenGuide.Stop(copy: copy[3], target: { nil }, prepare: top)
+        ], finish: ScreenGuideCopy.finish(.ownPlace), in: self,
+           onBack: { [weak self] in if let self { ScreenGuide.backToTour(from: self) } })
     }
 }

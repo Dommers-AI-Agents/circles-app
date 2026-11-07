@@ -663,6 +663,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        if OnboardingManager.shared.takeGuide(.addPlace) {
+            ScreenGuide.runSimple(.addPlace, in: self, target: { [weak self] in self?.searchBar })
+        }
         if let item = prefillMapItem {
             prefillMapItem = nil
             enableManualEntry()

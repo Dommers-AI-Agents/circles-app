@@ -123,7 +123,46 @@ class OnboardingManager {
         }
     }
     
-    private var currentBubbleView: BubbleView?
+    /// The bubble on screen (the home tour's or a ScreenGuide's: never two)
+    var currentBubbleView: BubbleView?
+
+    /// The screen "Show me" just opened explains itself (ScreenGuide)
+    var pendingGuide: ScreenGuideKind?
+    /// They're adding a place from a guide: when it's saved, open it with its guide
+    private var awaitingOwnPlace = false
+    private var placeAddedObserver: NSObjectProtocol?
+
+    /// A guide is waiting on its screen, or on the place they're adding
+    var isGuideInProgress: Bool { pendingGuide != nil || awaitingOwnPlace }
+
+    /// True once, for the screen the tour sent them to
+    func takeGuide(_ kind: ScreenGuideKind) -> Bool {
+        guard pendingGuide == kind, shouldShowTutorial else { return false }
+        pendingGuide = nil
+        return true
+    }
+
+    /// "Add a place you love" from a guide: Add Place explains itself, and
+    /// the place they save opens with what they can do with it
+    func startAddPlaceFromGuide() {
+        isTourPaused = true
+        pendingGuide = .addPlace
+        awaitingOwnPlace = true
+        if placeAddedObserver == nil {
+            placeAddedObserver = NotificationCenter.default.addObserver(
+                forName: .placeAddedToCircle, object: nil, queue: .main
+            ) { [weak self] note in
+                guard let self, self.awaitingOwnPlace, let place = note.userInfo?["place"] as? Place else { return }
+                self.awaitingOwnPlace = false
+                self.pendingGuide = .ownPlace
+                // After Add Place closes and the coin drop plays
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                    NotificationCenter.default.post(name: .navigateToPlace, object: place.id)
+                }
+            }
+        }
+        NextStepNavigator.addPlace()
+    }
 
     /// "Show me" or the video took them off Home mid-tour: Home picks the
     /// tour up again when it's back on screen (2026-11-01)

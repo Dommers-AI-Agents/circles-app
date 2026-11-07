@@ -1292,15 +1292,27 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     /// on; anything that leaves Home pauses it until Home is back.
     private func tourShowMe(for step: TutorialStep) -> (() -> Void)? {
         switch step {
-        case .addPlaces: return { [weak self] in self?.quickAddPlaceButtonTapped() }
-        case .followUsers: return { [weak self] in self?.emptyStateFindFriendsTapped() }
+        // Each screen "Show me" opens explains itself and offers a next step
+        // (ScreenGuide; Wes, 2026-11-07: Store Rewards opened and the tour stopped)
+        case .addPlaces: return { OnboardingManager.shared.startAddPlaceFromGuide() }
+        case .followUsers: return { [weak self] in
+            OnboardingManager.shared.pendingGuide = .findPeople
+            self?.emptyStateFindFriendsTapped()
+        }
         case .viewActivity: return { [weak self] in self?.tourSwitchTab(.activity) }
         case .seeWidgets: return { [weak self] in self?.tourSwitchTab(.widgets) }
         case .moments: return { [weak self] in self?.tourSwitchTab(.moments) }
         case .locals: return { [weak self] in self?.tourSwitchTab(.specials) }
-        case .checkIn: return { [weak self] in self?.checkInButtonTapped() }
-        case .rewards: return { [weak self] in self?.rewardsButtonTapped() }
+        case .checkIn: return { [weak self] in
+            OnboardingManager.shared.pendingGuide = .checkIn
+            self?.checkInButtonTapped()
+        }
+        case .rewards: return { [weak self] in
+            OnboardingManager.shared.pendingGuide = .rewards
+            self?.rewardsButtonTapped()
+        }
         case .profile: return { [weak self] in
+            OnboardingManager.shared.pendingGuide = .profile
             guard let tabs = self?.tabBarController, let count = tabs.viewControllers?.count else { return }
             tabs.selectedIndex = count - 1
         }
@@ -1325,6 +1337,9 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     /// Home is back after "Show me" or the video: pick the tour up again
     func resumeHomeTourIfPaused() {
         guard OnboardingManager.shared.isTourPaused, OnboardingManager.shared.shouldShowTutorial else { return }
+        // A screen guide is still going (Add Place, then their new place):
+        // the tour waits until they're back on Home itself
+        guard !OnboardingManager.shared.isGuideInProgress, navigationController?.topViewController === self else { return }
         OnboardingManager.shared.isTourPaused = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.runHomeTourWhenSettled() }
     }
