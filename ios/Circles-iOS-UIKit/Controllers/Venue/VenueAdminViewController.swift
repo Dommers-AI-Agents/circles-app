@@ -10,7 +10,11 @@ class VenueAdminViewController: BaseViewController {
 
     // MARK: - Properties
 
-    private var venues: [AdminVenue] = []
+    private var venues: [AdminVenue] = [] {
+        didSet { applySearch() }
+    }
+    /// The rows on screen: every store, or the ones the search matches
+    private var shown: [AdminVenue] = []
     /// Stores picked for the sticker sheet, in the order tapped
     private var stickerPicks: [String] = []
     /// The bar's usual buttons, put back when picking ends
@@ -23,6 +27,14 @@ class VenueAdminViewController: BaseViewController {
     }()
     private lazy var printStickersButton = UIBarButtonItem(title: "Print", style: .done, target: self, action: #selector(printStickersTapped))
     private lazy var cancelStickersButton = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(endStickerPicking))
+
+    private lazy var searchController: UISearchController = {
+        let search = UISearchController(searchResultsController: nil)
+        search.searchResultsUpdater = self
+        search.obscuresBackgroundDuringPresentation = false
+        search.searchBar.placeholder = "Search stores"
+        return search
+    }()
 
     private lazy var claimsButton = UIBarButtonItem(
         image: UIImage(systemName: "tray.full"),
@@ -68,6 +80,9 @@ class VenueAdminViewController: BaseViewController {
         navigationItem.leftItemsSupplementBackButton = true
         navigationItem.leftBarButtonItem = stickersButton
         tableView.allowsMultipleSelectionDuringEditing = true
+        navigationItem.searchController = searchController
+        navigationItem.hidesSearchBarWhenScrolling = false
+        definesPresentationContext = true
 
         tableView.dataSource = self
         tableView.delegate = self
@@ -96,7 +111,6 @@ class VenueAdminViewController: BaseViewController {
                 case .success(let venues):
                     // The generic Join FavCircles code isn't a store: always first (Wes, 2026-11-07)
                     self?.venues = venues.filter { $0.genericJoin == true } + venues.filter { $0.genericJoin != true }
-                    self?.tableView.reloadData()
                     if venues.isEmpty {
                         self?.showEmptyState()
                     } else {
@@ -251,12 +265,12 @@ class VenueAdminViewController: BaseViewController {
 extension VenueAdminViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return venues.count
+        return shown.count
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "VenueCell", for: indexPath)
-        let venue = venues[indexPath.row]
+        let venue = shown[indexPath.row]
 
         var config = cell.defaultContentConfiguration()
         config.text = venue.venueName
@@ -281,24 +295,24 @@ extension VenueAdminViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, willSelectRowAt indexPath: IndexPath) -> IndexPath? {
         // Online stores have no window to stick a code on
-        if tableView.isEditing, venues[indexPath.row].isVirtual == true { return nil }
+        if tableView.isEditing, shown[indexPath.row].isVirtual == true { return nil }
         return indexPath
     }
 
     func tableView(_ tableView: UITableView, didDeselectRowAt indexPath: IndexPath) {
         guard tableView.isEditing else { return }
-        stickerPicks.removeAll { $0 == venues[indexPath.row].venueId }
+        stickerPicks.removeAll { $0 == shown[indexPath.row].venueId }
         updateStickerPickTitle()
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if tableView.isEditing {
-            stickerPicks = StoreStickerSheet.toggled(stickerPicks, venues[indexPath.row].venueId)
+            stickerPicks = StoreStickerSheet.toggled(stickerPicks, shown[indexPath.row].venueId)
             updateStickerPickTitle()
             return
         }
         tableView.deselectRow(at: indexPath, animated: true)
-        let detailVC = VenueAdminDetailViewController(venue: venues[indexPath.row])
+        let detailVC = VenueAdminDetailViewController(venue: shown[indexPath.row])
         detailVC.onVenueChanged = { [weak self] in
             self?.loadData()
         }
@@ -449,5 +463,23 @@ extension VenueAdminViewController {
     @objc func ownerGuideTapped() {
         guard let topic = HelpContentProvider.shared.topic(withId: "store-video-tutorial") else { return }
         navigationController?.pushViewController(HelpTopicViewController(topic: topic), animated: true)
+    }
+}
+
+// MARK: - Search
+
+extension VenueAdminViewController: UISearchResultsUpdating {
+    func updateSearchResults(for searchController: UISearchController) {
+        applySearch()
+    }
+
+    private func applySearch() {
+        shown = VenueAdminSearch.filter(venues, query: searchController.searchBar.text ?? "")
+        tableView.reloadData()
+        // Stores already picked for the sticker sheet stay checked as the list narrows
+        guard tableView.isEditing else { return }
+        for (row, venue) in shown.enumerated() where stickerPicks.contains(venue.venueId) {
+            tableView.selectRow(at: IndexPath(row: row, section: 0), animated: false, scrollPosition: .none)
+        }
     }
 }
