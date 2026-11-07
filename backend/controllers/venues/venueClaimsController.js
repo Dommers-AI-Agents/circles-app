@@ -331,6 +331,23 @@ exports.listClaims = async (req, res) => {
 
 // @desc    Approve a claim: the claimant becomes the venue's owner and any
 //          competing pending claims are denied.
+/// Every approved claim, enrolled before or just now (Wes, 2026-11-07): the
+/// store's App Clip cards are published now, not at the overnight job, and
+/// its QR codes go to the approving admin, who sells the register code
+/// (the window code is free). Best-effort; returns whether the email went.
+async function readyStoreCodes(venue, adminEmail) {
+  require('../../services/appClipExperienceService').publishNewVenueQuiet(venue.venueId);
+  if (!adminEmail) return false;
+  try {
+    const { windowQR, registerQR } = await rewardService.generateQRBuffers(venue);
+    await emailService.sendStickerQREmail(adminEmail, venue, windowQR, registerQR);
+    return true;
+  } catch (emailError) {
+    console.error('⚠️ QR email failed (claim still approved):', emailError.message);
+    return false;
+  }
+}
+
 // @route   POST /api/rewards/claims/:claimId/approve
 // @access  Super user
 exports.approveClaim = async (req, res) => {
@@ -381,20 +398,7 @@ exports.approveClaim = async (req, res) => {
         ownerUserId: claim.userId,
         ownerEmail
       });
-      // Its own App Clip cards now, not at the overnight job
-      require('../../services/appClipExperienceService').publishNewVenueQuiet(venue.venueId);
-
-      // QR codes go to the approving admin for printing — best-effort
-      let emailSent = false;
-      if (req.user.email) {
-        try {
-          const { windowQR, registerQR } = await rewardService.generateQRBuffers(venue);
-          await emailService.sendStickerQREmail(req.user.email, venue, windowQR, registerQR);
-          emailSent = true;
-        } catch (emailError) {
-          console.error('⚠️ QR email failed (venue still enrolled):', emailError.message);
-        }
-      }
+      const emailSent = await readyStoreCodes(venue, req.user.email);
 
       const now = new Date().toISOString();
       await claimRef.update({
@@ -481,6 +485,7 @@ exports.approveClaim = async (req, res) => {
       ownerEmail: claim.userEmail || venueDoc.data().ownerEmail
     });
     await claimRef.update({ status: 'approved', resolvedBy: req.user.uid, resolvedAt: now, updatedAt: now });
+    const emailSent = await readyStoreCodes({ venueId: claim.venueId, ...venueDoc.data() }, req.user.email);
     // The store as it is called now, not as it was when the claim was filed
     const currentName = venueDoc.data().venueName || venueDoc.data().placeName || claim.venueName || claim.placeName || null;
 
@@ -525,7 +530,8 @@ exports.approveClaim = async (req, res) => {
       data: {
         claim: { claimId: claimRef.id, ...claim, status: 'approved', resolvedBy: req.user.uid, resolvedAt: now },
         venueId: claim.venueId,
-        ownerEmail: claim.userEmail || null
+        ownerEmail: claim.userEmail || null,
+        emailSent
       }
     });
   } catch (error) {

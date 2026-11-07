@@ -991,15 +991,15 @@ FavCircles · Save the places you love`;
         <p><strong>Print the attachments on plain paper — that's it:</strong></p>
         <table style="border-collapse:collapse;width:100%;background:#fafafa;border-radius:8px">
           <tr>
-            <td style="padding:10px 16px;border-bottom:1px solid #eee"><strong>Window sign (letter)</strong><br>
+            <td style="padding:10px 16px;border-bottom:1px solid #eee"><strong>Window sign (letter)</strong> · free<br>
             Tape it in your front window. People scan it to save your store and share it with friends.</td>
           </tr>
           <tr>
-            <td style="padding:10px 16px;border-bottom:1px solid #eee"><strong>Register card (4×6)</strong><br>
+            <td style="padding:10px 16px;border-bottom:1px solid #eee"><strong>Register card (4×6)</strong> · Business plan<br>
             Fits a standard photo frame or acrylic stand by the register.</td>
           </tr>
           <tr>
-            <td style="padding:10px 16px"><strong>Table tent</strong><br>
+            <td style="padding:10px 16px"><strong>Table tent</strong> · Business plan<br>
             Print, fold in half along the dashed line — it stands on its own.</td>
           </tr>
         </table>
@@ -1034,7 +1034,7 @@ FavCircles · Save the places you love`;
       to: toEmail,
       subject,
       html,
-      text: `QR codes for ${venue.venueName}. Attached and ready to print on plain paper: a window sign (scan to save your store), and a register card + table tent (scan to earn points, register code: ${venue.registerCode}).`,
+      text: `QR codes for ${venue.venueName}. Attached and ready to print on plain paper: a window sign (free; scan to save your store), and a register card + table tent (scan to earn points, register code: ${venue.registerCode}).`,
       // The raw QR PNGs used to ride along too, but mail apps render them
       // inline as two giant bare QR codes (confusing next to the finished
       // PDFs). The PDFs carry both QRs; raw assets on request. If PDF
