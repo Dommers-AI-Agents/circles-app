@@ -345,6 +345,66 @@ extension UIButton {
         }.withRenderingMode(.alwaysOriginal)
     }
 
+    /// A person's photo, name and a line under it, with a chevron: tap to open
+    /// their profile (the circle page's owner row, 2026-11-08). Set the photo
+    /// later with `setProfileLinkPhoto(_:)`.
+    static func profileLinkButton(name: String, subtitle: String) -> UIButton {
+        var config = UIButton.Configuration.plain()
+        config.title = name
+        config.subtitle = subtitle
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+            var a = attributes
+            a.font = UIFont.systemFont(ofSize: Constants.FontSize.medium, weight: .semibold)
+            a.foregroundColor = Constants.Colors.label
+            return a
+        }
+        config.subtitleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+            var a = attributes
+            a.font = UIFont.systemFont(ofSize: Constants.FontSize.small)
+            a.foregroundColor = Constants.Colors.secondaryLabel
+            return a
+        }
+        config.image = roundedPhoto(UIImage(systemName: "person.crop.circle.fill")?
+            .withTintColor(Constants.Colors.secondaryLabel, renderingMode: .alwaysOriginal))
+        config.imagePadding = 10
+        config.titlePadding = 2
+        config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0)
+        let button = UIButton(configuration: config)
+        button.contentHorizontalAlignment = .leading
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 13, weight: .semibold)))
+        chevron.tintColor = Constants.Colors.tertiaryLabel
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        chevron.isUserInteractionEnabled = false
+        button.addSubview(chevron)
+        NSLayoutConstraint.activate([
+            chevron.trailingAnchor.constraint(equalTo: button.trailingAnchor),
+            chevron.centerYAnchor.constraint(equalTo: button.centerYAnchor)
+        ])
+        button.accessibilityHint = "Opens their profile"
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
+    /// The profile link's photo, cropped to a 32 pt circle
+    func setProfileLinkPhoto(_ image: UIImage?) {
+        guard let image, var config = configuration else { return }
+        config.image = UIButton.roundedPhoto(image)
+        configuration = config
+    }
+
+    fileprivate static func roundedPhoto(_ image: UIImage?, side: CGFloat = 32) -> UIImage? {
+        guard let image else { return nil }
+        let size = CGSize(width: side, height: side)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()
+            let scale = max(side / image.size.width, side / image.size.height)
+            let drawn = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            image.draw(in: CGRect(x: (side - drawn.width) / 2, y: (side - drawn.height) / 2,
+                                  width: drawn.width, height: drawn.height))
+        }.withRenderingMode(.alwaysOriginal)
+    }
+
     /// Small secondary-coloured text under a field ("Edit list").
     static func captionLinkButton() -> UIButton {
         let button = UIButton(type: .system)

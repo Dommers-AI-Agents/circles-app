@@ -85,6 +85,17 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         return label
     }()
     
+    /// Someone else's circle: who made it, tap for their profile and the rest
+    /// of their circles (Wes, 2026-11-08). Hidden on your own circles.
+    private lazy var ownerLinkButton: UIButton = {
+        let button = UIButton.profileLinkButton(name: "", subtitle: "See their profile and circles")
+        button.addTarget(self, action: #selector(ownerLinkTapped), for: .touchUpInside)
+        button.isHidden = true
+        return button
+    }()
+    private var ownerLinkCollapsed: NSLayoutConstraint?
+    private var loadedOwnerPhotoFor: String?
+
     private let privacyView: UIView = {
         let view = UIView()
         view.backgroundColor = Constants.Colors.tertiaryBackground
@@ -120,6 +131,51 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         label.translatesAutoresizingMaskIntoConstraints = false
         return label
     }()
+
+    /// The owner row: shown on anyone else's circle, collapsed on your own
+    private func refreshOwnerLink() {
+        let owner = circle.ownerDetails
+        let show = !circle.isOwner && !circle.owner.isEmpty
+        ownerLinkButton.isHidden = !show
+        if ownerLinkCollapsed == nil {
+            ownerLinkCollapsed = ownerLinkButton.heightAnchor.constraint(equalToConstant: 0)
+        }
+        ownerLinkCollapsed?.isActive = !show
+        guard show else { return }
+        var config = ownerLinkButton.configuration
+        config?.title = circle.displayOwnerName
+        ownerLinkButton.configuration = config
+        ownerLinkButton.accessibilityLabel = "Made by \(circle.displayOwnerName)"
+        // The photo once per owner; the placeholder until it arrives
+        guard loadedOwnerPhotoFor != circle.owner else { return }
+        loadedOwnerPhotoFor = circle.owner
+        ImageService.shared.loadProfileImage(for: circle.owner, from: owner?.profilePicture) { [weak self] image in
+            DispatchQueue.main.async { self?.ownerLinkButton.setProfileLinkPhoto(image) }
+        }
+    }
+
+    @objc private func ownerLinkTapped() {
+        let ownerId = circle.owner
+        guard !ownerId.isEmpty else { return }
+        if let owner = circle.ownerDetails, owner.id == ownerId {
+            navigationController?.pushViewController(ProfileViewController(user: owner), animated: true)
+            return
+        }
+        let loading = AlertPresenter.showLoading(message: "Loading profile...", from: self)
+        UserService.shared.fetchUserProfile(userId: ownerId) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self else { return }
+                    switch result {
+                    case .success(let user):
+                        self.navigationController?.pushViewController(ProfileViewController(user: user), animated: true)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
+            }
+        }
+    }
 
     /// Owner only: the privacy chip opens the privacy options in place, no
     /// trip to Edit (Wes, 2026-10-30). The chevron says it's tappable.
@@ -409,6 +465,7 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         headerView.addSubview(circleInfoView)
         
         circleInfoView.addSubview(nameLabel)
+        circleInfoView.addSubview(ownerLinkButton)
         circleInfoView.addSubview(descriptionLabel)
         circleInfoView.addSubview(privacyView)
         circleInfoView.addSubview(categoryLabel)
@@ -483,7 +540,10 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
             categoryLabel.heightAnchor.constraint(equalToConstant: 24),
             
             // Description label
-            descriptionLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.medium),
+            ownerLinkButton.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: Constants.Spacing.small),
+            ownerLinkButton.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
+            ownerLinkButton.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.large),
+            descriptionLabel.topAnchor.constraint(equalTo: ownerLinkButton.bottomAnchor, constant: Constants.Spacing.small),
             descriptionLabel.leadingAnchor.constraint(equalTo: circleInfoView.leadingAnchor, constant: Constants.Spacing.large),
             descriptionLabel.trailingAnchor.constraint(equalTo: circleInfoView.trailingAnchor, constant: -Constants.Spacing.large),
             
@@ -775,18 +835,18 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         refreshPrivacyChip()
         refreshMapPill()
         
+        refreshOwnerLink()
+
         // Show shared circle info if applicable
-        if !circle.isOwner {
-            var sharedInfo = "Shared by \(circle.displayOwnerName)"
-            if let accessLevel = circle.myAccessLevel {
-                switch accessLevel {
-                case .viewOnly:
-                    sharedInfo += " • View Only"
-                case .canAddPlaces:
-                    sharedInfo += " • Can Add Places"
-                case .canEdit:
-                    sharedInfo += " • Can Edit"
-                }
+        if !circle.isOwner, let accessLevel = circle.myAccessLevel {
+            var sharedInfo = "Shared with you"
+            switch accessLevel {
+            case .viewOnly:
+                sharedInfo += " • View Only"
+            case .canAddPlaces:
+                sharedInfo += " • Can Add Places"
+            case .canEdit:
+                sharedInfo += " • Can Edit"
             }
             descriptionLabel.text = sharedInfo + "\n\n" + (circle.description ?? "No description provided")
         }
