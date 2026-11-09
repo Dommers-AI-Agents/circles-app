@@ -455,10 +455,17 @@ final class StickerRewardCoordinator: NSObject {
 
     private func handleRegisterScan(_ scan: RewardScanData, code: String) {
         guard let presenter = presenter else { return }
-        // After the points, offer to save the store if it isn't saved yet
-        let offerSave: () -> Void = { [weak self] in
-            guard scan.alreadySaved == false else { return }
-            self?.offerSave(venue: scan.venue, code: code, bonus: scan.saveBonus)
+        // After the points: offer to save the store if it isn't saved yet;
+        // already on their map, a quick FavCircles rating now and then
+        // (Wes, 2026-11-09: PostVisitRatingRule — Google stays as it is)
+        let afterPoints: () -> Void = { [weak self] in
+            if scan.alreadySaved == false {
+                self?.offerSave(venue: scan.venue, code: code, bonus: scan.saveBonus)
+                return
+            }
+            if scan.awarded != nil, let placeId = scan.savedPlace?.placeId {
+                PostCheckInRatePresenter.offerAfterVisit(placeId: placeId, venue: scan.venue)
+            }
         }
 
         // Per-store loyalty: points earned here spend here — every number in
@@ -469,7 +476,7 @@ final class StickerRewardCoordinator: NSObject {
         // 2026-10-30: never embarrass an owner who allows the window QR but
         // hasn't bought into rewards). The store page is open; offer the save.
         if scan.loyaltyPaused == true {
-            offerSave()
+            afterPoints()
             return
         }
 
@@ -508,7 +515,7 @@ final class StickerRewardCoordinator: NSObject {
                 (title: "My Rewards", style: .default, handler: { [weak self] in
                     self?.openStoreRewards(highlight: scan.venue.venueId, earned: scan.awarded?.points)
                 }),
-                (title: "OK", style: .cancel, handler: offerSave)
+                (title: "OK", style: .cancel, handler: afterPoints)
             ], from: presenter)
             return
         }
@@ -523,7 +530,7 @@ final class StickerRewardCoordinator: NSObject {
         actions.append((title: "My Rewards", style: .default, handler: { [weak self] in
             self?.openStoreRewards(highlight: scan.venue.venueId, earned: scan.awarded?.points)
         }))
-        actions.append((title: "Not now", style: .default, handler: offerSave))
+        actions.append((title: "Not now", style: .default, handler: afterPoints))
 
         AlertPresenter.showActionSheet(
             title: title,

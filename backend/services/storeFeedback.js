@@ -65,12 +65,29 @@ async function enjoyingCard(userId, venueId) {
     const gp = await db().collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(String(globalPlaceId)).get();
     following = gp.exists && (gp.data().followers || []).some((id) => isSameUser(id, userId));
   }
+  // Their own save, if they have one: the card asks for a 0–10 rating on it
+  // (Wes, 2026-11-09: a quick FavCircles rating after the visit; Google stays)
+  let ownPlaceId = null;
+  let currentRating = null;
+  try {
+    const own = await require('./ownSaveOfVenue').findOwnSaveOfStore({ userId, venue });
+    if (own && (own.id || own._id)) {
+      ownPlaceId = own.id || own._id;
+      const ownDoc = await db().collection(COLLECTIONS.PLACES).doc(String(ownPlaceId)).get();
+      const rating = ownDoc.exists ? ownDoc.data().userRating : null;
+      currentRating = typeof rating === 'number' ? rating : null;
+    }
+  } catch (error) {
+    console.warn('⚠️ enjoying card: own save lookup failed:', error.message);
+  }
   return {
     show: true,
     venueName: venue.venueName || 'this store',
     globalPlaceId: globalPlaceId || null,
     reviewPlaceId: await reviewSaveId(userId, venue, globalPlaceId).catch(() => null),
-    following
+    following,
+    ownPlaceId,
+    currentRating
   };
 }
 

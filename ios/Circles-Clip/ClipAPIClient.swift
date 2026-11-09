@@ -102,6 +102,13 @@ final class ClipAPIClient {
 
     /// The clip's notification token: one reminder within Apple's 8-hour
     /// window if they haven't installed the app yet (server decides)
+    /// A quick 0–10 FavCircles rating on the store they just saved (their own
+    /// save record; Wes, 2026-11-09). Same PUT the app's rating sheet uses.
+    func ratePlace(placeId: String, rating: Int, bearer: String) async throws {
+        let _: ClipSimpleResponse = try await request(path: "places/\(placeId)", method: "PUT",
+                                                      body: ["userRating": rating], bearerToken: bearer)
+    }
+
     func registerDevice(token deviceToken: String, code: String?, bearer: String) async throws {
         var body: [String: Any] = ["token": deviceToken]
         if let code { body["code"] = code }

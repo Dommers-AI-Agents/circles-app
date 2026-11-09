@@ -64,7 +64,7 @@ class VenueDashboardViewController: BaseViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Stats & Insights"
+        title = "Stats"
         view.backgroundColor = .systemBackground
 
         view.addSubview(scrollView)

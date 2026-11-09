@@ -220,6 +220,11 @@ struct BusinessFeatures {
             iconName: "camera.viewfinder"
         ),
         PremiumFeatures.Feature(
+            title: "Insights",
+            description: "Who's new and who came back, your busiest hours, your FavCircles score, and the reviews waiting for your reply",
+            iconName: "chart.xyaxis.line"
+        ),
+        PremiumFeatures.Feature(
             title: "Full Stats Dashboard",
             description: "Monthly trends for saves, followers, visits, and redemptions",
             iconName: "chart.bar.xaxis"

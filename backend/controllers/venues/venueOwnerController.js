@@ -22,6 +22,7 @@ const { makeViewerContext } = require('../../services/viewerContext');
 const { getInnerCircleGrantorLists } = require('../../utils/networkAccess');
 const placePhotos = require('../../services/placePhotoService');
 const { venueActivityFeed } = require('../../services/scanAttempts');
+const venueInsights = require('../../services/venueInsights');
 
 // ---------- Venue owner endpoints (self-service offer/earn-rate management) ----------
 
@@ -210,6 +211,22 @@ exports.getVenueDashboard = async (req, res) => {
   } catch (error) {
     console.error('❌ Failed to load venue dashboard:', error);
     res.status(500).json({ success: false, error: 'Failed to load venue dashboard' });
+  }
+};
+
+// @desc    Insights (Wes, 2026-11-09): customers new vs returning, repeat rate,
+//          regulars and lapsed, busiest hours and days, which offers were
+//          redeemed, the FavCircles score beside the Google rating, and the
+//          comments still waiting for a reply from the team. Cached an hour
+//          on the venue (services/venueInsights).
+// @route   GET /api/rewards/venues/:venueId/insights?range=30d|90d|12m
+// @access  Venue team + Business
+exports.getVenueInsights = async (req, res) => {
+  try {
+    const data = await venueInsights.getInsights(req.venue, req.query.range);
+    res.json({ success: true, data });
+  } catch (error) {
+    sendServiceError(res, error, { log: '❌ Failed to load venue insights', fallbackMessage: 'Failed to load insights' });
   }
 };
 

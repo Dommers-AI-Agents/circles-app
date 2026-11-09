@@ -18,7 +18,7 @@ enum VenueManageCopy {
         case .glance:
             return Header(
                 title: "At a glance",
-                explanation: "Your store's headline numbers. Tap Stats & Insights for monthly trends. With FavCircles Business you can also see who saved your place, who follows it, and every visit and redemption.")
+                explanation: "Your store's headline numbers. Tap Stats for monthly trends. With FavCircles Business, Insights shows who's new and who came back, your busiest hours, your FavCircles score and the reviews waiting for a reply — plus who saved your place, who follows it, and every visit and redemption.")
         case .placePage:
             return Header(
                 title: "Your place page",

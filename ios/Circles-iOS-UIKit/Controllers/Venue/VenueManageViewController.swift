@@ -874,7 +874,9 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         case .statTiles:
             break
         case .fullStats:
-            set("Stats & Insights", "Monthly trends for saves, visits and redemptions", "chart.bar.fill")
+            set("Stats", "Monthly trends for saves, visits and redemptions", "chart.bar.fill")
+        case .insights:
+            set("Insights", "New vs. returning customers, busiest hours, your FavCircles score, reviews to answer", "chart.xyaxis.line")
         case .savers:
             set("Who saved your place", "The people with you in their circles", "bookmark.fill")
         case .followers:
@@ -1030,6 +1032,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             break
         case .fullStats:
             navigationController?.pushViewController(VenueDashboardViewController(venueId: venueId, venueName: venueName), animated: true)
+        case .insights:
+            navigationController?.pushViewController(VenueInsightsViewController(venueId: venueId, venueName: venueName, placeId: venuePlaceId), animated: true)
         case .savers:
             navigationController?.pushViewController(VenueAudienceViewController(venueId: venueId, mode: .savers), animated: true)
         case .followers:

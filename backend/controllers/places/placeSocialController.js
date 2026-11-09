@@ -924,7 +924,28 @@ exports.addPlaceCommentReply = async (req, res, next) => {
     });
     
     console.log('✅ Parent comment reply count updated');
-    
+
+    // The comment's author hears back — from the store when the replier is on
+    // its team (owner replies to reviews, 2026-11-09), else from the person
+    if (parentComment.userId && !isSameUser(parentComment.userId, userId)) {
+      try {
+        let fromStore = null;
+        const venue = await rewardService.findVenueByPlace(replyGlobalPlaceId || placeId, place.googlePlaceId || null);
+        if (venue && [venue.ownerUserId, ...(venue.managerUserIds || [])].filter(Boolean).some((id) => isSameUser(id, userId))) {
+          fromStore = venue.venueName || place.name || 'The store';
+        }
+        const replierName = reply.user ? (reply.user.displayName || 'Someone') : 'Someone';
+        require('../../services/notifyQuiet').sendInBackground(parentComment.userId, {
+          type: 'place_comment',
+          title: fromStore ? `${fromStore} replied to your review` : `${replierName} replied to your comment`,
+          body: text.trim().slice(0, 120),
+          data: { type: 'place_commented', placeId, fromUserId: userId, commentId }
+        }, 'comment reply');
+      } catch (notifyError) {
+        console.error('⚠️ Reply notification failed (non-fatal):', notifyError.message);
+      }
+    }
+
     res.status(201).json({
       success: true,
       data: reply

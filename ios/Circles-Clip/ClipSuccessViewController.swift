@@ -27,6 +27,10 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     private let spinner = UIActivityIndicatorView(style: .large)
     private var overlayPresented = false
     private var stackBottom: NSLayoutConstraint?
+    /// "Rate it 0–10" under the saved-store result (their own save)
+    private let rateStack = UIStackView()
+    private let rateLabel = ClipTheme.label(.systemFont(ofSize: 15, weight: .semibold))
+    private var ratePlaceId: String?
 
     init(session: ClipSession, isNewSignIn: Bool, invocation: ClipInvocation, code: String, preview: VenuePreview) {
         self.session = session
@@ -94,10 +98,36 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
             attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 15, weight: .medium)]))
         signOutButton.addTarget(self, action: #selector(signOutTapped), for: .touchUpInside)
 
-        [hookLabel, nameLabel, detailLabel, panel, getAppButton, signOutButton].forEach { stack.addArrangedSubview($0) }
+        rateStack.axis = .vertical
+        rateStack.spacing = 8
+        rateStack.isHidden = true
+        rateLabel.text = "Rate it 0–10"
+        ClipTheme.lift(rateLabel)
+        let pills = UIStackView()
+        pills.axis = .horizontal
+        pills.spacing = 4
+        pills.distribution = .fillEqually
+        for value in 0...10 {
+            let button = UIButton(type: .system)
+            button.setTitle("\(value)", for: .normal)
+            button.setTitleColor(.white, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+            button.layer.cornerRadius = 8
+            button.layer.borderWidth = 1
+            button.layer.borderColor = UIColor.white.withAlphaComponent(0.45).cgColor
+            button.heightAnchor.constraint(equalToConstant: 32).isActive = true
+            button.tag = value
+            button.addTarget(self, action: #selector(rateTapped(_:)), for: .touchUpInside)
+            pills.addArrangedSubview(button)
+        }
+        rateStack.addArrangedSubview(rateLabel)
+        rateStack.addArrangedSubview(pills)
+
+        [hookLabel, nameLabel, detailLabel, rateStack, panel, getAppButton, signOutButton].forEach { stack.addArrangedSubview($0) }
         stack.setCustomSpacing(14, after: hookLabel)
         stack.setCustomSpacing(6, after: nameLabel)
         stack.setCustomSpacing(18, after: detailLabel)
+        stack.setCustomSpacing(18, after: rateStack)
         stack.setCustomSpacing(18, after: panel)
         stack.setCustomSpacing(4, after: getAppButton)
         stack.isHidden = true
@@ -232,6 +262,13 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
         if result.loyaltyLive == true, result.isOnTheirMap {
             fillRewardsPanel(balance: balance, earnRate: result.earnRate ?? preview.earnRate, nextLine: result.nextRewardLine)
         }
+        // On their map with their own save: a quick FavCircles rating
+        // (Wes, 2026-11-09; the app asks the same way after a reward)
+        if result.isOnTheirMap, let placeId = result.savedPlace?.placeId {
+            ratePlaceId = placeId
+            rateLabel.text = "Rate \(name) 0–10"
+            rateStack.isHidden = false
+        }
         // Confetti for the save itself, not for a repeat scan
         reveal(celebrate: result.awarded != nil || result.saved == true)
     }
@@ -323,6 +360,25 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     /// Straight to the App Store page. The banner (SKOverlay) can't be shown
     /// twice, and shows nothing for a clip that didn't come from the App
     /// Store, so the button never relies on it (Wes, 2026-10-31).
+    @objc private func rateTapped(_ sender: UIButton) {
+        guard let placeId = ratePlaceId else { return }
+        let rating = sender.tag
+        rateStack.isUserInteractionEnabled = false
+        (rateStack.arrangedSubviews.last as? UIStackView)?.arrangedSubviews.forEach {
+            $0.alpha = $0.tag == rating ? 1 : 0.4
+            ($0 as? UIButton)?.backgroundColor = $0.tag == rating ? ClipTheme.gold.withAlphaComponent(0.9) : .clear
+        }
+        Task { @MainActor in
+            do {
+                try await ClipAPIClient.shared.ratePlace(placeId: placeId, rating: rating, bearer: session.token)
+                rateLabel.text = "Thanks! \(rating)/10 is saved with the place on your map."
+            } catch {
+                rateLabel.text = "Couldn't save the rating — you can rate it in the app."
+                rateStack.isUserInteractionEnabled = true
+            }
+        }
+    }
+
     @objc private func getAppTapped() {
         if let url = URL(string: "https://apps.apple.com/us/app/favcircles/id6746807095") {
             UIApplication.shared.open(url)

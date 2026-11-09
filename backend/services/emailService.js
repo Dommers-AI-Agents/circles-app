@@ -659,7 +659,7 @@ Your Business subscription${forVenue} is active. Everything below is live now �
 • Your loyalty program is on — customers earn points scanning your window sticker and register card; you set how many points a purchase pays. Points earned at your store can only be spent at your store.
 • Post offers — rewards customers redeem with a short-lived voucher at your counter.
 • Announcements — reach your followers' feeds and the app's Locals tab.
-• Stats & Insights — saves, followers, visits, scans, and redemptions, plus a monthly report by email.
+• Stats & Insights — saves, followers, visits, scans and redemptions; who's new and who came back, your busiest hours, your FavCircles score and the reviews waiting for your reply; plus a monthly report by email.
 • Redemption codes — single-use codes for orders or events.
 
 A good first move: post one offer worth walking in for, and put the window sticker where people can see it. Reply to this email if you need stickers or help getting set up.
@@ -796,13 +796,14 @@ Reply to this email if you get stuck.
           <p style="font-size: 15px; line-height: 1.6;"><strong>What you can do right away (free):</strong></p>
           <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
             <li>Keep your business details accurate — your edits are the ones customers see</li>
-            <li>Watch your Stats &amp; Insights — who's saving, following, and visiting</li>
+            <li>Watch your Stats — who's saving, following, and visiting</li>
           </ul>
           <p style="font-size: 15px; line-height: 1.6;"><strong>With a FavCircles Business subscription you also get:</strong></p>
           <ul style="font-size: 15px; line-height: 1.9; padding-left: 20px;">
             <li>A loyalty program at your counter — customers earn points with you that can only be spent at your store</li>
             <li>Offers customers redeem in person, at prices you set</li>
             <li>Announcements that reach your followers' feeds and the app's Locals tab</li>
+            <li>Insights — who's new and who came back, your busiest hours, your FavCircles score, and the reviews waiting for your reply</li>
           </ul>
           <p style="font-size: 15px; line-height: 1.6;">
             The upgrade lives on your place page in the app. Questions, or need a window sticker? Just reply to this email — happy to help personally.
@@ -818,12 +819,13 @@ You're verified as the owner of ${business} on FavCircles. Your store now appear
 
 What you can do right away (free):
 • Keep your business details accurate — your edits are the ones customers see
-• Watch your Stats & Insights — who's saving, following, and visiting
+• Watch your Stats — who's saving, following, and visiting
 
 With a FavCircles Business subscription you also get:
 • A loyalty program at your counter — customers earn points with you that can only be spent at your store
 • Offers customers redeem in person, at prices you set
 • Announcements that reach your followers' feeds and the app's Locals tab
+• Insights — who's new and who came back, your busiest hours, your FavCircles score, and the reviews waiting for your reply
 
 The upgrade lives on your place page in the app. Questions, or need a window sticker? Just reply to this email.
 
@@ -1054,7 +1056,7 @@ FavCircles · Save the places you love`;
   }
 
   // Monthly performance report for a sticker-program venue
-  async sendVenueReportEmail(venue, monthKey, stats) {
+  async sendVenueReportEmail(venue, monthKey, stats, summary = null) {
     const safeStats = {
       scans: stats?.scans || 0,
       signups: stats?.signups || 0,
@@ -1085,6 +1087,12 @@ FavCircles · Save the places you love`;
           ${row('People who saved your place', safeStats.saves)}
           ${row('Verified repeat visits', safeStats.visits)}
           ${row('Rewards redeemed at your counter', safeStats.redemptions)}
+          ${summary && summary.favScore !== null && summary.favScore !== undefined
+    ? row('Your FavCircles score', `${summary.favScore}/10 from ${summary.ratings} rating${summary.ratings === 1 ? '' : 's'}${typeof summary.googleRating === 'number' ? ` · Google ${summary.googleRating}★` : ''}`)
+    : ''}
+          ${summary && summary.repeatRatePct !== null && summary.repeatRatePct !== undefined
+    ? row('Customers who came back', `${summary.repeatRatePct}%`)
+    : ''}
         </table>
         <p style="margin-top:16px">Every save means a customer who won't forget you — and every reward
         redemption is a customer who came back. Thanks for being part of FavCircles!</p>
@@ -1096,7 +1104,9 @@ QR scans: ${safeStats.scans}
 New signups: ${safeStats.signups}
 Place saves: ${safeStats.saves}
 Verified repeat visits: ${safeStats.visits}
-Rewards redeemed: ${safeStats.redemptions}`;
+Rewards redeemed: ${safeStats.redemptions}${summary && summary.favScore !== null && summary.favScore !== undefined ? `
+FavCircles score: ${summary.favScore}/10 (${summary.ratings} ratings)` : ''}${summary && summary.repeatRatePct !== null && summary.repeatRatePct !== undefined ? `
+Customers who came back: ${summary.repeatRatePct}%` : ''}`;
 
     return this.sendEmail({ to: venue.contactEmail, subject, html, text });
   }

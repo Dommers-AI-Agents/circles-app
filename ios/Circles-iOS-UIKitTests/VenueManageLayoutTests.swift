@@ -16,6 +16,13 @@ struct VenueManageLayoutTests {
         #expect(order == [.glance, .placePage, .menuOrdering, .loyalty, .customers, .announcements, .codes, .team, .more])
     }
 
+    @Test func glanceLeadsWithStatsThenInsights() {
+        #expect(rows(L.Facts(), .glance) == [.statTiles, .fullStats, .insights, .activity])
+        #expect(rows(L.Facts(hasStats: false), .glance) == [.fullStats, .insights, .activity])
+        #expect(L.isBusiness(.insights))
+        #expect(!L.isBusiness(.fullStats))
+    }
+
     @Test func everyRowAppearsOnce() {
         for facts in [L.Facts(offerCount: 2, announcementCount: 2), L.Facts(orderingOn: true),
                       L.Facts(isVirtual: true, hasPlace: false), L.Facts(hasPlace: false)] {
@@ -64,7 +71,7 @@ struct VenueManageLayoutTests {
         #expect(rows(facts, .customers) == [.customers, .savers, .followers, .feedback])
         #expect(rows(facts, .codes) == [.showRegisterCard, .showWindowSticker, .nfcStickers, .loyaltyCodes, .emailStickers, .replaceRegisterCard])
         #expect(rows(facts, .announcements) == [.announcement(0), .addAnnouncement])
-        #expect(rows(facts, .glance) == [.statTiles, .fullStats, .activity])
+        #expect(rows(facts, .glance) == [.statTiles, .fullStats, .insights, .activity])
     }
 
     @Test func tilesOnlyWhenStatsArrived() {

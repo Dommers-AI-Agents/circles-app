@@ -37,7 +37,8 @@ beforeEach(() => {
 
 test('the card comes once per store, with what to offer', async () => {
   const first = await fb.enjoyingCard('u1', 'v1');
-  expect(first).toEqual({ show: true, venueName: 'Fresh Monkee', globalPlaceId: 'g1', reviewPlaceId: 'save1', following: false });
+  // ownPlaceId/currentRating: the card asks for a 0–10 rating on their own save (2026-11-09)
+  expect(first).toEqual({ show: true, venueName: 'Fresh Monkee', globalPlaceId: 'g1', reviewPlaceId: 'save1', following: false, ownPlaceId: 'save1', currentRating: null });
   expect(await fb.enjoyingCard('u1', 'v1')).toEqual({ show: false });
 });
 

@@ -10,6 +10,9 @@ struct EnjoyingCardData: Codable, Equatable {
     /// A save of the store the customer can comment on (review, moment)
     let reviewPlaceId: String?
     let following: Bool?
+    /// Their own save of the store, if any: the card asks for a 0–10 rating on it (2026-11-09)
+    let ownPlaceId: String?
+    let currentRating: Int?
 }
 
 struct StoreFeedbackEntry: Codable, Equatable {

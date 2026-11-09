@@ -30,6 +30,8 @@ enum VenueManageLayout {
         // At a glance
         case statTiles
         case fullStats
+        /// Who's new, who came back, busiest times, the FavCircles score, reviews to answer (2026-11-09)
+        case insights
         case savers
         case followers
         case activity
@@ -110,7 +112,7 @@ enum VenueManageLayout {
 
         var glance: [Row] = []
         if facts.hasStats { glance.append(.statTiles) }
-        glance += [.fullStats, .activity]
+        glance += [.fullStats, .insights, .activity]
 
         var placePage: [Row] = []
         if facts.hasPlace { placePage += [.viewPage, .details] }
@@ -159,7 +161,7 @@ enum VenueManageLayout {
     /// team and plan — works on the free plan.
     static func isBusiness(_ row: Row) -> Bool {
         switch row {
-        case .savers, .followers, .activity,
+        case .insights, .savers, .followers, .activity,
              .menu, .fullMenu, .orders, .onlineOrdering, .orderPage, .gallery,
              .earnRate, .savePoints, .deliveryOrders, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .customers,
              .announcement, .addAnnouncement:

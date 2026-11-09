@@ -21,6 +21,11 @@ final class EnjoyingStoreViewController: BaseViewController {
     private lazy var privateButton = UIButton.secondaryButton(title: "Tell \(venueName) privately")
     private lazy var momentButton = UIButton.secondaryButton(title: "Post a moment here")
     private lazy var notNowButton = UIButton.secondaryButton(title: "Not now")
+    private let bodyLabel = UILabel()
+    private let stack = UIStackView()
+    /// The rating pills, when they have their own save to rate (PostVisitRatingRule)
+    private lazy var ratePrompt = UILabel()
+    private lazy var ratingPills = RatingPillsView(currentRating: card.currentRating)
 
     /// After a reward is given: shows the card from `host` if it's the first time at this store.
     static func presentIfFirstTime(venueId: String, from host: UIViewController) {
@@ -56,13 +61,21 @@ final class EnjoyingStoreViewController: BaseViewController {
         titleLabel.textColor = Constants.Colors.label
         titleLabel.numberOfLines = 0
 
-        let bodyLabel = UILabel()
         bodyLabel.text = "Enjoy your reward! If you have a moment, here's how to help \(venueName)."
         bodyLabel.font = .systemFont(ofSize: 15)
         bodyLabel.textColor = .secondaryLabel
         bodyLabel.numberOfLines = 0
 
         var rows: [UIView] = [titleLabel, bodyLabel]
+        if card.ownPlaceId != nil {
+            // A quick FavCircles rating first (Wes, 2026-11-09); Google stays as it is
+            ratePrompt.text = PostVisitRatingRule.prompt(storeName: venueName, firstTime: card.currentRating == nil)
+            ratePrompt.font = .systemFont(ofSize: 15, weight: .semibold)
+            ratePrompt.textColor = Constants.Colors.label
+            ratePrompt.numberOfLines = 0
+            ratingPills.onSelect = { [weak self] rating in self?.rated(rating) }
+            rows += [ratePrompt, ratingPills]
+        }
         if card.reviewPlaceId != nil { rows.append(reviewButton) }
         if card.following != true, card.globalPlaceId != nil { rows.append(followButton) }
         rows.append(privateButton)
@@ -75,11 +88,12 @@ final class EnjoyingStoreViewController: BaseViewController {
         momentButton.setImage(UIImage(systemName: "camera"), for: .normal)
         [reviewButton, followButton, privateButton, momentButton].forEach { $0.imageEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 0) }
 
-        let stack = UIStackView(arrangedSubviews: rows)
+        rows.forEach { stack.addArrangedSubview($0) }
         stack.axis = .vertical
         stack.spacing = 10
         stack.setCustomSpacing(6, after: titleLabel)
         stack.setCustomSpacing(16, after: bodyLabel)
+        if card.ownPlaceId != nil { stack.setCustomSpacing(16, after: ratingPills) }
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let scroll = UIScrollView()
@@ -102,6 +116,49 @@ final class EnjoyingStoreViewController: BaseViewController {
         privateButton.addTarget(self, action: #selector(privateTapped), for: .touchUpInside)
         momentButton.addTarget(self, action: #selector(momentTapped), for: .touchUpInside)
         notNowButton.addTarget(self, action: #selector(notNowTapped), for: .touchUpInside)
+    }
+
+    // MARK: - Rating
+
+    /// Save the rating on their own save, then steer: a high one toward a
+    /// review for their circles, a low one toward the store's private inbox
+    private func rated(_ rating: Int) {
+        guard let placeId = card.ownPlaceId else { return }
+        ratingPills.isUserInteractionEnabled = false
+        PlaceService.shared.updatePlace(id: placeId, userRating: rating) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.ratingPills.isUserInteractionEnabled = true
+                switch result {
+                case .success(let updated):
+                    NotificationCenter.default.post(name: .placeRatingChanged, object: nil,
+                                                    userInfo: ["placeId": updated.id, "place": updated])
+                    self.steer(PostVisitRatingRule.next(for: rating))
+                case .failure(let error):
+                    self.showError(error)
+                }
+            }
+        }
+    }
+
+    private func steer(_ next: PostVisitRatingRule.Next) {
+        ratePrompt.text = "Thanks for rating \(venueName)!"
+        guard let text = PostVisitRatingRule.followUp(next, storeName: venueName) else { return }
+        bodyLabel.text = text
+        bodyLabel.textColor = Constants.Colors.label
+        // The suggested step moves to the top of the list, under the pills
+        let lead: UIButton? = {
+            switch next {
+            case .recommend: return card.reviewPlaceId != nil ? reviewButton : nil
+            case .tellPrivately: return privateButton
+            case .none: return nil
+            }
+        }()
+        guard let lead, let pillsIndex = stack.arrangedSubviews.firstIndex(of: ratingPills) else { return }
+        UIView.animate(withDuration: 0.25) {
+            self.stack.insertArrangedSubview(lead, at: pillsIndex + 1)
+            self.stack.layoutIfNeeded()
+        }
     }
 
     // MARK: - Actions

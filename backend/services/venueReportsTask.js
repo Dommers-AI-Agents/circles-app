@@ -49,7 +49,9 @@ async function sendVenueReports(now = new Date()) {
     try {
       const to = await reportAddress(db, venue);
       if (!to) { skipped++; continue; }
-      await emailService.sendVenueReportEmail({ ...venue, contactEmail: to }, monthKey, stats);
+      // The FavCircles score and repeat rate, when the store has them (insights, 2026-11-09)
+      const summary = await require('./venueInsights').reportSummary(venue);
+      await emailService.sendVenueReportEmail({ ...venue, contactEmail: to }, monthKey, stats, summary);
       await doc.ref.update({ lastReportSentAt: new Date().toISOString(), lastReportMonth: monthKey });
       sent++;
     } catch (error) {

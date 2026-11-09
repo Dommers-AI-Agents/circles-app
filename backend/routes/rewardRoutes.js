@@ -162,6 +162,8 @@ router.get('/venues/:venueId/dashboard', requireVenueOwner, getVenueDashboard);
 router.get('/venues/:venueId/followers', requireVenueOwner, requireOwnerPremium, getVenueFollowers);
 router.get('/venues/:venueId/savers', requireVenueOwner, requireOwnerPremium, getVenueSavers);
 router.get('/venues/:venueId/activity', requireVenueOwner, requireOwnerPremium, getVenueActivity);
+// Insights: customers, busiest times, offers, the FavCircles score, comments awaiting a reply (2026-11-09)
+router.get('/venues/:venueId/insights', requireVenueOwner, requireOwnerPremium, require('../controllers/venues/venueOwnerController').getVenueInsights);
 // Customers: who earns here, and "Remove from rewards" (2026-11-02)
 const venueCustomers = require('../controllers/venues/venueCustomersController');
 router.get('/venues/:venueId/customers', requireVenueOwner, requireOwnerPremium, venueCustomers.listCustomers);
