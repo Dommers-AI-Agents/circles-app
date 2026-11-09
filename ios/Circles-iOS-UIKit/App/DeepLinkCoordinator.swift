@@ -35,7 +35,16 @@ final class DeepLinkCoordinator: SceneCoordinator {
             return
         }
 
-        let source: ImportSource = url.pathExtension.lowercased() == "csv" ? .googleMaps : .mapstr
+        // A Swarm export (zip, or its checkins files) is known by what's inside
+        let fileNames: [String]
+        if url.pathExtension.lowercased() == "zip", let data = try? Data(contentsOf: tempURL) {
+            fileNames = ZipExtractor.extract(data).map(\.filename)
+        } else {
+            fileNames = [url.lastPathComponent]
+        }
+        let source: ImportSource = SwarmExportParser.isSwarmExport(fileNames: fileNames)
+            ? .swarm
+            : (url.pathExtension.lowercased() == "csv" ? .googleMaps : .mapstr)
 
         var presenter: UIViewController = tabBarController
         while let presented = presenter.presentedViewController {

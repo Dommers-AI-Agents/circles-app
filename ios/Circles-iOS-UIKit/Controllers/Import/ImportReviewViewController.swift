@@ -98,16 +98,37 @@ class ImportReviewViewController: BaseViewController {
 
     private func updateImportButton() {
         let total = sections.reduce(0) { $0 + $1.selectedCount }
-        importButton.setTitle(total == 0 ? "Import" : "Import \(total) Place\(total == 1 ? "" : "s")", for: .normal)
-        importButton.isEnabled = total > 0
-        importButton.alpha = total > 0 ? 1.0 : 0.5
+        // Swarm: places already saved still get their check-in history, so a
+        // re-import with nothing new still has something to bring over
+        let historyOnly = sections.reduce(0) { $0 + historyOnlyPlaces(in: $1).count }
+        let title: String
+        if total > 0 {
+            title = "Import \(total) Place\(total == 1 ? "" : "s")"
+        } else if historyOnly > 0 {
+            title = "Add Check-in History"
+        } else {
+            title = "Import"
+        }
+        importButton.setTitle(title, for: .normal)
+        let enabled = total > 0 || historyOnly > 0
+        importButton.isEnabled = enabled
+        importButton.alpha = enabled ? 1.0 : 0.5
+    }
+
+    /// Unticked places already in your circles that carry Swarm history: sent
+    /// for the history alone, never saved again
+    private func historyOnlyPlaces(in section: ReviewSection) -> [ImportPreviewPlace] {
+        guard source == .swarm else { return [] }
+        return section.places
+            .filter { !$0.selected && $0.place.isDuplicate && $0.place.checkIns != nil }
+            .map { var place = $0.place; place.historyOnly = true; return place }
     }
 
     // MARK: - Actions
 
     @objc private func importTapped() {
         let executeLists: [ImportService.ExecuteList] = sections.compactMap { section in
-            let selectedPlaces = section.places.filter { $0.selected }.map { $0.place }
+            let selectedPlaces = section.places.filter { $0.selected }.map { $0.place } + historyOnlyPlaces(in: section)
             guard !selectedPlaces.isEmpty else { return nil }
             return ImportService.ExecuteList(
                 circleName: section.circleName,
@@ -154,6 +175,9 @@ class ImportReviewViewController: BaseViewController {
         if summary.skippedDuplicates > 0 {
             message += " Skipped \(summary.skippedDuplicates) you already had."
         }
+        if let history = SwarmImportCopy.historySentence(summary.historyRecorded) {
+            message += " " + history
+        }
         if !summary.failures.isEmpty {
             message += " \(summary.failures.count) couldn't be imported."
         }
@@ -191,7 +215,10 @@ extension ImportReviewViewController: UITableViewDataSource, UITableViewDelegate
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        section == sections.count - 1
+        if source == .swarm && section == sections.count - 1 {
+            return "Tap a place to include or exclude it. Places land in your \"\(targetCircleName)\" circle, most-visited first, and each one keeps your check-in count. Places you already have get their check-in history too. Addresses fill in automatically after import. Nothing is posted to your feed."
+        }
+        return section == sections.count - 1
             ? "Tap a place to include or exclude it. Everything imports into your \"\(targetCircleName)\" circle and appears on your map — you can hide the circle from the map anytime in its settings. Places without a pin yet will be located automatically after import."
             : nil
     }
@@ -205,6 +232,10 @@ extension ImportReviewViewController: UITableViewDataSource, UITableViewDelegate
         config.text = place.name
 
         var detail = place.address ?? ""
+        // Swarm: the check-ins say more than a pending address
+        if let history = place.checkIns {
+            detail = SwarmImportCopy.historyLine(count: history.count, last: history.lastDate)
+        }
         if place.isDuplicate {
             detail = "Already in your circles" + (detail.isEmpty ? "" : " · \(detail)")
             config.secondaryTextProperties.color = .systemOrange

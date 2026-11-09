@@ -3,7 +3,9 @@ import UniformTypeIdentifiers
 
 /// Entry screen for importing saved places from other platforms.
 /// Presents the supported sources with per-source instructions, then routes
-/// into file picking (Mapstr, Google Takeout) or OAuth (Swarm).
+/// into file picking: Mapstr's export, Google Takeout, and Swarm's data
+/// export (Wes, 2026-11-09: no Foursquare sign-in; people download their own
+/// data and bring it here).
 class ImportSourceSelectionViewController: BaseViewController {
 
     override var loadsDataOnViewDidLoad: Bool { false }
@@ -37,9 +39,9 @@ class ImportSourceSelectionViewController: BaseViewController {
         SourceOption(
             source: .swarm,
             icon: "checkmark.seal",
-            subtitle: "Connect your Swarm account",
-            instructions: "Sign in with Foursquare to import your saved places and check-ins from Swarm.\n\nWe only read your places — nothing is posted to your account.",
-            actionTitle: "Connect Swarm"
+            subtitle: "Import your check-ins from Swarm's data export",
+            instructions: SwarmImportInstructions.steps,
+            actionTitle: "Choose File"
         )
     ]
 
@@ -84,12 +86,7 @@ class ImportSourceSelectionViewController: BaseViewController {
             isDestructive: false,
             from: self,
             onConfirm: { [weak self] in
-                switch option.source {
-                case .mapstr, .googleMaps:
-                    self?.presentDocumentPicker(for: option.source)
-                case .swarm:
-                    self?.startSwarmImport()
-                }
+                self?.presentDocumentPicker(for: option.source)
             }
         )
     }
@@ -109,11 +106,12 @@ class ImportSourceSelectionViewController: BaseViewController {
             // Takeout delivers a .zip of per-list CSVs
             types = [.commaSeparatedText, .zip]
         case .swarm:
-            return
+            // The zip Foursquare emails, or its checkins files once unzipped
+            types = [.zip, .json, .commaSeparatedText]
         }
 
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
-        picker.allowsMultipleSelection = (source == .googleMaps)
+        picker.allowsMultipleSelection = (source == .googleMaps || source == .swarm)
         picker.delegate = self
         present(picker, animated: true)
     }
@@ -125,6 +123,7 @@ class ImportSourceSelectionViewController: BaseViewController {
     func importFiles(at urls: [URL], source: ImportSource) {
         var lists: [ImportList] = []
         var mapstrPlaces: [ImportPlaceCandidate] = []
+        var swarmFiles: [(name: String, data: Data)] = []
 
         for url in urls {
             let filename = url.lastPathComponent
@@ -155,7 +154,10 @@ class ImportSourceSelectionViewController: BaseViewController {
                         guard lower.hasSuffix(".csv") else { continue }
                         lists.append(try ImportParsingService.shared.parseGoogleTakeoutCSV(data: file.data, filename: file.name))
                     case .swarm:
-                        continue
+                        // Read together below: check-ins may span checkins1…N
+                        if SwarmExportParser.checkInsFileKind(file.name) != nil {
+                            swarmFiles.append((file.name, file.data))
+                        }
                     }
                 }
             } catch {
@@ -166,6 +168,16 @@ class ImportSourceSelectionViewController: BaseViewController {
 
         if !mapstrPlaces.isEmpty {
             lists.append(ImportList(name: "Mapstr Places", places: mapstrPlaces))
+        }
+
+        if source == .swarm {
+            do {
+                let export = try SwarmExportParser.parse(files: swarmFiles)
+                lists.append(ImportParsingService.swarmList(from: export))
+            } catch {
+                showError(FriendlyError.message(for: error))
+                return
+            }
         }
 
         guard !lists.isEmpty else {
@@ -234,13 +246,6 @@ class ImportSourceSelectionViewController: BaseViewController {
             return
         }
         showError(FriendlyError.message(for: error))
-    }
-
-    // MARK: - Swarm (Foursquare OAuth)
-
-    private func startSwarmImport() {
-        // Wired up with the Swarm backend endpoints (Phase 3)
-        SwarmImportCoordinator.shared.start(from: self)
     }
 }
 

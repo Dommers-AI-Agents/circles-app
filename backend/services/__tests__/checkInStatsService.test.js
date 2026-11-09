@@ -56,7 +56,7 @@ describe('applyCheckIn', () => {
 describe('toApi', () => {
   it('serves count and timestamps only', () => {
     expect(toApi({ count: 3, firstCheckInAt: 'a', lastCheckInAt: 'b', placeName: 'x', lastCheckInId: 'c' }))
-      .toEqual({ count: 3, firstCheckInAt: 'a', lastCheckInAt: 'b' });
+      .toEqual({ count: 3, firstCheckInAt: 'a', lastCheckInAt: 'b', importedCount: 0 });
   });
   it('is null for an empty or missing bucket', () => {
     expect(toApi(null)).toBeNull();

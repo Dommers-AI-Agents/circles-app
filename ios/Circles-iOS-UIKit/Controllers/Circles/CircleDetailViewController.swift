@@ -1565,7 +1565,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     /// fetched place still carries `needsResolution == true` (an import the
     /// background resolver gave up on); collapses it to zero height otherwise.
     private func updateUnlocatedBanner() {
-        unlocatedPlaces = places.filter { $0.needsResolution == true }
+        // A Swarm import waiting on its address is pinned at the check-in: not "unlocated"
+        unlocatedPlaces = places.filter { $0.needsResolution == true && $0.location == nil }
 
         let count = unlocatedPlaces.count
         let hasUnlocated = count > 0

@@ -14,8 +14,13 @@ struct ImportPreviewPlace: Decodable {
     let sourceUrl: String?
     let googlePlaceId: String?
     let applePoiCategory: String?
+    /// Swarm: the venue's check-in history (echoed by prepare)
+    let checkIns: ImportCheckInHistory?
     let status: String // "new" | "duplicate" | "unmapped"
     let duplicateOf: ImportDuplicateRef?
+    /// Sent only for its check-in history (a duplicate left unticked): the
+    /// server never saves it as a new place
+    var historyOnly: Bool?
 
     var isNew: Bool { status == "new" }
     var isDuplicate: Bool { status == "duplicate" }
@@ -36,6 +41,8 @@ struct ImportPreviewPlace: Decodable {
         if let sourceUrl = sourceUrl { body["sourceUrl"] = sourceUrl }
         if let googlePlaceId = googlePlaceId { body["googlePlaceId"] = googlePlaceId }
         if let applePoiCategory = applePoiCategory { body["applePoiCategory"] = applePoiCategory }
+        if let checkIns = checkIns { body["checkIns"] = checkIns.asBody }
+        if historyOnly == true { body["historyOnly"] = true }
         return body
     }
 }
@@ -76,6 +83,8 @@ struct ImportExecuteListResult: Decodable {
     let created: Int
     let skippedDuplicates: Int
     let failed: [ImportExecuteFailure]
+    /// Swarm: places whose check-in history was recorded
+    var historyRecorded: Int?
 }
 
 struct ImportExecuteFailure: Decodable {
@@ -99,6 +108,7 @@ private struct ImportExecuteResponse: Decodable {
 struct ImportRunSummary {
     var created = 0
     var skippedDuplicates = 0
+    var historyRecorded = 0
     var failures: [ImportExecuteFailure] = []
     var circleNames: [String] = []
 }
@@ -257,6 +267,7 @@ final class ImportService {
                         if let listResult = response.results.first {
                             summary.created += listResult.created
                             summary.skippedDuplicates += listResult.skippedDuplicates
+                            summary.historyRecorded += listResult.historyRecorded ?? 0
                             summary.failures.append(contentsOf: listResult.failed)
                             // Every list lands in the same per-source circle
                             // now — dedupe so the summary says "into Google

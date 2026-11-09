@@ -32,6 +32,11 @@ struct ImportPlaceCandidate {
     /// Set by AppleImportResolver when an on-device Apple Maps lookup located
     /// the place — feeds the backend's category-derivation cascade
     var applePoiCategory: String? = nil
+    /// Swarm: this venue's check-ins, carried onto the place (silently)
+    var checkIns: ImportCheckInHistory? = nil
+    /// Swarm: lat/lng is the phone's spot at check-in, not the venue — look
+    /// the venue up close to it (AppleImportResolver), keep the spot if not found
+    var needsVenueLookup = false
 
     var asRequestBody: [String: Any] {
         var body: [String: Any] = ["name": name]
@@ -44,8 +49,28 @@ struct ImportPlaceCandidate {
         if let sourceExternalId = sourceExternalId { body["sourceExternalId"] = sourceExternalId }
         if let sourceUrl = sourceUrl { body["sourceUrl"] = sourceUrl }
         if let applePoiCategory = applePoiCategory { body["applePoiCategory"] = applePoiCategory }
+        if let checkIns = checkIns { body["checkIns"] = checkIns.asBody }
         return body
     }
+}
+
+/// A venue's check-in history from another app: how many, first and last
+/// (ISO 8601). The server keeps it apart from FavCircles' own check-ins and a
+/// re-import replaces it, so nothing double-counts.
+struct ImportCheckInHistory: Codable, Equatable {
+    let count: Int
+    let firstAt: String
+    let lastAt: String
+
+    var asBody: [String: Any] { ["count": count, "firstAt": firstAt, "lastAt": lastAt] }
+
+    var lastDate: Date? { Self.isoParser.date(from: lastAt) ?? ISO8601DateFormatter().date(from: lastAt) }
+
+    private static let isoParser: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 }
 
 /// One source list (a Google Takeout CSV, a Mapstr export, a Swarm list),

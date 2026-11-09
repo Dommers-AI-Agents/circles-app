@@ -84,7 +84,9 @@ const ONLY_USER = process.env.USER_ID || null;
   const now = new Date().toISOString();
   for (const [key, b] of buckets) {
     const [uid, gpid] = key.split('|');
-    batch.set(statsRef(uid, gpid), { ...b, globalPlaceId: gpid, updatedAt: now, backfilledAt: now });
+    // merge: keeps history imported from another app (imported.swarm), which
+    // raw checkIns docs don't hold
+    batch.set(statsRef(uid, gpid), { ...b, globalPlaceId: gpid, updatedAt: now, backfilledAt: now }, { merge: true });
     if (++ops >= 400) await flush();
   }
   for (const [ref, stamp] of stamps) {

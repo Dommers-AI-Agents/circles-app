@@ -12,7 +12,21 @@ const foldCheckInStats = (survivor, retired) => {
   if (!survivor) return { ...retired };
   const newer = (retired.lastCheckInAt || '') > (survivor.lastCheckInAt || '') ? retired : survivor;
   const firsts = [survivor.firstCheckInAt, retired.firstCheckInAt].filter(Boolean).sort();
+  // History imported from another app (Swarm) folds per source the same way
+  const imported = {};
+  for (const side of [survivor.imported || {}, retired.imported || {}]) {
+    for (const [source, h] of Object.entries(side)) {
+      if (!h || !(h.count > 0)) continue;
+      const prev = imported[source];
+      imported[source] = prev ? {
+        count: prev.count + h.count,
+        firstCheckInAt: [prev.firstCheckInAt, h.firstCheckInAt].filter(Boolean).sort()[0] || null,
+        lastCheckInAt: [prev.lastCheckInAt, h.lastCheckInAt].filter(Boolean).sort().pop() || null
+      } : { ...h };
+    }
+  }
   return {
+    ...(Object.keys(imported).length ? { imported } : {}),
     count: (survivor.count || 0) + (retired.count || 0),
     firstCheckInAt: firsts[0] || null,
     lastCheckInAt: newer.lastCheckInAt || null,

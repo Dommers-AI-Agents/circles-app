@@ -84,8 +84,13 @@ const RESOLVER_CONCURRENCY = 3;
 const normalizeText = (value) =>
   (value || '').toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
 
-const nameAddressKey = (name, address) =>
-  `${normalizeText(name)}|${normalizeText(address)}`;
+// null without a real address: "Starbucks|address pending" would make every
+// branch of a chain one place (Swarm and Takeout rows often have none yet)
+const PLACEHOLDER_ADDRESSES = new Set(['', 'address pending']);
+const nameAddressKey = (name, address) => {
+  const addr = normalizeText(address);
+  return PLACEHOLDER_ADDRESSES.has(addr) ? null : `${normalizeText(name)}|${addr}`;
+};
 
 const isValidCoordinate = (lat, lng) =>
   typeof lat === 'number' && typeof lng === 'number' &&
@@ -132,8 +137,10 @@ async function loadUserPlaceIndex(userId) {
     if (place.applePlaceId) byApplePlaceId.set(place.applePlaceId, entry);
     if (place.globalPlaceId) byGlobalPlaceId.set(place.globalPlaceId, entry);
     const key = nameAddressKey(place.name, place.address);
-    if (!byNameAddress.has(key)) byNameAddress.set(key, []);
-    byNameAddress.get(key).push(entry);
+    if (key) {
+      if (!byNameAddress.has(key)) byNameAddress.set(key, []);
+      byNameAddress.get(key).push(entry);
+    }
     const coords = place.location && place.location.coordinates;
     if (Array.isArray(coords) && coords.length === 2) {
       const nameKey = normalizedName(place.name);
@@ -286,6 +293,25 @@ function validatePayloadShape(payload) {
   return null;
 }
 
+/** A Swarm place's check-in history ({ count, firstAt, lastAt }), cleaned; null otherwise. */
+function importedHistoryFor(source, place) {
+  const { cleanImportedHistory, IMPORT_HISTORY_SOURCES } = require('./checkInStatsService');
+  if (!IMPORT_HISTORY_SOURCES.includes(source) || !place || !place.checkIns) return null;
+  const clean = cleanImportedHistory(place.checkIns);
+  return clean ? { count: clean.count, firstAt: clean.firstCheckInAt, lastAt: clean.lastCheckInAt } : null;
+}
+
+/** The save a duplicate row matches, by the same keys the duplicate check uses. */
+function existingEntryFor(dedupeIndex, { sourceId, googlePlaceId, applePlaceId, knownVenue, dupKey, name, lat, lng }) {
+  return (sourceId && dedupeIndex.bySourceExternalId.get(sourceId)) ||
+    (googlePlaceId && dedupeIndex.byGooglePlaceId.get(googlePlaceId)) ||
+    (applePlaceId && dedupeIndex.byApplePlaceId.get(applePlaceId)) ||
+    (knownVenue && dedupeIndex.byGlobalPlaceId.get(knownVenue)) ||
+    (dedupeIndex.byNameAddress.get(dupKey) || [])[0] ||
+    findNearbySameName(dedupeIndex, name, lat, lng) ||
+    null;
+}
+
 /**
  * Prepare: resolve coordinates + categories, mark duplicates, and suggest
  * merges into existing circles. Read-only.
@@ -346,6 +372,8 @@ async function prepareImport(userId, payload) {
         // From the client's on-device Apple Maps lookup — feeds the category
         // cascade at canonical-link time
         applePoiCategory: typeof place.applePoiCategory === 'string' ? place.applePoiCategory : null,
+        // Swarm: this venue's check-in history, carried to execute
+        checkIns: importedHistoryFor(payload.source, place),
         status: 'new',
         duplicateOf: null
       };
@@ -365,6 +393,9 @@ async function prepareImport(userId, payload) {
         result.category = categoryFromMapstrTags(result.tags);
       }
       if (!result.category) result.category = 'other';
+      // Swarm gives the phone's spot at check-in, not the venue's address: it
+      // stays pending (found on the phone after import), never "35.2, -80.8"
+      if (!result.address && payload.source === 'swarm') result.address = 'Address pending';
       if (!result.address) {
         result.address = result.lat !== null
           ? `${result.lat.toFixed(5)}, ${result.lng.toFixed(5)}`
@@ -379,7 +410,7 @@ async function prepareImport(userId, payload) {
         (result.googlePlaceId && dedupeIndex.byGooglePlaceId.get(result.googlePlaceId)) ||
         (dedupeIndex.byNameAddress.get(dupKey) || [])[0] ||
         findNearbySameName(dedupeIndex, result.name, result.lat, result.lng) ||
-        (seenInList.has(dupKey) ? { placeId: null, circleId: null, name: result.name } : null);
+        (dupKey && seenInList.has(dupKey) ? { placeId: null, circleId: null, name: result.name } : null);
 
       if (existing) {
         result.status = 'duplicate';
@@ -387,7 +418,7 @@ async function prepareImport(userId, payload) {
           ? { placeId: existing.placeId, circleId: existing.circleId }
           : { placeId: null, circleId: null };
       }
-      seenInList.add(dupKey);
+      if (dupKey) seenInList.add(dupKey);
       return result;
     });
 
@@ -584,6 +615,8 @@ async function executeImport(userId, payload) {
 
     // Saves whose venue we already know by its Apple id: linked to it directly
     const knownVenueByPlaceId = new Map();
+    // Swarm: places (new or already saved) whose check-in history to record
+    const historyTargets = [];
     for (const place of list.places || []) {
       const sourceId = place.sourceExternalId || null;
       const applePlaceId = typeof place.applePlaceId === 'string' && place.applePlaceId ? place.applePlaceId : null;
@@ -591,19 +624,28 @@ async function executeImport(userId, payload) {
       const dupKey = nameAddressKey(place.name, place.address);
       const lat = typeof place.lat === 'number' ? place.lat : null;
       const lng = typeof place.lng === 'number' ? place.lng : null;
+      const history = importedHistoryFor(payload.source, place);
       const alreadyExists =
         (sourceId && dedupeIndex.bySourceExternalId.has(sourceId)) ||
         (place.googlePlaceId && dedupeIndex.byGooglePlaceId.has(place.googlePlaceId)) ||
         (applePlaceId && dedupeIndex.byApplePlaceId.has(applePlaceId)) ||
         (knownVenue && dedupeIndex.byGlobalPlaceId.has(knownVenue)) ||
-        dedupeIndex.byNameAddress.has(dupKey) ||
+        (dupKey && dedupeIndex.byNameAddress.has(dupKey)) ||
         !!findNearbySameName(dedupeIndex, place.name, lat, lng) ||
         (payload.source === 'photos' && !!findNearbySimilarName(dedupeIndex, place.name, lat, lng));
 
       if (alreadyExists) {
         listResult.skippedDuplicates++;
+        // Already saved: its check-in history still comes over, onto the save it duplicates
+        if (history) {
+          const existing = existingEntryFor(dedupeIndex, { sourceId, googlePlaceId: place.googlePlaceId, applePlaceId, knownVenue, dupKey, name: place.name, lat, lng });
+          if (existing && existing.placeId) historyTargets.push({ placeId: existing.placeId, name: place.name, lat, lng, history });
+        }
         continue;
       }
+      // Sent only for its history (a duplicate the person left unticked):
+      // never saved as a new place
+      if (place.historyOnly === true) continue;
 
       // Coordinate-less rows import UNMAPPED (no pin) instead of failing —
       // zero-cost ingest never calls Google
@@ -643,6 +685,11 @@ async function executeImport(userId, payload) {
       placeData.sourceListName = circleName || null;
       if (applePlaceId) placeData.applePlaceId = applePlaceId;
       if (!hasCoordinates) placeData.needsResolution = true;
+      // Swarm rows pinned at the check-in but not yet matched to the venue:
+      // the phone's resolution queue finds the venue's address and true pin
+      if (hasCoordinates && payload.source === 'swarm' && placeData.address === 'Address pending') {
+        placeData.needsResolution = true;
+      }
 
       if (hasCoordinates) {
         const errors = validatePlace(placeData);
@@ -660,6 +707,7 @@ async function executeImport(userId, payload) {
       const placeRef = db.collection(COLLECTIONS.PLACES).doc();
       batch.set(placeRef, placeData);
       newPlaceIds.push(placeRef.id);
+      if (history) historyTargets.push({ placeId: placeRef.id, name: place.name, lat, lng, history });
       if (hasCoordinates) linkablePlaceIds.push(placeRef.id);
       if (knownVenue) knownVenueByPlaceId.set(placeRef.id, knownVenue);
 
@@ -670,7 +718,7 @@ async function executeImport(userId, payload) {
       if (place.googlePlaceId) dedupeIndex.byGooglePlaceId.set(place.googlePlaceId, entry);
       if (applePlaceId) dedupeIndex.byApplePlaceId.set(applePlaceId, entry);
       if (knownVenue) dedupeIndex.byGlobalPlaceId.set(knownVenue, entry);
-      dedupeIndex.byNameAddress.set(dupKey, [entry]);
+      if (dupKey) dedupeIndex.byNameAddress.set(dupKey, [entry]);
       if (hasCoordinates) {
         const nameKey = normalizedName(place.name);
         if (!dedupeIndex.byNormName.has(nameKey)) dedupeIndex.byNormName.set(nameKey, []);
@@ -729,6 +777,25 @@ async function executeImport(userId, payload) {
           console.error(`⚠️ Import: global-place link failed for ${placeId} (non-fatal):`, linkError.message);
         }
       });
+    }
+
+    // Check-in history (Swarm) after linking, so new saves have their venue.
+    // Silent: stats only — no feed rows, notifications or points.
+    if (historyTargets.length) {
+      const { resolveCheckInVenue, recordImportedHistory } = require('./checkInStatsService');
+      let recorded = 0;
+      await mapWithConcurrency(historyTargets, 4, async (target) => {
+        try {
+          const location = isValidCoordinate(target.lat, target.lng) ? { coordinates: [target.lng, target.lat] } : null;
+          const globalPlaceId = await resolveCheckInVenue({ placeId: target.placeId, placeName: target.name, location });
+          if (await recordImportedHistory({
+            userId, globalPlaceId, source: payload.source, history: target.history, placeName: target.name, placeId: target.placeId
+          })) recorded++;
+        } catch (historyError) {
+          console.error(`⚠️ Import: check-in history failed for ${target.placeId} (non-fatal):`, historyError.message);
+        }
+      });
+      listResult.historyRecorded = recorded;
     }
 
     results.push(listResult);

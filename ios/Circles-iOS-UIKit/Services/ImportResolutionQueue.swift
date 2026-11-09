@@ -30,6 +30,10 @@ final class ImportResolutionQueue {
         /// The original import source URL — Google URLs encode the venue's
         /// true location, which seeds the Apple search in the right city
         let website: String?
+        /// A Swarm import's pin: where the person checked in (the venue is
+        /// looked up close to it)
+        let lat: Double?
+        let lng: Double?
     }
 
     private struct UnresolvedResponse: Decodable {
@@ -170,8 +174,9 @@ final class ImportResolutionQueue {
 
             // A backend-stamped placeholder address adds nothing to the query
             let address = place.address == "Address pending" ? nil : place.address
-            let hint = place.website.flatMap { ImportParsingService.featureCoordinate(fromGoogleURL: $0) }
-            AppleImportResolver.searchVenue(name: place.name, address: address, hint: hint) { outcome in
+            let checkInSpot = place.lat.flatMap { lat in place.lng.map { (lat: lat, lng: $0) } }
+            let hint = checkInSpot ?? place.website.flatMap { ImportParsingService.featureCoordinate(fromGoogleURL: $0) }
+            AppleImportResolver.searchVenue(name: place.name, address: address, hint: hint, nearby: checkInSpot != nil) { outcome in
                 DispatchQueue.main.async {
                     switch outcome {
                     case .throttled where throttleRetry < AppleImportResolver.maxThrottleRetries:

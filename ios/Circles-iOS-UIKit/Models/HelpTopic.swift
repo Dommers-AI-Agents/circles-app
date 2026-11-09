@@ -378,9 +378,11 @@ class HelpContentProvider {
                 3. Open that email on your phone and share the attachment to Circles — or pick it from Settings → Import Places → **Mapstr**
 
                 **Swarm:**
-                1. Settings → Import Places → **Swarm**
-                2. Sign in with your Foursquare account when prompted
-                3. If the connection isn't available yet, check back soon — Swarm import is still rolling out
+                1. In Swarm: tap your profile, then the gear (Settings) → **Data & Privacy** → **Privacy rights** → **Data download request**
+                2. Foursquare emails you a download link (it can take a few days)
+                3. Download the zip and save it to Files
+                4. In Circles: Settings → Import Places → **Swarm**, then pick the zip
+                5. Every place you checked in at comes over once, with how many times you went — nothing is posted to your feed
 
                 **Good to know:**
                 • You can review and uncheck places before anything is saved

@@ -437,7 +437,7 @@ exports.getUnresolvedPlaces = async (req, res) => {
     const snapshot = await db.collection(COLLECTIONS.PLACES)
       .where('addedBy', '==', req.user.uid)
       .where('needsResolution', '==', true)
-      .select('deletedAt', 'needsResolution', 'resolutionAttempts', 'name', 'address', 'circleId', 'website')
+      .select('deletedAt', 'needsResolution', 'resolutionAttempts', 'name', 'address', 'circleId', 'website', 'location')
       .get();
     const places = [];
     snapshot.forEach(doc => {
@@ -450,7 +450,13 @@ exports.getUnresolvedPlaces = async (req, res) => {
       // website carries the original import source URL — the client decodes
       // the venue's true location from it (S2 feature id) so same-name
       // venues near the user can't win the Apple Maps lookup
-      places.push({ id: doc.id, name: p.name, address: p.address || null, circleId: p.circleId, website: p.website || null });
+      // A Swarm import is pinned where the person checked in: that spot
+      // seeds the lookup (lat/lng), so the venue next door can't win
+      const coords = p.location && Array.isArray(p.location.coordinates) ? p.location.coordinates : null;
+      places.push({
+        id: doc.id, name: p.name, address: p.address || null, circleId: p.circleId, website: p.website || null,
+        lat: coords ? coords[1] : null, lng: coords ? coords[0] : null
+      });
     });
     res.json({ success: true, data: { places, count: places.length } });
   } catch (error) {
@@ -765,7 +771,10 @@ async function resolvedVenueFix(globalPlaceId, user, updateData) {
   const doc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(String(globalPlaceId)).get();
   if (!doc.exists || doc.data().deletedAt) return null;
   const venue = doc.data();
-  if (venueDetails.validLocation(venue.location)) {
+  // A venue with a pin but no address yet (made from a Swarm check-in spot)
+  // is unconfirmed: Apple's match is the truth for it, as for any import
+  const unconfirmed = !venue.address || venue.address === 'Address pending';
+  if (venueDetails.validLocation(venue.location) && !unconfirmed) {
     const [lng, lat] = venue.location.coordinates;
     const useVenue = { location: { type: 'Point', coordinates: [lng, lat] }, geohash: venue.geohash || geofire.geohashForLocation([lat, lng]) };
     if (venue.address && venue.address !== 'Address pending') useVenue.address = venue.address;

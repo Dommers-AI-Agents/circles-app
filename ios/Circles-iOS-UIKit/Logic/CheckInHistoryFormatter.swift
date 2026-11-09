@@ -6,6 +6,8 @@ struct CheckInStats: Codable, Equatable {
     let count: Int
     let firstCheckInAt: Date?
     let lastCheckInAt: Date?
+    /// How many of `count` came from Swarm's export (2026-11-09)
+    var importedCount: Int? = nil
 }
 
 /// One-line caption for the place page: "Checked in 7 times · last Sep 5".
@@ -20,6 +22,10 @@ enum CheckInHistoryFormatter {
         guard let stats = stats, stats.count > 0 else { return nil }
         let times = stats.count == 1 ? "once" : "\(stats.count) times"
         var line = "Checked in \(times)"
+        // Swarm history imported: say which part came from there
+        if let imported = stats.importedCount, imported > 0 {
+            line += imported == stats.count ? " on Swarm" : " (\(imported) on Swarm)"
+        }
         if let last = stats.lastCheckInAt {
             line += " · last \(dayLabel(for: last, now: now, calendar: calendar, locale: locale))"
         }

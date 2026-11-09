@@ -36,3 +36,12 @@ describe('photosToCarry', () => {
     expect(photosToCarry(survivor, retired)).toEqual([{ id: 'q', url: 'u2', likes: ['w'] }, 'u3']);
   });
 });
+
+test('history imported from Swarm adds up when two venue records merge', () => {
+  const { foldCheckInStats } = require('../venueMerge');
+  const folded = foldCheckInStats(
+    { count: 1, firstCheckInAt: '2026-01-01', lastCheckInAt: '2026-01-01', imported: { swarm: { count: 5, firstCheckInAt: '2015-01-01', lastCheckInAt: '2020-01-01' } } },
+    { count: 0, imported: { swarm: { count: 2, firstCheckInAt: '2012-01-01', lastCheckInAt: '2018-01-01' } } }
+  );
+  expect(folded.imported.swarm).toEqual({ count: 7, firstCheckInAt: '2012-01-01', lastCheckInAt: '2020-01-01' });
+});

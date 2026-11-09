@@ -98,12 +98,88 @@ async function recordCheckIn({ userId, globalPlaceId, checkInId, placeId, placeN
   }
 }
 
+// Check-in history brought over from another app (Swarm, Wes 2026-11-09),
+// kept apart from FavCircles' own count:
+//   imported.<source> = { count, firstCheckInAt, lastCheckInAt }
+// A re-import REPLACES its source's entry, so it never double-counts, and the
+// live count and the backfill never touch it. Nothing here is social: no
+// feed rows, no notifications, no points.
+const IMPORT_HISTORY_SOURCES = ['swarm'];
+const MAX_IMPORTED_CHECKINS = 100000;
+
+const isoOrNull = (value) => {
+  if (typeof value !== 'string' || !value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+};
+
+/** Pure: a client's { count, firstAt, lastAt } → the stored shape, or null when unusable. */
+const cleanImportedHistory = (input) => {
+  if (!input || typeof input !== 'object') return null;
+  const count = Number(input.count);
+  if (!Number.isInteger(count) || count < 1 || count > MAX_IMPORTED_CHECKINS) return null;
+  let first = isoOrNull(input.firstAt || input.firstCheckInAt);
+  let last = isoOrNull(input.lastAt || input.lastCheckInAt);
+  if (!first && !last) return null;
+  first = first || last;
+  last = last || first;
+  if (first > last) [first, last] = [last, first];
+  return { count, firstCheckInAt: first, lastCheckInAt: last };
+};
+
+/** Pure: the bucket's own check-ins plus every imported source's, as one history. */
+const combinedHistory = (data) => {
+  if (!data) return null;
+  const parts = [
+    { count: data.count || 0, firstCheckInAt: data.firstCheckInAt, lastCheckInAt: data.lastCheckInAt },
+    ...Object.values(data.imported || {})
+  ].filter((p) => p && p.count > 0);
+  if (!parts.length) return null;
+  const firsts = parts.map((p) => p.firstCheckInAt).filter(Boolean).sort();
+  const lasts = parts.map((p) => p.lastCheckInAt).filter(Boolean).sort();
+  return {
+    count: parts.reduce((sum, p) => sum + p.count, 0),
+    firstCheckInAt: firsts[0] || null,
+    lastCheckInAt: lasts[lasts.length - 1] || null
+  };
+};
+
 // The API shape served to iOS. Null when the viewer has never checked in here.
-const toApi = (data) => (data && data.count > 0 ? {
-  count: data.count,
-  firstCheckInAt: data.firstCheckInAt || null,
-  lastCheckInAt: data.lastCheckInAt || null
-} : null);
+// `importedCount`: how many of those came from another app (Swarm)
+const toApi = (data) => {
+  const history = combinedHistory(data);
+  if (!history) return null;
+  const importedCount = Object.values((data && data.imported) || {}).reduce((sum, p) => sum + ((p && p.count) || 0), 0);
+  return { ...history, importedCount };
+};
+
+/**
+ * Store one venue's imported history (idempotent per source). Never throws —
+ * a stats hiccup must not fail an import. Returns true when written.
+ */
+async function recordImportedHistory({ userId, globalPlaceId, source, history, placeName, placeId }) {
+  if (!userId || !globalPlaceId || !IMPORT_HISTORY_SOURCES.includes(source)) return false;
+  const clean = cleanImportedHistory(history);
+  if (!clean) return false;
+  try {
+    const ref = statsRef(userId, globalPlaceId);
+    const snap = await ref.get();
+    const prev = snap.exists ? snap.data() : {};
+    const update = {
+      // Other sources kept as they are (spelled out: merge semantics differ by SDK depth)
+      imported: { ...(prev.imported || {}), [source]: clean },
+      globalPlaceId,
+      updatedAt: new Date().toISOString()
+    };
+    if (!prev.placeName && placeName) update.placeName = placeName;
+    if (!prev.lastPlaceId && placeId) update.lastPlaceId = placeId;
+    await ref.set(update, { merge: true });
+    return true;
+  } catch (error) {
+    console.error(`⚠️ [CheckInStats] Failed to record imported history for ${userId}/${globalPlaceId}:`, error.message);
+    return false;
+  }
+}
 
 async function getMyCheckInStats(userId, globalPlaceId) {
   if (!userId || !globalPlaceId) return null;
@@ -122,5 +198,9 @@ module.exports = {
   recordCheckIn,
   getMyCheckInStats,
   toApi,
+  cleanImportedHistory,
+  combinedHistory,
+  recordImportedHistory,
+  IMPORT_HISTORY_SOURCES,
   statsRef
 };

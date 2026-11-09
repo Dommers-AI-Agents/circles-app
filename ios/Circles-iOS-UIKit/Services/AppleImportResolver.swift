@@ -27,7 +27,8 @@ enum AppleImportResolver {
         var resolvedLists = lists
         var work: [(listIndex: Int, placeIndex: Int)] = []
         for (listIndex, list) in lists.enumerated() {
-            for (placeIndex, place) in list.places.enumerated() where !hasValidCoordinates(place) {
+            // Swarm rows have the phone's spot: they're looked up too, close to it
+            for (placeIndex, place) in list.places.enumerated() where !hasValidCoordinates(place) || place.needsVenueLookup {
                 work.append((listIndex, placeIndex))
             }
         }
@@ -59,8 +60,10 @@ enum AppleImportResolver {
             // Google URLs encode the venue's true location (S2 feature id) —
             // without this hint, name-only searches resolve to the same-name
             // venue nearest the USER (a Scottsdale save pinned in Charlotte)
-            let hint = candidate.sourceUrl.flatMap { ImportParsingService.featureCoordinate(fromGoogleURL: $0) }
-            searchVenue(name: candidate.name, address: candidate.address, hint: hint) { outcome in
+            let checkInSpot = candidate.needsVenueLookup && hasValidCoordinates(candidate)
+                ? (lat: candidate.lat!, lng: candidate.lng!) : nil
+            let hint = checkInSpot ?? candidate.sourceUrl.flatMap { ImportParsingService.featureCoordinate(fromGoogleURL: $0) }
+            searchVenue(name: candidate.name, address: candidate.address, hint: hint, nearby: checkInSpot != nil) { outcome in
                 DispatchQueue.main.async {
                     switch outcome {
                     case .throttled where throttleRetry < maxThrottleRetries:
@@ -79,6 +82,7 @@ enum AppleImportResolver {
                             updated.address = match.formattedAddress
                         }
                         updated.applePoiCategory = match.applePoiCategory
+                        updated.needsVenueLookup = false
                         resolvedLists[item.listIndex].places[item.placeIndex] = updated
                         locatedCount += 1
                         workIndex += 1
@@ -135,20 +139,28 @@ enum AppleImportResolver {
     /// wrong same-name venue — reject it rather than pin the wrong city.
     static let maxHintDistanceMeters: CLLocationDistance = 100_000
 
+    /// A Swarm check-in is made at the venue: its match must be close to the
+    /// phone's spot, or it's the same-name venue across town
+    static let maxCheckInDistanceMeters: CLLocationDistance = 500
+
+    /// `nearby`: the hint is where the person stood (a Swarm check-in) — search
+    /// a small area and accept only a venue within `maxCheckInDistanceMeters`;
+    /// anything farther is not found (the check-in spot stays the pin).
     static func searchVenue(
         name: String,
         address: String?,
         hint: (lat: Double, lng: Double)? = nil,
+        nearby: Bool = false,
         completion: @escaping (VenueSearchOutcome) -> Void
     ) {
-        performSearch(name: name, address: address, hint: hint) { outcome in
+        performSearch(name: name, address: address, hint: hint, nearby: nearby) { outcome in
             // Decorated names ("O ARTISTA - Bar à Cocktails - … - Ixelles")
             // overwhelm the search — one retry with the prefix before the
             // first separator rescues most of them. Throttles pass through
             // untouched so callers' backoff semantics hold.
             if case .notFound = outcome,
                let trimmed = prefixBeforeSeparator(of: name) {
-                performSearch(name: trimmed, address: address, hint: hint, completion: completion)
+                performSearch(name: trimmed, address: address, hint: hint, nearby: nearby, completion: completion)
             } else {
                 completion(outcome)
             }
@@ -159,6 +171,7 @@ enum AppleImportResolver {
         name: String,
         address: String?,
         hint: (lat: Double, lng: Double)?,
+        nearby: Bool = false,
         completion: @escaping (VenueSearchOutcome) -> Void
     ) {
         let request = MKLocalSearch.Request()
@@ -168,14 +181,16 @@ enum AppleImportResolver {
             .joined(separator: ", ")
         // .address matters: many Takeout saves are bare street addresses
         // ("1025 Starview Ave") that a POI-only search can never return
-        request.resultTypes = [.pointOfInterest, .address]
+        // A check-in is always at a place, never a bare street address
+        request.resultTypes = nearby ? [.pointOfInterest] : [.pointOfInterest, .address]
         // Bias the search to where the source URL says the venue actually is
         // — otherwise MapKit searches near the user and same-name venues in
         // their city win
         if let hint = hint {
+            let span: CLLocationDistance = nearby ? 3_000 : 40_000
             request.region = MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: hint.lat, longitude: hint.lng),
-                latitudinalMeters: 40_000, longitudinalMeters: 40_000
+                latitudinalMeters: span, longitudinalMeters: span
             )
         }
 
@@ -213,11 +228,15 @@ enum AppleImportResolver {
                     latitude: b.placemark.coordinate.latitude,
                     longitude: b.placemark.coordinate.longitude))
             })
+            let limit = nearby ? maxCheckInDistanceMeters : maxHintDistanceMeters
             if let nearest = nearest,
                hintLocation.distance(from: CLLocation(
                    latitude: nearest.placemark.coordinate.latitude,
-                   longitude: nearest.placemark.coordinate.longitude)) <= maxHintDistanceMeters {
+                   longitude: nearest.placemark.coordinate.longitude)) <= limit {
                 completion(.resolved(match(from: nearest)))
+            } else if nearby {
+                // The check-in spot is already the pin: nothing better found
+                completion(.notFound)
             } else {
                 completion(.resolved(VenueMatch(
                     latitude: hint.lat,
