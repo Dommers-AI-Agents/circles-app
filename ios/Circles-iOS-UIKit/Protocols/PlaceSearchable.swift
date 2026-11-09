@@ -6,25 +6,28 @@ extension Place {
     /// the results list and the pins can never disagree about what "matches".
     /// Typo-tolerant: "piza" finds "pizza" — a query word of 4+ characters may
     /// be one edit away from a word (or word prefix) in the place's text, two
-    /// edits for 8+ characters. Exact substring containment stays the fast
-    /// path, so nothing that matched before stops matching.
+    /// edits for 8+ characters. Exact text matches first, by field: the name
+    /// anywhere, address/category at word starts, notes/description as
+    /// whole words (PlaceSearchTexts).
     func matches(searchQuery query: String) -> Bool {
         // What may match exactly vs. what may match loosely is decided in
         // PlaceSearchText (categories in, address fuzz out).
         let texts = PlaceSearchText.texts(for: self)   // memoized per place
-        let haystack = texts.exact
         let needle = PlaceSearchText.fold(query)
         guard !needle.isEmpty else { return true }
-        if haystack.contains(needle) { return true }
+        // The name matches anywhere, the address/category at word starts,
+        // notes and description as whole words — "ups" must not find every
+        // "upscale" bistro (PlaceSearchTexts.contains).
+        if texts.contains(needle) { return true }
 
-        // Every query word must appear somewhere — as a substring of the full
-        // text, or within typo distance of a word in the name/category text.
+        // Every query word must appear somewhere it's allowed to, or be
+        // within typo distance of a word in the name/category text.
         let tokens = needle.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
         guard !tokens.isEmpty else { return false }
         let words = texts.fuzz
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
         return tokens.allSatisfy { token in
-            haystack.contains(token) || words.contains { Self.fuzzyMatch(token: token, word: $0) }
+            texts.contains(token) || words.contains { Self.fuzzyMatch(token: token, word: $0) }
         }
     }
 

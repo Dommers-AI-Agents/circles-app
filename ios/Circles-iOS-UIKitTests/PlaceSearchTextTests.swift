@@ -15,6 +15,22 @@ struct PlaceSearchTextTests {
               privacy: .public, createdAt: Date(), updatedAt: Date())
     }
 
+    @Test func descriptionMatchesOnlyAtWordStarts() {
+        // Wes 2026-11-09: "Ups" listed YUME Ramen (description "upscale")
+        // above The UPS Store.
+        #expect(!place("YUME Ramen Sushi & Bar", description: "Upscale ramen and sushi").matches(searchQuery: "ups"))
+        #expect(!place("Soup Spot", description: "Hearty soups and cups of tea").matches(searchQuery: "ups"))
+        #expect(place("The UPS Store", category: .service).matches(searchQuery: "ups"))
+        #expect(place("Somewhere", description: "Drop off your UPS returns").matches(searchQuery: "ups"))
+        // Names still match inside a word.
+        #expect(place("Cheeseburger Paradise").matches(searchQuery: "burger"))
+        // Addresses still match where a word starts.
+        #expect(place("Somewhere", address: "1800 Camden Rd").matches(searchQuery: "camd"))
+        #expect(PlaceSearchText.containsWord("the ups store", "ups", wholeWord: true))
+        #expect(!PlaceSearchText.containsWord("upscale soups", "ups", wholeWord: true))
+        #expect(PlaceSearchText.containsWord("upscale soups", "ups"))
+    }
+
     @Test func deliDoesNotFuzzMatchAStreetName() {
         // "deli" is one edit from "dela" — but the address is never fuzzed.
         #expect(!place("Nail Studio", address: "12 Delaware Ave, Belmar, NJ").matches(searchQuery: "deli"))

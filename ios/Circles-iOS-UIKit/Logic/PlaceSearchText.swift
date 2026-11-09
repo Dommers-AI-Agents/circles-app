@@ -49,8 +49,52 @@ enum PlaceSearchText {
     /// searchable fields change. Building them (joins + locale folding) for
     /// every place on every keystroke was most of the cost of a search pass,
     /// and the map's pin filter did it all again a beat later.
-    static func texts(for place: Place) -> (exact: String, fuzz: String) {
+    static func texts(for place: Place) -> PlaceSearchTexts {
         PlaceSearchTextCache.shared.texts(for: place)
+    }
+
+    /// The address and category vocabulary: matched where a word starts
+    /// ("camd" → Camden Rd), never inside one.
+    static func prefixText(for place: Place) -> String {
+        fold(([place.address] + categoryWords(for: place)).joined(separator: " "))
+    }
+
+    /// Free text (description, notes): whole words only. "Ups" listed every
+    /// "upscale" and "soups" restaurant above The UPS Store (Wes, 2026-11-09).
+    static func wordText(for place: Place) -> String {
+        fold([place.description ?? "", place.notes ?? "", place.publicNotes ?? "", place.privateNotes ?? ""]
+            .joined(separator: " "))
+    }
+
+    /// True when `needle` starts a word in `text` (and, with `wholeWord`,
+    /// also ends one). Both are folded.
+    static func containsWord(_ text: String, _ needle: String, wholeWord: Bool = false) -> Bool {
+        guard !needle.isEmpty else { return true }
+        func isWordChar(_ c: Character) -> Bool { c.isLetter || c.isNumber }
+        var searchStart = text.startIndex
+        while let range = text.range(of: needle, range: searchStart..<text.endIndex) {
+            let startsWord = range.lowerBound == text.startIndex || !isWordChar(text[text.index(before: range.lowerBound)])
+            let endsWord = range.upperBound == text.endIndex || !isWordChar(text[range.upperBound])
+            if startsWord && (!wholeWord || endsWord) { return true }
+            searchStart = text.index(after: range.lowerBound)
+        }
+        return false
+    }
+}
+
+/// A place's searchable text, folded, split by how loosely each part may match.
+struct PlaceSearchTexts {
+    let exact: String    // everything (kept for callers that want it all)
+    let fuzz: String     // name + category words: typo-tolerant
+    let name: String     // substring anywhere
+    let prefix: String   // address + category words: word starts
+    let words: String    // description + notes: whole words
+
+    /// The query (or one query word) appears where it's allowed to.
+    func contains(_ needle: String) -> Bool {
+        name.contains(needle)
+            || PlaceSearchText.containsWord(prefix, needle)
+            || PlaceSearchText.containsWord(words, needle, wholeWord: true)
     }
 }
 
@@ -60,7 +104,7 @@ enum PlaceSearchText {
 final class PlaceSearchTextCache {
     static let shared = PlaceSearchTextCache()
 
-    private struct Entry { let fingerprint: Int; let exact: String; let fuzz: String }
+    private struct Entry { let fingerprint: Int; let texts: PlaceSearchTexts }
     private var entries: [String: Entry] = [:]
     private let lock = NSLock()
     let limit: Int
@@ -82,21 +126,24 @@ final class PlaceSearchTextCache {
         return h.finalize()
     }
 
-    func texts(for place: Place) -> (exact: String, fuzz: String) {
+    func texts(for place: Place) -> PlaceSearchTexts {
         let fingerprint = Self.fingerprint(of: place)
         lock.lock()
         if let hit = entries[place.id], hit.fingerprint == fingerprint {
             lock.unlock()
-            return (hit.exact, hit.fuzz)
+            return hit.texts
         }
         lock.unlock()
-        let exact = PlaceSearchText.exactText(for: place)
-        let fuzz = PlaceSearchText.fuzzText(for: place)
+        let texts = PlaceSearchTexts(exact: PlaceSearchText.exactText(for: place),
+                                     fuzz: PlaceSearchText.fuzzText(for: place),
+                                     name: PlaceSearchText.fold(place.name),
+                                     prefix: PlaceSearchText.prefixText(for: place),
+                                     words: PlaceSearchText.wordText(for: place))
         lock.lock()
         if entries.count >= limit { entries.removeAll(keepingCapacity: true) }
-        entries[place.id] = Entry(fingerprint: fingerprint, exact: exact, fuzz: fuzz)
+        entries[place.id] = Entry(fingerprint: fingerprint, texts: texts)
         lock.unlock()
-        return (exact, fuzz)
+        return texts
     }
 
     var count: Int { lock.lock(); defer { lock.unlock() }; return entries.count }

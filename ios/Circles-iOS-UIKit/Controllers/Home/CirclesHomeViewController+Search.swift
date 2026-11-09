@@ -224,7 +224,14 @@ extension CirclesHomeViewController {
 
         // Nearest first, with the distance shown on each row ("looking for
         // pizza NEAR ME" is the whole query).
-        let entries = DistancePlaceSorter.sorted(deduped, from: searchReferenceLocation())
+        // Places named for the query come first, then the ones that only
+        // matched on notes/category ("ups" → The UPS Store before a café
+        // whose notes mention UPS).
+        let reference = searchReferenceLocation()
+        let byName = deduped.filter { Place.name($0.name, matches: searchText) }
+        let byNameIds = Set(byName.map(\.id))
+        let entries = DistancePlaceSorter.sorted(byName, from: reference)
+            + DistancePlaceSorter.sorted(deduped.filter { !byNameIds.contains($0.id) }, from: reference)
         var distances: [String: CLLocationDistance] = [:]
         for entry in entries { if let d = entry.distance { distances[entry.place.id] = d } }
         searchDistances = distances
