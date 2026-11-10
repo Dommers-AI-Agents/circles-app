@@ -26,6 +26,9 @@ enum ClipHandoff {
         var welcome: Welcome?            // the store and what they earned, for the app's first launch
         var accountEmail: String?        // with emailUnverified: the app asks to confirm it or set up Face ID
         var emailUnverified: Bool?
+        /// The clip made this account just now: the app runs its first run
+        /// (name → favorite spot → people → tour) even with no store (2026-11-09)
+        var isNewSignIn: Bool? = nil
     }
 
     /// What the full app's first launch shows: the store's page with a
@@ -51,7 +54,7 @@ enum ClipHandoff {
             .appendingPathComponent(fileName)
     }
 
-    static func storeAuthHandoff(session: ClipSession) {
+    static func storeAuthHandoff(session: ClipSession, isNewSignIn: Bool = false) {
         let payload = Payload(
             authToken: session.token,
             refreshToken: session.refreshToken,
@@ -62,7 +65,8 @@ enum ClipHandoff {
             pendingStickerCode: nil,
             welcome: nil,
             accountEmail: session.email,
-            emailUnverified: session.emailUnverified
+            emailUnverified: session.emailUnverified,
+            isNewSignIn: isNewSignIn
         )
         write(payload)
     }

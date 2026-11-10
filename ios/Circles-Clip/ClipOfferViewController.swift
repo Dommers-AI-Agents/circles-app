@@ -174,7 +174,10 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
             // They already said yes on the card: sign in and it's saved
             hookLabel.attributedText = ClipTheme.hookText("Almost saved.", "Just sign in.", size: 46)
         } else {
-            hookLabel.attributedText = ClipTheme.hookText("Love it here?", preview.isGeneric ? "Save it." : "Save us.", size: 46)
+            // The generic card asks "What's your favorite spot?" — the clip answers it (2026-11-09)
+            hookLabel.attributedText = preview.isGeneric
+                ? ClipTheme.hookText("What's your favorite spot?", "Save it.", size: 40)
+                : ClipTheme.hookText("Love it here?", "Save us.", size: 46)
         }
 
         if preview.isGeneric {

@@ -110,6 +110,32 @@ exports.scan = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Unknown sticker code' });
     }
 
+    // The generic "Join FavCircles" code (JOINUS): not a store. The virtual
+    // "FavCircles" venue behind it is a demo record, never something to save
+    // (Wes, 2026-11-09: "the FavCircles virtual store is just a demo"). The
+    // app takes the person into using FavCircles — the first-run favorite
+    // spot — instead of a store page.
+    if (venue.genericJoin) {
+      rewardService.incrementVenueStats(venue.venueId, 'scans');
+      const { rewardPoints } = await rewardService.getBalance(userId, { withEvents: false });
+      return res.json({
+        success: true,
+        data: {
+          kind: 'generic',
+          generic: true,
+          venue: publicVenueInfo(venue),
+          awarded: null,
+          saved: false,
+          alreadySaved: false,
+          savedPlace: null,
+          balance: rewardPoints,
+          venueBalance: 0,
+          loyaltyLive: false,
+          offers: []
+        }
+      });
+    }
+
     if (venue.kind === 'window') {
       rewardService.incrementVenueStats(venue.venueId, 'scans');
       // The App Clip saves the store as it signs them in: they already said

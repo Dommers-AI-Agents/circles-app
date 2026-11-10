@@ -60,7 +60,7 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
 
         // Hand the session to the full app FIRST — even if the scan call fails,
         // the install lands logged in.
-        ClipHandoff.storeAuthHandoff(session: session)
+        ClipHandoff.storeAuthHandoff(session: session, isNewSignIn: isNewSignIn)
         ClipNotifications.shared.register(session: session, code: code)
 
         if preview.isGeneric {

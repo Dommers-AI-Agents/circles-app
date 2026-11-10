@@ -37,7 +37,9 @@ const publicVenueInfo = (venue) => ({
   globalPlaceId: venue.globalPlaceId,
   location: venue.location || null,
   // Online-only brand venue: never on a map; Specials/profile/follow only
-  isVirtual: venue.isVirtual === true
+  isVirtual: venue.isVirtual === true,
+  // The generic "Join FavCircles" code's demo record: not a store to save
+  genericJoin: venue.genericJoin === true
 });
 
 // What an owner sees about their own venue: everything except internals.
