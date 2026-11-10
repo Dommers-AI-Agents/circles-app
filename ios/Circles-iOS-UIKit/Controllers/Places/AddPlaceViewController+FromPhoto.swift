@@ -10,9 +10,8 @@ import MapKit
 /// join its library once it's saved (PendingPlacePhotos).
 extension AddPlaceViewController {
     func installFromPhotoButton() {
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "From Photo", image: UIImage(systemName: "photo.on.rectangle"),
-            primaryAction: UIAction { [weak self] _ in self?.fromPhotoTapped() })
+        // On the hero now (2026-11-09), where the navigation bar's button was
+        heroPhotosButton.addAction(UIAction { [weak self] _ in self?.fromPhotoTapped() }, for: .touchUpInside)
     }
 
     /// Says what it does before the picker opens (Wes, 2026-11-07: tapping

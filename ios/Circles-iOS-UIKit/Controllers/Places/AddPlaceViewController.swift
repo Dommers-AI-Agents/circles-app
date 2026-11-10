@@ -104,18 +104,19 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return view
     }()
     
-    /// The screen's heading: tap or search (Wes, 2026-11-07)
+    /// The hero's headline (Wes, 2026-11-09: the plain "Add Place" bar looked
+    /// dull next to everything else — the colored card is the header now)
     let hintLabel: UILabel = {
         let label = UILabel()
-        let text = NSMutableAttributedString(string: "Tap a place or search\n", attributes: [
-            .font: UIFont.systemFont(ofSize: 22, weight: .bold),
+        let text = NSMutableAttributedString(string: "Add a place you love.\n", attributes: [
+            .font: UIFont.serifBold(30),
             .foregroundColor: UIColor.white
         ])
         let paragraph = NSMutableParagraphStyle()
-        paragraph.paragraphSpacingBefore = 4
-        text.append(NSAttributedString(string: "On the map, or by name or address.", attributes: [
+        paragraph.paragraphSpacingBefore = 6
+        text.append(NSAttributedString(string: "Tap it on the map, or search a name or address.", attributes: [
             .font: UIFont.systemFont(ofSize: 15, weight: .medium),
-            .foregroundColor: UIColor.white.withAlphaComponent(0.85),
+            .foregroundColor: UIColor.white.withAlphaComponent(0.88),
             .paragraphStyle: paragraph
         ]))
         label.attributedText = text
@@ -131,11 +132,25 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         view.colors = [Constants.Colors.primary, UIColor.systemIndigo]
         view.startPoint = CGPoint(x: 0, y: 0)
         view.endPoint = CGPoint(x: 1, y: 1)
-        view.layer.cornerRadius = 22
+        view.layer.cornerRadius = 28
         view.layer.cornerCurve = .continuous
+        view.layer.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         view.clipsToBounds = true
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
+    }()
+
+    /// Close and From Photo, on the hero where the navigation bar used to be
+    lazy var heroCloseButton = UIButton.glassCircleButton(systemName: "xmark", accessibilityLabel: "Close")
+    lazy var heroPhotosButton = UIButton.glassCircleButton(systemName: "photo.on.rectangle", accessibilityLabel: "Fill in from a photo")
+    lazy var heroTopRow: UIStackView = {
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let row = UIStackView(arrangedSubviews: [heroCloseButton, spacer, heroPhotosButton])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
+        return row
     }()
 
     /// A map pin on a frosted tile, the card's icon
@@ -842,8 +857,16 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Don't automatically search - wait for user location to search for coffee shops
     }
     
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // The hero is the header (Wes, 2026-11-09); the bar's close and photo
+        // buttons live on it now
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        navigationController?.setNavigationBarHidden(false, animated: animated)
 
         // Dismiss any tutorial bubble when leaving
         OnboardingManager.shared.dismissCurrentBubble()
@@ -858,14 +881,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     func setupUI() {
         view.backgroundColor = UIColor.systemGray6
-        title = "Add Place"
-        
-        // Add Cancel button to navigation bar
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .cancel,
-            target: self,
-            action: #selector(cancelButtonTapped)
-        )
+        title = "Add Place" // the back button's label on the next screen; the bar itself is hidden here
+        heroCloseButton.addTarget(self, action: #selector(cancelButtonTapped), for: .touchUpInside)
         // Photos taken there (e.g. with no signal) → the place they were taken at
         installFromPhotoButton()
         photoVisibilityObservation = photoImageView.observe(\.isHidden) { [weak self] _, _ in
@@ -878,7 +895,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         scrollView.addSubview(contentView)
         
         contentView.addSubview(headerCard)
-        headerCard.addSubview(headerIcon)
+        headerCard.addSubview(heroTopRow)
         headerCard.addSubview(hintLabel)
         headerCard.addSubview(searchContainer)
         searchContainer.addSubview(searchBar)
@@ -921,7 +938,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Layout
         NSLayoutConstraint.activate([
             // Scroll view
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: saveFooterBar.topAnchor),
@@ -935,24 +952,23 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             
             // Hint label
             // The colored card: icon and heading, then the search field
-            headerCard.topAnchor.constraint(equalTo: contentView.topAnchor, constant: Constants.Spacing.small),
-            headerCard.leadingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.leadingAnchor, constant: Constants.Spacing.large),
-            headerCard.trailingAnchor.constraint(equalTo: contentView.safeAreaLayoutGuide.trailingAnchor, constant: -Constants.Spacing.large),
-            headerIcon.topAnchor.constraint(equalTo: headerCard.topAnchor, constant: 18),
-            headerIcon.leadingAnchor.constraint(equalTo: headerCard.leadingAnchor, constant: 16),
-            headerIcon.widthAnchor.constraint(equalToConstant: 52),
-            headerIcon.heightAnchor.constraint(equalToConstant: 52),
-            { let c = hintLabel.centerYAnchor.constraint(equalTo: headerIcon.centerYAnchor); c.priority = .defaultHigh; return c }(),
-            hintLabel.topAnchor.constraint(greaterThanOrEqualTo: headerCard.topAnchor, constant: 14),
-            hintLabel.leadingAnchor.constraint(equalTo: headerIcon.trailingAnchor, constant: 14),
-            hintLabel.trailingAnchor.constraint(equalTo: headerCard.trailingAnchor, constant: -16),
+            // The hero runs under the status bar to the screen's edges; its
+            // controls start below the safe area
+            headerCard.topAnchor.constraint(equalTo: contentView.topAnchor),
+            headerCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            headerCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            heroTopRow.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
+            heroTopRow.leadingAnchor.constraint(equalTo: headerCard.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            heroTopRow.trailingAnchor.constraint(equalTo: headerCard.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            hintLabel.topAnchor.constraint(equalTo: heroTopRow.bottomAnchor, constant: 14),
+            hintLabel.leadingAnchor.constraint(equalTo: headerCard.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            hintLabel.trailingAnchor.constraint(equalTo: headerCard.safeAreaLayoutGuide.trailingAnchor, constant: -20),
             
             // Search container at top
-            searchContainer.topAnchor.constraint(equalTo: headerIcon.bottomAnchor, constant: 16),
-            searchContainer.topAnchor.constraint(greaterThanOrEqualTo: hintLabel.bottomAnchor, constant: 14),
-            searchContainer.leadingAnchor.constraint(equalTo: headerCard.leadingAnchor, constant: 12),
-            searchContainer.trailingAnchor.constraint(equalTo: headerCard.trailingAnchor, constant: -12),
-            searchContainer.bottomAnchor.constraint(equalTo: headerCard.bottomAnchor, constant: -12),
+            searchContainer.topAnchor.constraint(equalTo: hintLabel.bottomAnchor, constant: 16),
+            searchContainer.leadingAnchor.constraint(equalTo: headerCard.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            searchContainer.trailingAnchor.constraint(equalTo: headerCard.safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            searchContainer.bottomAnchor.constraint(equalTo: headerCard.bottomAnchor, constant: -18),
             searchContainer.heightAnchor.constraint(equalToConstant: 52),
             
             // Search bar inside container

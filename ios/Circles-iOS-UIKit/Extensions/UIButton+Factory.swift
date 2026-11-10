@@ -202,6 +202,27 @@ extension UIButton {
         return button
     }
 
+    /// A white symbol on a frosted circle, for controls sitting on a colored
+    /// hero (Add Place's close and photos buttons, 2026-11-09). 40 pt.
+    static func glassCircleButton(systemName: String, accessibilityLabel: String) -> UIButton {
+        let button = UIButton(type: .system)
+        let config = UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
+        button.setImage(UIImage(systemName: systemName, withConfiguration: config), for: .normal)
+        button.tintColor = .white
+        button.backgroundColor = UIColor.white.withAlphaComponent(0.22)
+        button.layer.cornerRadius = 20
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor.white.withAlphaComponent(0.35).cgColor
+        button.accessibilityLabel = accessibilityLabel
+        button.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 40),
+            button.heightAnchor.constraint(equalToConstant: 40)
+        ])
+        button.enableTapFeedback()
+        return button
+    }
+
     /// A round white control floating on a map (expand, zoom to me): blue
     /// symbol, soft shadow. The owner sizes it (30 pt on the circle map).
     static func mapControlButton(systemName: String, cornerRadius: CGFloat = 15) -> UIButton {
