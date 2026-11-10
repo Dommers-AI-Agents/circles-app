@@ -9,8 +9,8 @@ final class AddPlaceCircleCard: UIControl {
         let imageView = UIImageView()
         imageView.clipsToBounds = true
         imageView.layer.cornerRadius = 12
-        imageView.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.12)
-        imageView.tintColor = Constants.Colors.primary
+        imageView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.12)
+        imageView.tintColor = UIColor.systemBlue
         imageView.contentMode = .center
         imageView.translatesAutoresizingMaskIntoConstraints = false
         return imageView
@@ -18,20 +18,20 @@ final class AddPlaceCircleCard: UIControl {
     private let nameLabel: UILabel = {
         let label = UILabel()
         label.font = .preferredFont(forTextStyle: .headline)
-        label.textColor = Constants.Colors.label
+        label.textColor = .black // the form's fields are white in every appearance
         label.numberOfLines = 2
         return label
     }()
     private let detailLabel: UILabel = {
         let label = UILabel()
         label.font = .preferredFont(forTextStyle: .subheadline)
-        label.textColor = Constants.Colors.secondaryLabel
+        label.textColor = .darkGray
         label.numberOfLines = 2
         return label
     }()
     private let chevron: UIImageView = {
         let imageView = UIImageView(image: UIImage(systemName: "chevron.right"))
-        imageView.tintColor = .tertiaryLabel
+        imageView.tintColor = .systemGray3
         imageView.setContentHuggingPriority(.required, for: .horizontal)
         return imageView
     }()
@@ -40,7 +40,8 @@ final class AddPlaceCircleCard: UIControl {
     override init(frame: CGRect) {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
-        backgroundColor = Constants.Colors.secondaryBackground
+        // White with the thin blue edge, like the name, category and notes fields around it
+        backgroundColor = .white
         layer.cornerRadius = 14
         layer.borderWidth = 1
         layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
