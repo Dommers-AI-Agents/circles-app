@@ -1096,6 +1096,8 @@ struct RewardVenue: Codable {
     let googlePlaceId: String?
     let globalPlaceId: String?
     let location: RewardCoordinate?
+    /// The generic "Join FavCircles" code's demo record: not a store to save (2026-11-09)
+    var genericJoin: Bool? = nil
 }
 
 struct RewardCoordinate: Codable {

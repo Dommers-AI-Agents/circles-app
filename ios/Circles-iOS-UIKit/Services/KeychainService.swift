@@ -160,6 +160,7 @@ class KeychainService {
         var welcome: ClipWelcome?
         var accountEmail: String?
         var emailUnverified: Bool?
+        var isNewSignIn: Bool?
     }
 
     struct ClipAdoptionResult {
@@ -168,6 +169,7 @@ class KeychainService {
         let pendingStickerCode: String?  // clip failed to redeem — run the pending-code flow
         var welcome: ClipWelcome? = nil  // the store's page + welcome to show first
         var unconfirmedEmail: String? = nil  // signed up in the clip with just this email
+        var isNewSignIn: Bool? = nil        // the clip made the account just now: run the first run (2026-11-09)
     }
 
     /// Set once this install has launched (UserDefaults is wiped with the app)
@@ -218,7 +220,8 @@ class KeychainService {
                                   handledStickerCode: payload.handledStickerCode,
                                   pendingStickerCode: payload.pendingStickerCode,
                                   welcome: payload.welcome,
-                                  unconfirmedEmail: payload.emailUnverified == true ? payload.accountEmail : nil)
+                                  unconfirmedEmail: payload.emailUnverified == true ? payload.accountEmail : nil,
+                                  isNewSignIn: payload.isNewSignIn)
     }
 
     // MARK: - Private Helper Methods

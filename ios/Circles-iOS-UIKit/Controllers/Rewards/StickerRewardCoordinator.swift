@@ -67,6 +67,11 @@ final class StickerRewardCoordinator: NSObject {
                     switch result {
                     case .success(let scan):
                         NotificationCenter.default.post(name: .rewardPointsDidChange, object: nil)
+                        if scan.kind == "generic" || scan.venue.genericJoin == true {
+                            // The generic "Join FavCircles" code: not a store
+                            self?.startGettingStarted()
+                            return
+                        }
                         self?.showStorePage(for: scan.venue) {
                             if scan.kind == "register" {
                                 self?.handleRegisterScan(scan, code: code)
@@ -173,6 +178,21 @@ final class StickerRewardCoordinator: NSObject {
     }
 
     /// The store's page couldn't open: the usual first run, from its start
+    /// The generic "Join FavCircles" code (JOINUS) scanned in the app (Wes,
+    /// 2026-11-09: the demo "FavCircles" venue is never something to save).
+    /// A new account gets the first run — "What's your favorite spot?" and the
+    /// steps after it; everyone else goes straight to adding a place.
+    @MainActor private func startGettingStarted() {
+        guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }),
+              let delegate = scene.delegate as? SceneDelegate else { return }
+        if FirstFavoriteViewController.isNeeded, !OnboardingManager.shared.isFirstSessionFlowActive {
+            delegate.firstSession.armFirstSessionChain()
+            delegate.firstSession.continueFirstSessionAfterCarousel()
+        } else if !OnboardingManager.shared.isFirstSessionFlowActive {
+            delegate.deepLinks.route(.addPlace)
+        }
+    }
+
     @MainActor private func startClipFirstSessionWithoutPage() {
         guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }),
               let delegate = scene.delegate as? SceneDelegate,

@@ -41,6 +41,12 @@ final class RewardCodeHandler: SceneCoordinator {
             // Their first look at the app is that store's page with what they
             // earned and what the points buy (Wes, 2026-10-31)
             ClipWelcome.stash(welcome)
+        } else if result.adopted, result.isNewSignIn == true {
+            // Joined through the generic "Join FavCircles" code (no store):
+            // the app's own first run — name, "What's your favorite spot?",
+            // people, location, notifications, tour (Wes, 2026-11-09: the
+            // demo "FavCircles" venue is never the destination)
+            host?.firstSession.armFirstSessionChain()
         }
         if let pendingCode = result.pendingStickerCode {
             // The clip's scan call failed — the normal pending-code flow
