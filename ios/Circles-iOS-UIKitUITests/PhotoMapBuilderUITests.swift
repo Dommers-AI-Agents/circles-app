@@ -57,6 +57,28 @@ final class PhotoMapBuilderUITests: XCTestCase {
         snap(app, "07-saved-map")
     }
 
+    /// The hub alone (no saves): hero, the three ways, How it works at the bottom
+    func testHubLayout() throws {
+        let app = XCUIApplication()
+        app.launch()
+        for label in ["Continue", "Not now", "Skip", "Done"] {
+            let button = app.buttons[label]
+            if button.waitForExistence(timeout: 4) { button.tap(); sleep(2) }
+        }
+        sleep(3)
+        openHub(app)
+        for title in ["Pick photos", "Scan a time period", "Build my map"] {
+            XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch.exists, title)
+        }
+        snap(app, "hub-top")
+        app.swipeUp()
+        sleep(1)
+        let lastStep = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Your photos stay on your phone'")).firstMatch
+        XCTAssertTrue(lastStep.exists || app.otherElements.matching(NSPredicate(format: "label CONTAINS 'Your photos stay on your phone'")).firstMatch.exists,
+                      "How it works")
+        snap(app, "hub-bottom")
+    }
+
     private func openHub(_ app: XCUIApplication) {
         let addPlace = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Add Place'")).firstMatch
         XCTAssertTrue(addPlace.waitForExistence(timeout: 20), "Add Place on Home")

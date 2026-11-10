@@ -22,42 +22,89 @@ final class AddFromPhotosViewController: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Constants.Colors.background
+        // A brand wash behind everything, not a flat black page (Wes, 2026-11-10:
+        // "a cool feature and I want it to come across that way")
+        let backdrop = FirstRunBackdropView()
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backdrop)
+
+        let headline = UILabel()
+        headline.text = "Your photos already know where you\u{2019}ve been."
+        headline.font = Self.rounded(size: 28, weight: .heavy)
+        headline.textAlignment = .center
+        headline.numberOfLines = 0
+        headline.accessibilityTraits = .header
+
         let intro = UILabel()
         intro.text = "We find the caf\u{00E9}s, restaurants, shops, hotels and other places in your photos. You review them before anything is saved."
         intro.font = .systemFont(ofSize: 15)
         intro.textColor = Constants.Colors.secondaryLabel
+        intro.textAlignment = .center
         intro.numberOfLines = 0
 
+        let howLabel = UILabel()
+        howLabel.text = "HOW IT WORKS"
+        howLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        howLabel.textColor = Constants.Colors.secondaryLabel
+        howLabel.accessibilityTraits = .header
+
         let stack = UIStackView(arrangedSubviews: [
+            PhotoHeroBadge(),
+            headline,
             intro,
-            OptionCard(symbol: "hand.tap.fill", title: "Pick photos",
+            OptionCard(symbol: "hand.tap.fill", tint: Constants.Colors.primary, title: "Pick photos",
                        detail: "Choose the exact photos. We find the place in each, and you pick the circle they go in.",
                        action: { [weak self] in self?.pickPhotos() }),
-            OptionCard(symbol: "calendar", title: "Scan a time period",
+            OptionCard(symbol: "calendar", tint: Constants.Colors.brightOrange, title: "Scan a time period",
                        detail: "A month or two you traveled, a whole year, or all your photos. The places go in a new circle.",
                        action: { [weak self] in self?.scanPeriod() }),
-            OptionCard(symbol: "map.fill", title: "Build my map",
+            OptionCard(symbol: "map.fill", tint: Constants.Colors.success, title: "Build my map",
                        detail: "Places near you from all your photos, into \u{201C}Places from my photos.\u{201D} Your first 25 are free.",
-                       action: { [weak self] in self?.buildMyMap() })
+                       action: { [weak self] in self?.buildMyMap() }),
+            howLabel,
+            HowItWorksPanel(steps: [
+                ("location.fill", "Your camera remembers where",
+                 "Every photo keeps the spot it was taken, as long as Location is on for the Camera."),
+                ("magnifyingglass", "Apple Maps finds the place",
+                 "We look up what\u{2019}s at each spot and keep the real places. Repeat visits become one place."),
+                ("checkmark.circle.fill", "You choose what to save",
+                 "Everything we find starts checked. Uncheck what you don\u{2019}t want, then tap Save."),
+                ("lock.fill", "Your photos stay on your phone",
+                 "Only the location is looked up. Your photos are never uploaded, and each place gets its own photo, like any save.")
+            ])
         ])
         stack.axis = .vertical
         stack.spacing = 14
-        stack.setCustomSpacing(20, after: intro)
+        stack.setCustomSpacing(18, after: stack.arrangedSubviews[0])
+        stack.setCustomSpacing(8, after: headline)
+        stack.setCustomSpacing(24, after: intro)
+        stack.setCustomSpacing(30, after: stack.arrangedSubviews[5])
+        stack.setCustomSpacing(10, after: howLabel)
         stack.translatesAutoresizingMaskIntoConstraints = false
         let scroll = UIScrollView()
         scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
         scroll.addSubview(stack)
         NSLayoutConstraint.activate([
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 16),
+            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 12),
             stack.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 16),
             stack.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -16),
-            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -24)
+            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -32)
         ])
+    }
+
+    static func rounded(size: CGFloat, weight: UIFont.Weight) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size, weight: weight)
+        guard let descriptor = base.fontDescriptor.withDesign(.rounded) else { return base }
+        return UIFont(descriptor: descriptor, size: size)
     }
 
     // MARK: - The three ways
@@ -121,37 +168,98 @@ final class AddFromPhotosViewController: BaseViewController {
     }
 }
 
-/// A big tappable card: icon, title, one line of what it does.
+/// The picture at the top: a photo stack on a brand gradient tile, with a
+/// pin dropped on it.
+private final class PhotoHeroBadge: UIView {
+    init() {
+        super.init(frame: .zero)
+        isAccessibilityElement = false
+        let tile = GradientView()
+        tile.colors = [Constants.Colors.primary, Constants.Colors.accent]
+        tile.startPoint = CGPoint(x: 0, y: 0)
+        tile.endPoint = CGPoint(x: 1, y: 1)
+        tile.layer.cornerRadius = 24
+        tile.layer.cornerCurve = .continuous
+        tile.clipsToBounds = true
+        tile.transform = CGAffineTransform(rotationAngle: -0.08)
+        let photos = UIImageView(image: UIImage(systemName: "photo.stack.fill",
+                                                withConfiguration: UIImage.SymbolConfiguration(pointSize: 36, weight: .semibold)))
+        photos.tintColor = .white
+        photos.contentMode = .center
+        let pin = UIImageView(image: UIImage(systemName: "mappin.circle.fill",
+                                             withConfiguration: UIImage.SymbolConfiguration(pointSize: 30, weight: .bold)))
+        pin.tintColor = Constants.Colors.brightOrange
+        pin.backgroundColor = .white
+        pin.layer.cornerRadius = 17
+        pin.contentMode = .center
+        for v in [tile, photos, pin] as [UIView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 92),
+            tile.widthAnchor.constraint(equalToConstant: 84),
+            tile.heightAnchor.constraint(equalToConstant: 84),
+            tile.centerXAnchor.constraint(equalTo: centerXAnchor),
+            tile.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            photos.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+            photos.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            pin.widthAnchor.constraint(equalToConstant: 34),
+            pin.heightAnchor.constraint(equalToConstant: 34),
+            pin.centerXAnchor.constraint(equalTo: tile.trailingAnchor, constant: -4),
+            pin.centerYAnchor.constraint(equalTo: tile.bottomAnchor, constant: -6)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
+/// A big tappable card: a colored icon tile, title, one line of what it does.
 private final class OptionCard: UIControl {
     private let action: () -> Void
+    private let tint: UIColor
 
-    init(symbol: String, title: String, detail: String, action: @escaping () -> Void) {
+    init(symbol: String, tint: UIColor, title: String, detail: String, action: @escaping () -> Void) {
         self.action = action
+        self.tint = tint
         super.init(frame: .zero)
-        backgroundColor = Constants.Colors.secondaryBackground
-        layer.cornerRadius = 16
+        backgroundColor = UIColor.secondarySystemGroupedBackground.withAlphaComponent(0.94)
+        layer.cornerRadius = 18
         layer.cornerCurve = .continuous
-        let icon = UIImageView(image: UIImage(systemName: symbol))
-        icon.tintColor = Constants.Colors.primary
-        icon.contentMode = .scaleAspectFit
+        layer.borderWidth = 1
+        applyBorder()
+        let tile = UIView()
+        tile.backgroundColor = tint.withAlphaComponent(0.18)
+        tile.layer.cornerRadius = 14
+        tile.layer.cornerCurve = .continuous
+        tile.translatesAutoresizingMaskIntoConstraints = false
+        let icon = UIImageView(image: UIImage(systemName: symbol,
+                                              withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .semibold)))
+        icon.tintColor = tint
+        icon.contentMode = .center
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.widthAnchor.constraint(equalToConstant: 30).isActive = true
-        icon.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        tile.addSubview(icon)
+        NSLayoutConstraint.activate([
+            tile.widthAnchor.constraint(equalToConstant: 50),
+            tile.heightAnchor.constraint(equalToConstant: 50),
+            icon.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+            icon.centerYAnchor.constraint(equalTo: tile.centerYAnchor)
+        ])
         let titleLabel = UILabel()
         titleLabel.text = title
-        titleLabel.font = .systemFont(ofSize: 18, weight: .bold)
+        titleLabel.font = AddFromPhotosViewController.rounded(size: 18, weight: .bold)
         let detailLabel = UILabel()
         detailLabel.text = detail
         detailLabel.font = .systemFont(ofSize: 14)
         detailLabel.textColor = Constants.Colors.secondaryLabel
         detailLabel.numberOfLines = 0
         let chevron = UIImageView(image: UIImage(systemName: "chevron.right"))
-        chevron.tintColor = Constants.Colors.secondaryLabel
+        chevron.tintColor = Constants.Colors.tertiaryLabel
         chevron.setContentHuggingPriority(.required, for: .horizontal)
         let texts = UIStackView(arrangedSubviews: [titleLabel, detailLabel])
         texts.axis = .vertical
         texts.spacing = 4
-        let row = UIStackView(arrangedSubviews: [icon, texts, chevron])
+        let row = UIStackView(arrangedSubviews: [tile, texts, chevron])
         row.alignment = .center
         row.spacing = 14
         row.isUserInteractionEnabled = false
@@ -159,7 +267,7 @@ private final class OptionCard: UIControl {
         addSubview(row)
         NSLayoutConstraint.activate([
             row.topAnchor.constraint(equalTo: topAnchor, constant: 16),
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16)
         ])
@@ -171,9 +279,87 @@ private final class OptionCard: UIControl {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    override var isHighlighted: Bool { didSet { alpha = isHighlighted ? 0.6 : 1 } }
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        // CGColor borders don't follow light/dark on their own
+        if previous?.hasDifferentColorAppearance(comparedTo: traitCollection) ?? true { applyBorder() }
+    }
+
+    private func applyBorder() {
+        layer.borderColor = tint.withAlphaComponent(0.28).resolvedColor(with: traitCollection).cgColor
+    }
+
+    override var isHighlighted: Bool {
+        didSet {
+            UIView.animate(withDuration: 0.12) {
+                self.transform = self.isHighlighted ? CGAffineTransform(scaleX: 0.98, y: 0.98) : .identity
+                self.alpha = self.isHighlighted ? 0.75 : 1
+            }
+        }
+    }
 
     @objc private func tapped() { action() }
+}
+
+/// "How it works": numbered steps, each with what happens and why it's safe.
+private final class HowItWorksPanel: UIView {
+    init(steps: [(symbol: String, title: String, detail: String)]) {
+        super.init(frame: .zero)
+        backgroundColor = UIColor.secondarySystemGroupedBackground.withAlphaComponent(0.94)
+        layer.cornerRadius = 18
+        layer.cornerCurve = .continuous
+        let list = UIStackView()
+        list.axis = .vertical
+        list.spacing = 18
+        list.translatesAutoresizingMaskIntoConstraints = false
+        for (index, step) in steps.enumerated() {
+            let badge = UIView()
+            badge.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.16)
+            badge.layer.cornerRadius = 17
+            badge.translatesAutoresizingMaskIntoConstraints = false
+            let icon = UIImageView(image: UIImage(systemName: step.symbol,
+                                                  withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)))
+            icon.tintColor = Constants.Colors.primary
+            icon.contentMode = .center
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            badge.addSubview(icon)
+            NSLayoutConstraint.activate([
+                badge.widthAnchor.constraint(equalToConstant: 34),
+                badge.heightAnchor.constraint(equalToConstant: 34),
+                icon.centerXAnchor.constraint(equalTo: badge.centerXAnchor),
+                icon.centerYAnchor.constraint(equalTo: badge.centerYAnchor)
+            ])
+            let title = UILabel()
+            title.text = "\(index + 1). \(step.title)"
+            title.font = .systemFont(ofSize: 15, weight: .semibold)
+            title.numberOfLines = 0
+            let detail = UILabel()
+            detail.text = step.detail
+            detail.font = .systemFont(ofSize: 13.5)
+            detail.textColor = Constants.Colors.secondaryLabel
+            detail.numberOfLines = 0
+            let texts = UIStackView(arrangedSubviews: [title, detail])
+            texts.axis = .vertical
+            texts.spacing = 3
+            let badgeColumn = UIStackView(arrangedSubviews: [badge, UIView()])
+            badgeColumn.axis = .vertical
+            let row = UIStackView(arrangedSubviews: [badgeColumn, texts])
+            row.alignment = .fill
+            row.spacing = 12
+            row.isAccessibilityElement = true
+            row.accessibilityLabel = "Step \(index + 1). \(step.title). \(step.detail)"
+            list.addArrangedSubview(row)
+        }
+        addSubview(list)
+        NSLayoutConstraint.activate([
+            list.topAnchor.constraint(equalTo: topAnchor, constant: 18),
+            list.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            list.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            list.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -18)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }
 
 /// Scan a time period: trips we spotted, months, years, a range, or all.
