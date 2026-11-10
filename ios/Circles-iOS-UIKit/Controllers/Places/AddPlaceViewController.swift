@@ -95,6 +95,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         let scrollView = UIScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.keyboardDismissMode = .onDrag
+        // The hero runs under the status bar and places its own controls
+        // below the safe area; the automatic inset would push the whole page
+        // down and leave slack to scroll into (2026-11-09)
+        scrollView.contentInsetAdjustmentBehavior = .never
         return scrollView
     }()
     
@@ -139,6 +143,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
+
+    /// The hero's controls sit below the status bar: a constant from the
+    /// safe-area inset, never a constraint to the screen (that would pin the
+    /// scrolling content in place — 2026-11-09, the page stopped scrolling)
+    var heroTopConstraint: NSLayoutConstraint?
 
     /// Close and From Photo, on the hero where the navigation bar used to be
     lazy var heroCloseButton = UIButton.glassCircleButton(systemName: "xmark", accessibilityLabel: "Close")
@@ -857,11 +866,22 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         // Don't automatically search - wait for user location to search for coffee shops
     }
     
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        heroTopConstraint?.constant = view.safeAreaInsets.top + 6
+    }
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // The hero is the header (Wes, 2026-11-09); the bar's close and photo
         // buttons live on it now
         navigationController?.setNavigationBarHidden(true, animated: animated)
+        // Nothing picked yet: the map's "Tap a place" pill is showing
+        if selectedLocation == nil, currentPOIData == nil, selectedGooglePlaceDetails == nil {
+            mapTapHint.isHidden = false
+            mapTapHint.alpha = 1
+            mapContainer.bringSubviewToFront(mapTapHint)
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -957,7 +977,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             headerCard.topAnchor.constraint(equalTo: contentView.topAnchor),
             headerCard.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             headerCard.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            heroTopRow.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
+            { let c = heroTopRow.topAnchor.constraint(equalTo: headerCard.topAnchor, constant: view.safeAreaInsets.top + 6); heroTopConstraint = c; return c }(),
             heroTopRow.leadingAnchor.constraint(equalTo: headerCard.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             heroTopRow.trailingAnchor.constraint(equalTo: headerCard.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             hintLabel.topAnchor.constraint(equalTo: heroTopRow.bottomAnchor, constant: 14),
