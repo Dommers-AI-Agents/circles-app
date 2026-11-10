@@ -10,7 +10,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     var selectedCircleId: String
     var selectedCircle: Circle?
     var userCircles: [Circle] = []
-    var isCircleDropdownVisible = false
+    /// Opened from Home with no circle yet: the card asks, Save waits (2026-11-09)
+    var circleRequired = false
     let locationManager = CLLocationManager()
     var userLocation: CLLocation?
     var selectedLocation: CLLocationCoordinate2D?
@@ -307,49 +308,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         return label
     }()
     
-    let circleButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 16)
-        button.titleLabel?.lineBreakMode = .byTruncatingTail
-        button.contentHorizontalAlignment = .left
-        button.tintColor = .darkGray
-        button.backgroundColor = .white
-        button.layer.cornerRadius = 8
-        button.layer.borderWidth = 1
-        button.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
-        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 40)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        
-        // Add chevron
-        let chevron = UIImageView(image: UIImage(systemName: "chevron.down"))
-        chevron.tintColor = .systemGray
-        chevron.translatesAutoresizingMaskIntoConstraints = false
-        button.addSubview(chevron)
-        NSLayoutConstraint.activate([
-            chevron.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-            chevron.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -12),
-            chevron.widthAnchor.constraint(equalToConstant: 12),
-            chevron.heightAnchor.constraint(equalToConstant: 12)
-        ])
-        
-        return button
-    }()
-    
-    let circleDropdownTableView: UITableView = {
-        let tableView = UITableView()
-        tableView.backgroundColor = .systemBackground
-        tableView.layer.cornerRadius = 8
-        tableView.layer.borderWidth = 1
-        tableView.layer.borderColor = UIColor.systemBlue.withAlphaComponent(0.3).cgColor
-        tableView.layer.shadowColor = UIColor.black.cgColor
-        tableView.layer.shadowOpacity = 0.1
-        tableView.layer.shadowOffset = CGSize(width: 0, height: 2)
-        tableView.layer.shadowRadius = 4
-        tableView.isHidden = true
-        tableView.alpha = 0
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        return tableView
-    }()
+    /// The circle this place will live in, drawn like the picker's rows;
+    /// tapping it opens the picker sheet (Wes, 2026-11-09)
+    let circleCard = AddPlaceCircleCard()
+
     
     let categoryLabel: UILabel = {
         let label = UILabel()
@@ -599,11 +561,15 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         didSet { if isViewLoaded { showRememberedCircleCue() } }
     }
 
-    func showRememberedCircleCue() {
-        circleLabel.text = circleWasRemembered ? "Circle \u{00B7} the one you used last, tap to change" : "Circle"
-        circleLabel.textColor = circleWasRemembered ? Constants.Colors.primary : .darkGray
-        circleButton.layer.borderWidth = circleWasRemembered ? 2 : 1
-        circleButton.layer.borderColor = (circleWasRemembered ? Constants.Colors.primary : UIColor.systemBlue.withAlphaComponent(0.3)).cgColor
+    func showRememberedCircleCue() { refreshCircleUI() }
+
+    /// The card, its label and the Save button all say which circle (or that none is chosen yet)
+    func refreshCircleUI() {
+        let circle = selectedCircleId.isEmpty ? nil : (selectedCircle ?? userCircles.first { $0.id == selectedCircleId })
+        circleCard.configure(circle: circle, remembered: circleWasRemembered && circle != nil)
+        circleLabel.text = AddPlaceCircleCopy.sectionLabel(remembered: circleWasRemembered && circle != nil)
+        circleLabel.textColor = circleWasRemembered && circle != nil ? Constants.Colors.primary : .darkGray
+        addPlaceButton.setTitle(AddPlaceCircleCopy.saveTitle(circleName: circle?.name), for: .normal)
     }
     var photoFillPicker: PhotoFillPicker?
     /// "Finding where your photo was taken…" over the map, with Cancel
@@ -661,6 +627,13 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         super.init(nibName: nil, bundle: nil)
     }
 
+    /// From Home (Wes, 2026-11-09): find the place first; the circle is chosen
+    /// on this screen, in the Circle card, before saving
+    convenience init(circles: [Circle]) {
+        self.init(circleId: "", circles: circles)
+        circleRequired = true
+    }
+
     let injectedCircles: [Circle]?
 
     /// Manual "empty map" tap handling is delayed so a POI/annotation selection
@@ -694,13 +667,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         
         // Build comprehensive category list with subcategories
         setupCategoryDropdownItems()
-        
-        // Set up circle dropdown
-        circleDropdownTableView.delegate = self
-        circleDropdownTableView.dataSource = self
-        circleDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "CircleCell")
-        circleDropdownTableView.rowHeight = 44
-        circleDropdownTableView.separatorInset = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
         
         // Set up category dropdown
         categoryDropdownTableView.delegate = self
@@ -937,7 +903,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         formContainer.addSubview(addPhotoButton)
         formContainer.addSubview(removePhotoButton)
         formContainer.addSubview(circleLabel)
-        formContainer.addSubview(circleButton)
+        formContainer.addSubview(circleCard)
         formContainer.addSubview(categoryLabel)
         formContainer.addSubview(categoryButton)
         // Don't add dropdown to formContainer - will add to main view later
@@ -1066,12 +1032,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             circleLabel.topAnchor.constraint(equalTo: addPhotoButton.bottomAnchor, constant: Constants.Spacing.medium),
             circleLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             
-            circleButton.topAnchor.constraint(equalTo: circleLabel.bottomAnchor, constant: Constants.Spacing.small),
-            circleButton.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
-            circleButton.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
-            circleButton.heightAnchor.constraint(equalToConstant: 44),
+            circleCard.topAnchor.constraint(equalTo: circleLabel.bottomAnchor, constant: Constants.Spacing.small),
+            circleCard.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
+            circleCard.trailingAnchor.constraint(equalTo: formContainer.trailingAnchor, constant: -Constants.Spacing.large),
             
-            categoryLabel.topAnchor.constraint(equalTo: circleButton.bottomAnchor, constant: Constants.Spacing.medium),
+            categoryLabel.topAnchor.constraint(equalTo: circleCard.bottomAnchor, constant: Constants.Spacing.medium),
             categoryLabel.leadingAnchor.constraint(equalTo: formContainer.leadingAnchor, constant: Constants.Spacing.large),
             
             categoryButton.topAnchor.constraint(equalTo: categoryLabel.bottomAnchor, constant: Constants.Spacing.small),
@@ -1157,10 +1122,8 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         addressTextView.alpha = 1.0
         categoryButton.alpha = 1.0
         
-        // Add dropdowns to main view last to ensure they're on top
-        view.addSubview(circleDropdownTableView)
+        // Add the dropdown to the main view last so it's on top
         view.addSubview(categoryDropdownTableView)
-        view.bringSubviewToFront(circleDropdownTableView)
         view.bringSubviewToFront(categoryDropdownTableView)
     }
     
@@ -1215,7 +1178,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         manualEntryButton.addTarget(self, action: #selector(manualEntryButtonTapped), for: .touchUpInside)
         addPhotoButton.addTarget(self, action: #selector(addPhotoButtonTapped), for: .touchUpInside)
         removePhotoButton.addTarget(self, action: #selector(removePhotoButtonTapped), for: .touchUpInside)
-        circleButton.addTarget(self, action: #selector(circleButtonTapped), for: .touchUpInside)
+        circleCard.addTarget(self, action: #selector(circleButtonTapped), for: .touchUpInside)
         showRememberedCircleCue()
         categoryButton.addTarget(self, action: #selector(categoryButtonTapped), for: .touchUpInside)
         zoomToMeButton.addTarget(self, action: #selector(zoomToCurrentLocation), for: .touchUpInside)
@@ -1502,7 +1465,6 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     
     @objc func dismissDropdowns() {
         dismissCategoryDropdown()
-        dismissCircleDropdown()
     }
     
     @objc func dismissCategoryDropdown() {
@@ -1516,62 +1478,51 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         }
     }
     
+    /// The Circle card: the same picker sheet as everywhere else (New Circle,
+    /// covers, search), with the place on top once one is chosen
     @objc func circleButtonTapped() {
         isCategoryDropdownVisible = false
         updateCategoryButtonTitle()
+        dismissCategoryDropdown()
         // Once they've looked at the choice, the cue has done its job
         if circleWasRemembered { circleWasRemembered = false }
-        
-        isCircleDropdownVisible.toggle()
-        updateCircleDropdown()
-    }
-    
-    func updateCircleDropdown() {
-        if isCircleDropdownVisible {
-            // Position dropdown below button
-            let buttonFrame = circleButton.convert(circleButton.bounds, to: view)
-            let availableHeight = view.frame.height - buttonFrame.maxY - 20
-            let dropdownHeight = min(CGFloat(userCircles.count * 44 + 20), min(300, availableHeight))
-            
-            circleDropdownTableView.frame = CGRect(
-                x: Constants.Spacing.large,
-                y: buttonFrame.maxY + 4,
-                width: view.frame.width - (Constants.Spacing.large * 2),
-                height: dropdownHeight
-            )
-            
-            // Ensure it's on top
-            view.bringSubviewToFront(circleDropdownTableView)
-            circleDropdownTableView.reloadData()
-            
-            // Set proper layer properties for visibility
-            circleDropdownTableView.layer.zPosition = 999
+        view.endEditing(true)
+
+        let picker = CirclePickerViewController(circles: userCircles)
+        picker.pickerTitle = "Select Circle"
+        if let name = nameTextField.text?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
+            picker.placeName = name
+            picker.placeAddress = addressTextView.text?.components(separatedBy: "\n").first { !$0.hasPrefix("📍") }
         }
-        
-        UIView.animate(withDuration: 0.3) {
-            self.circleDropdownTableView.isHidden = !self.isCircleDropdownVisible
-            self.circleDropdownTableView.alpha = self.isCircleDropdownVisible ? 1.0 : 0.0
-            
-            // Rotate chevron
-            if self.isCircleDropdownVisible {
-                self.circleButton.subviews.first { $0 is UIImageView }?.transform = CGAffineTransform(rotationAngle: .pi)
-            } else {
-                self.circleButton.subviews.first { $0 is UIImageView }?.transform = .identity
-            }
+        picker.onCircleSelected = { [weak self] circle in
+            self?.choose(circle)
         }
-    }
-    
-    @objc func dismissCircleDropdown() {
-        if isCircleDropdownVisible {
-            isCircleDropdownVisible = false
-            UIView.animate(withDuration: 0.3) {
-                self.circleDropdownTableView.isHidden = true
-                self.circleDropdownTableView.alpha = 0.0
-                self.circleButton.subviews.first { $0 is UIImageView }?.transform = .identity
-            }
+        picker.onCreateNewCircle = { [weak self] in
+            guard let self else { return }
+            let create = CreateCircleViewController()
+            create.delegate = self
+            let nav = UINavigationController(rootViewController: create)
+            nav.modalPresentationStyle = .pageSheet
+            self.present(nav, animated: true)
         }
+        let nav = UINavigationController(rootViewController: picker)
+        nav.modalPresentationStyle = .pageSheet
+        if let sheet = nav.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
+        present(nav, animated: true)
     }
-    
+
+    /// A circle picked (or just made): the card, label and Save say so
+    func choose(_ circle: Circle) {
+        selectedCircle = circle
+        selectedCircleId = circle.id
+        if !userCircles.contains(where: { $0.id == circle.id }) { userCircles.insert(circle, at: 0) }
+        circleWasRemembered = false
+        refreshCircleUI()
+    }
+
     // MARK: - Save In-Flight Guard
 
     /// Prevents double-tapping Save (or the map callout "+") from creating
@@ -2361,3 +2312,12 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
 /// `showPipelinePhoto`, `upgradeDescriptionWithEditorialSummary` already
 /// satisfy the loader's requirements by name.
 extension AddPlaceViewController: PlaceAssetLoaderDelegate {}
+
+// MARK: - CreateCircleDelegate
+
+extension AddPlaceViewController: CreateCircleDelegate {
+    /// "New Circle" from the picker: the new circle is the choice
+    func didCreateCircle(_ circle: Circle) {
+        choose(circle)
+    }
+}

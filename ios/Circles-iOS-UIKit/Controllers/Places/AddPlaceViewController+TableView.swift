@@ -9,9 +9,7 @@ import PhotosUI
 
 extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        if tableView == circleDropdownTableView {
-            return userCircles.count
-        } else if tableView == categoryDropdownTableView {
+        if tableView == categoryDropdownTableView {
             return categoryDropdownItems.count
         } else {
             // Add 1 for place type suggestion if applicable
@@ -20,27 +18,7 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        if tableView == circleDropdownTableView {
-            let cell = tableView.dequeueReusableCell(withIdentifier: "CircleCell") ?? UITableViewCell(style: .default, reuseIdentifier: "CircleCell")
-            
-            // Set cell background for dark mode support
-            cell.backgroundColor = .secondarySystemBackground
-            
-            let circle = userCircles[indexPath.row]
-            cell.textLabel?.text = circle.name
-            cell.textLabel?.font = UIFont.systemFont(ofSize: 16)
-            cell.textLabel?.textColor = .label
-            
-            // Add checkmark for selected circle
-            if circle.id == selectedCircleId {
-                cell.accessoryType = .checkmark
-            } else {
-                cell.accessoryType = .none
-            }
-            
-            return cell
-            
-        } else if tableView == categoryDropdownTableView {
+        if tableView == categoryDropdownTableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryCell") ?? UITableViewCell(style: .default, reuseIdentifier: "CategoryCell")
             
             // Set cell background for dark mode support
@@ -141,17 +119,7 @@ extension AddPlaceViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         
-        if tableView == circleDropdownTableView {
-            let circle = userCircles[indexPath.row]
-            selectedCircle = circle
-            selectedCircleId = circle.id
-            circleButton.setTitle(circle.name, for: .normal)
-            
-            // Hide dropdown
-            isCircleDropdownVisible = false
-            updateCircleDropdown()
-            
-        } else if tableView == categoryDropdownTableView {
+        if tableView == categoryDropdownTableView {
             let item = categoryDropdownItems[indexPath.row]
             
             // Check if "More..." was selected

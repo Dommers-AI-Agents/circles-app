@@ -3239,44 +3239,15 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         present(alert, animated: true)
     }
 
+    /// Home's Add Place (Wes, 2026-11-09): straight to the Add Place screen —
+    /// find the place first; the circle is chosen on its Circle card (the same
+    /// picker sheet), and Save waits for it. The sheet-first flow is gone.
     func showCirclePicker() {
-        // Present circles in the user's own order (same as the profile grid).
-        let pickerCircles = circles
-
-        let circlePickerVC = CirclePickerViewController(circles: pickerCircles)
-        circlePickerVC.onCircleSelected = { [weak self] circle in
-            self?.pushAddPlace(circleId: circle.id, circles: pickerCircles)
-        }
-        circlePickerVC.onCreateNewCircle = { [weak self] in
-            guard let self = self else { return }
-            let createCircleVC = CreateCircleViewController()
-            createCircleVC.delegate = self
-            let navController = UINavigationController(rootViewController: createCircleVC)
-            navController.modalPresentationStyle = .pageSheet
-            self.present(navController, animated: true)
-        }
-        
-        let navController = UINavigationController(rootViewController: circlePickerVC)
-        
-        // Set presentation style for modal
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            navController.modalPresentationStyle = .formSheet
-            navController.preferredContentSize = CGSize(width: 400, height: 600)
-        } else {
-            navController.modalPresentationStyle = .pageSheet
-            if #available(iOS 15.0, *) {
-                if let sheet = navController.sheetPresentationController {
-                    sheet.detents = [.medium(), .large()]
-                    sheet.prefersGrabberVisible = true
-                }
-            }
-        }
-        
-        present(navController, animated: true)
+        let addPlaceVC = AddPlaceViewController(circles: circles)
+        addPlaceVC.onAddFromPhotos = { [weak self] in self?.showAddFromPhotos() }
+        navigationController?.pushViewController(addPlaceVC, animated: true)
     }
-    
-    
-    
+
     func updateMapVisibility() {
         // Map is always visible, just ensure it's shown
         mapContainerView.isHidden = false

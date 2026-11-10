@@ -10,6 +10,11 @@ import CoreLocation
 extension AddPlaceViewController {
     @objc func addPlaceButtonTapped() {
         guard !isSaving else { return }
+        // No circle chosen yet (opened from Home): the card's question comes first
+        if selectedCircleId.isEmpty {
+            circleButtonTapped()
+            return
+        }
         guard let name = nameTextField.text, !name.isEmpty,
               let rawAddress = addressTextView.text, !rawAddress.isEmpty else {
             presentAlert(title: "Oops", message: "Please provide a name and address")

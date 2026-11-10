@@ -208,10 +208,6 @@ extension AddPlaceViewController {
                 self.applyUserCircles(circles)
             case .failure(let error):
                 Logger.debug("❌ Failed to load circles: \(error)")
-                // Still try to show the circle name if we have the ID
-                DispatchQueue.main.async {
-                    self.circleButton.setTitle("Loading...", for: .normal)
-                }
             }
         }
     }
@@ -225,17 +221,13 @@ extension AddPlaceViewController {
         // Find and set the current circle
         if let currentCircle = userCircles.first(where: { $0.id == selectedCircleId }) {
             selectedCircle = currentCircle
-            DispatchQueue.main.async {
-                self.circleButton.setTitle(currentCircle.name, for: .normal)
-            }
-        } else if let firstCircle = circles.first {
-            // Fallback to first circle if the selected one is not found
+        } else if !circleRequired, let firstCircle = circles.first {
+            // Fallback to first circle if the selected one is not found.
+            // From Home the person chooses on the card instead (2026-11-09).
             selectedCircle = firstCircle
             selectedCircleId = firstCircle.id
-            DispatchQueue.main.async {
-                self.circleButton.setTitle(firstCircle.name, for: .normal)
-            }
         }
+        DispatchQueue.main.async { self.refreshCircleUI() }
     }
     
     // MARK: - Navigation Helpers

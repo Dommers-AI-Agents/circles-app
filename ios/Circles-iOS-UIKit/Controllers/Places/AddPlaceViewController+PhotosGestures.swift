@@ -30,15 +30,8 @@ extension AddPlaceViewController: UIGestureRecognizerDelegate {
             return true
         }
         
-        // Handle circle dropdown tap
         let location = touch.location(in: view)
-        let circleDropdownFrame = circleDropdownTableView.convert(circleDropdownTableView.bounds, to: view)
-        let circleButtonFrame = circleButton.convert(circleButton.bounds, to: view)
-        
-        if circleDropdownFrame.contains(location) || circleButtonFrame.contains(location) {
-            return false
-        }
-        
+
         // Handle category dropdown tap
         let categoryDropdownFrame = categoryDropdownTableView.convert(categoryDropdownTableView.bounds, to: view)
         let categoryButtonFrame = categoryButton.convert(categoryButton.bounds, to: view)
@@ -47,7 +40,7 @@ extension AddPlaceViewController: UIGestureRecognizerDelegate {
             return false
         }
         
-        return isCategoryDropdownVisible || isCircleDropdownVisible
+        return isCategoryDropdownVisible
     }
     
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
