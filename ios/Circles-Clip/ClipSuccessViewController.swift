@@ -193,7 +193,7 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
             do {
                 // A store's window code saves the store as it signs them in
                 let result = try await ClipAPIClient.shared.redeemSticker(code: code, token: session.token, atStore: atStore,
-                                                                          save: preview.isStoreWindow)
+                                                                          save: preview.isStoreWindow, ref: invocation.ref)
                 // Scan handled in-clip — tell the full app not to redeem it again
                 // A save that has to wait for the app goes through its own
                 // save flow, not a welcome sheet as well

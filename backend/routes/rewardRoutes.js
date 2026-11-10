@@ -238,5 +238,9 @@ const waitlistHost = require('../controllers/venues/waitlistController');
 router.get('/venues/:venueId/waitlist', requireVenueOwner, requireOwnerPremium, waitlistHost.list);
 router.put('/venues/:venueId/waitlist', requireVenueOwner, requireOwnerPremium, waitlistHost.saveSettings);
 router.post('/venues/:venueId/waitlist/:entryId/:action', requireVenueOwner, requireOwnerPremium, waitlistHost.act);
+// Bring a friend: the referral points and results, Business (2026-11-09)
+const venueReferrals = require('../controllers/venues/venueReferralsController');
+router.get('/venues/:venueId/referrals', requireVenueOwner, requireOwnerPremium, venueReferrals.get);
+router.put('/venues/:venueId/referrals', requireVenueOwner, requireOwnerPremium, venueReferrals.update);
 
 module.exports = router;

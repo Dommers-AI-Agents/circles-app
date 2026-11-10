@@ -235,6 +235,11 @@ struct BusinessFeatures {
             iconName: "person.3.sequence"
         ),
         PremiumFeatures.Feature(
+            title: "Bring a Friend",
+            description: "Customers share your link; when the friend's first purchase is scanned, both earn the points you set",
+            iconName: "person.badge.plus"
+        ),
+        PremiumFeatures.Feature(
             title: "Full Stats Dashboard",
             description: "Monthly trends for saves, followers, visits, and redemptions",
             iconName: "chart.bar.xaxis"

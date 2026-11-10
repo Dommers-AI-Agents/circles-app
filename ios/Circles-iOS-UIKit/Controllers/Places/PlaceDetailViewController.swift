@@ -3689,6 +3689,18 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         present(status, animated: true)
     }
 
+    /// Bring a friend (2026-11-09): one bubble — the store's link with the inviter on it
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapInviteFriend referral: StoreReferral, venue: PlaceVenue) {
+        guard let urlString = referral.inviteUrl, let url = URL(string: urlString) else { return }
+        let item = LinkPreviewItem(url: url, title: StoreReferralCopy.shareTitle(storeName: venue.venueName, referral: referral), image: nil)
+        let sheet = UIActivityViewController(activityItems: [item], applicationActivities: nil)
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = view.bounds
+        }
+        present(sheet, animated: true)
+    }
+
     /// "Send your receipt": a delivery order's points (2026-11-06)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapSendReceipt venue: PlaceVenue, mode: String?) {
         let send = SendReceiptViewController(venueId: venue.venueId, venueName: venue.venueName, mode: mode)

@@ -10,6 +10,8 @@ struct ClipInvocation {
     /// The NFC sticker that was tapped (/s/<code>?t=<tag>), so the store
     /// sees which one; nil for the QR codes
     var tag: String? = nil
+    /// Bring a friend: the inviter on the link (/s/<code>?ref=<userId>), 2026-11-09
+    var ref: String? = nil
     let payload: APActivationPayload?
 
     /// true = Apple confirmed the phone is at the store, false = Apple says

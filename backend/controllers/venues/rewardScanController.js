@@ -133,6 +133,12 @@ exports.scan = async (req, res) => {
       // rewards are live (Wes, 2026-11-01, superseding 2026-10-30's "the
       // window QR never pays"). Not live: saved, nothing said about points.
       const loyaltyLive = await isVenueLoyaltyActive(venue);
+      // Bring a friend (2026-11-09): the link carried ?ref=<inviter>; remember
+      // who, so the friend's first purchase pays them both
+      if (req.body.ref) {
+        require('../../services/storeReferrals').remember({ venue, refUserId: String(req.body.ref), newUserId: userId, live: loyaltyLive })
+          .catch((e) => console.error('referral remember failed', e.message));
+      }
       let awarded = null;
       if (clipSave && loyaltyLive && (saved || alreadySaved)) {
         const result = await rewardService.awardStickerSave(userId, venue);
@@ -651,6 +657,8 @@ exports.getVenueByPlace = async (req, res) => {
         myOrder: myOrders[0] || null,
         // The caller's spot in the store's waitlist, if any (2026-11-09)
         myWaitlist: await require('../../services/waitlistService').mine(venue.venueId, req.user.uid).catch(() => null),
+        // Bring a friend: the offer and the caller's own invite link, while it's on (2026-11-09)
+        referral: isOwner ? null : require('../../services/storeReferrals').publicReferral(venue, req.user.uid, { live: venueLoyaltyLive }),
         isOwner,
         // Super-users keep the place page's "Store Admin" door once
         // the store is enrolled too (it opens the Store page)

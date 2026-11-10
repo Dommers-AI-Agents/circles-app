@@ -149,7 +149,9 @@ function computeInsights({
       total: active.length,
       repeatRatePct: pct(repeaters.length, active.length),
       regulars: regulars.length,
-      lapsed: lapsed.length
+      lapsed: lapsed.length,
+      // Bring a friend (services/storeReferrals): first purchases that paid an inviter, this period
+      referred: events.filter((e) => e.type === 'referral' && e.role === 'referrer').length
     },
     busiest: { hours, days },
     redemptions: redemptions.length,

@@ -70,6 +70,8 @@ class RewardsService {
         } else if locationOff {
             body["locationOff"] = true
         }
+        // Bring a friend: the inviter from the link this scan came from, if any (2026-11-09)
+        if let ref = takeReferrer() { body["ref"] = ref }
 
         apiService.attestedRequest(
             endpoint: "rewards/scan",
@@ -1323,6 +1325,8 @@ struct PlaceVenueData: Codable {
     @LenientlyDecoded var myOrders: [StoreOrder]?
     /// The caller's open spot in the store's waitlist, if any (2026-11-09)
     @LenientlyDecoded var myWaitlist: WaitlistEntry?
+    /// Bring a friend: the store's offer and the caller's invite link, while it's on (2026-11-09)
+    @LenientlyDecoded var referral: StoreReferral?
     let isOwner: Bool?
     // Present only when isOwner: whether the owner has the Business tier
     // (false drives the in-place "Upgrade to Business" teaser)
@@ -1752,6 +1756,8 @@ struct AdminVenue: Codable {
     var automations: StoreAutomations? = nil
     /// The waitlist's setting (2026-11-09)
     var waitlist: StoreWaitlist? = nil
+    /// Bring a friend: the referral points (2026-11-09)
+    var referrals: StoreReferralSettings? = nil
 }
 
 // MARK: - Super-user store page

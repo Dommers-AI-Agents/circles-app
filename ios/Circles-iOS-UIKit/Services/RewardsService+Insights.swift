@@ -13,6 +13,8 @@ struct VenueInsightsData: Codable, Equatable {
         let repeatRatePct: Int?
         let regulars: Int
         let lapsed: Int
+        /// New customers whose first purchase paid a friend's invite (2026-11-09)
+        var referred: Int? = nil
     }
     struct Busiest: Codable, Equatable {
         let hours: [Int]

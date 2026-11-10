@@ -663,6 +663,7 @@ Your Business subscription${forVenue} is active. Everything below is live now �
 • Redemption codes — single-use codes for orders or events.
 • Bring them back — automatic win-back, birthday and almost-there nudges to your customers, by push or email, with bonus points if you like.
 • Waitlist — customers join the line from your window sticker or your page, see their place, and get a notification when you tap Notify.
+• Bring a friend — customers share your link; when the friend's first purchase is scanned, both earn the points you set.
 
 A good first move: post one offer worth walking in for, and put the window sticker where people can see it. Reply to this email if you need stickers or help getting set up.
 Manage your venue: https://api.favcircles.com/app/open?path=me
@@ -808,6 +809,7 @@ Reply to this email if you get stuck.
             <li>Insights — who's new and who came back, your busiest hours, your FavCircles score, and the reviews waiting for your reply</li>
             <li>Automatic win-back, birthday and almost-there nudges to your customers, with bonus points if you like</li>
             <li>A waitlist: customers join the line from your window sticker or your page and get a notification when their table is ready</li>
+            <li>Bring a friend: customers share your link and both earn points when the friend's first purchase is scanned</li>
           </ul>
           <p style="font-size: 15px; line-height: 1.6;">
             The upgrade lives on your place page in the app. Questions, or need a window sticker? Just reply to this email — happy to help personally.
@@ -832,6 +834,7 @@ With a FavCircles Business subscription you also get:
 • Insights — who's new and who came back, your busiest hours, your FavCircles score, and the reviews waiting for your reply
 • Automatic win-back, birthday and almost-there nudges to your customers, with bonus points if you like
 • A waitlist: customers join the line from your window sticker or your page and get a notification when their table is ready
+• Bring a friend: customers share your link and both earn points when the friend's first purchase is scanned
 
 The upgrade lives on your place page in the app. Questions, or need a window sticker? Just reply to this email.
 

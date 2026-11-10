@@ -41,7 +41,7 @@ describe('computeInsights', () => {
     });
     expect(data.customers).toEqual({
       visits: 4, visitors: 3, newCustomers: 2, returningCustomers: 1,
-      total: 4, repeatRatePct: 75, regulars: 2, lapsed: 1
+      total: 4, repeatRatePct: 75, regulars: 2, lapsed: 1, referred: 0
     });
   });
 

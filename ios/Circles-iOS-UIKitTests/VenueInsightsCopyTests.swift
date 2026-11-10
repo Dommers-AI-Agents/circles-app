@@ -44,6 +44,13 @@ struct VenueInsightsCopyTests {
         #expect(tiles[3].caption == "No purchase in 30 days")
     }
 
+    @Test func referredLineOnlyWhenSomeoneCame() {
+        #expect(VenueInsightsCopy.referredLine(nil) == nil)
+        #expect(VenueInsightsCopy.referredLine(0) == nil)
+        #expect(VenueInsightsCopy.referredLine(1) == "1 new customer came through a friend's invite")
+        #expect(VenueInsightsCopy.referredLine(3) == "3 new customers came through a friend's invite")
+    }
+
     @Test func repeatAndVisitsLines() {
         #expect(C.repeatLine(pct: 60, total: 30) == "60% of your 30 customers have bought here more than once")
         #expect(C.repeatLine(pct: nil, total: 0).contains("Repeat rate shows"))

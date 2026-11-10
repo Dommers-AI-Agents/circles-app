@@ -93,7 +93,18 @@ final class DeepLinkCoordinator: SceneCoordinator {
             Logger.debug("📱 SceneDelegate: Unknown universal link path: \(url.path)")
             return
         }
+        rememberReferrer(in: url, for: destination)
         route(destination)
+    }
+
+    /// Bring a friend (2026-11-09): a store link shared by a customer carries
+    /// ?ref=<their id>; the scan it leads to reports it, so the friend's first
+    /// purchase pays them both
+    private func rememberReferrer(in url: URL, for destination: DeepLinkDestination) {
+        guard case .sticker = destination,
+              let ref = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "ref" })?.value,
+              !ref.isEmpty else { return }
+        RewardsService.shared.rememberReferrer(ref)
     }
 
     /// Custom-scheme links (circles://…).

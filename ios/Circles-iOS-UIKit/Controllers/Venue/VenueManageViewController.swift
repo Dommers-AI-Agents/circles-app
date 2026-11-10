@@ -45,6 +45,8 @@ class VenueManageViewController: BaseViewController {
     private var automations: StoreAutomations
     /// The waitlist's setting and how many wait (2026-11-09)
     private var waitlist: StoreWaitlist
+    /// Bring a friend: the referral points (2026-11-09)
+    private var referrals: StoreReferralSettings
     private var waitlistWaiting = 0
     private var pendingReceipts: Int
     private var ordersObserver: NSObjectProtocol?
@@ -166,6 +168,7 @@ class VenueManageViewController: BaseViewController {
         self.deliveryMode = DeliveryReceiptMode(rawValue: venue.deliveryReceipts ?? "off") ?? .off
         self.automations = venue.automations ?? .off
         self.waitlist = venue.waitlist ?? StoreWaitlist()
+        self.referrals = venue.referrals ?? .off
         self.pendingReceipts = venue.pendingReceipts ?? 0
         self.offers = venue.offers ?? []
         self.announcements = venue.announcements ?? []
@@ -960,6 +963,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("Points for saving your store", savePoints > 0 ? "\(savePoints) points when a customer saves your store after a register scan" : "Off", "bookmark")
         case .automations:
             set("Bring them back", StoreAutomationsCopy.summary(automations), "bell.and.waves.left.and.right")
+        case .referrals:
+            set("Bring a friend", StoreReferralCopy.summary(referrals), "person.badge.plus")
         case .waitlist:
             set(waitlist.enabled && waitlistWaiting > 0 ? "Waitlist (\(waitlistWaiting))" : "Waitlist",
                 WaitlistCopy.rowSummary(enabled: waitlist.enabled, waiting: waitlistWaiting), "person.3.sequence")
@@ -1090,6 +1095,14 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             navigationController?.pushViewController(VenueCodesViewController(venueId: venueId, venueName: venueName), animated: true)
         case .rewardsUsed:
             navigationController?.pushViewController(VenueRewardTicketsViewController(venueId: venueId), animated: true)
+        case .referrals:
+            let vc = VenueReferralsViewController(venueId: venueId, settings: referrals)
+            vc.onChanged = { [weak self] settings in
+                guard let self, settings != self.referrals else { return }
+                self.referrals = settings
+                self.reload()
+            }
+            navigationController?.pushViewController(vc, animated: true)
         case .waitlist:
             let vc = VenueWaitlistViewController(venueId: venueId, settings: waitlist)
             vc.onChanged = { [weak self] settings, waiting in

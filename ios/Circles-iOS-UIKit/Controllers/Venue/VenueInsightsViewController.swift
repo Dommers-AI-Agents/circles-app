@@ -108,6 +108,9 @@ final class VenueInsightsViewController: BaseViewController {
         contentStack.addArrangedSubview(caption(VenueInsightsCopy.visitsLine(visits: data.customers.visits, visitors: data.customers.visitors, range: range)))
         contentStack.addArrangedSubview(StatTileView.grid(VenueInsightsCopy.customerTiles(data.customers, range: range)))
         contentStack.addArrangedSubview(caption(VenueInsightsCopy.repeatLine(pct: data.customers.repeatRatePct, total: data.customers.total)))
+        if let referred = VenueInsightsCopy.referredLine(data.customers.referred) {
+            contentStack.addArrangedSubview(caption(referred))
+        }
 
         if data.customers.visits > 0 {
             contentStack.addArrangedSubview(HistogramCardView.make(title: "Busiest hours", values: data.busiest.hours, labels: HistogramCardView.hourLabels))

@@ -72,6 +72,8 @@ const ownerVenueInfo = (venue) => ({
   automations: require('./storeAutomations').settingsOf(venue),
   // The waitlist's settings (services/waitlistService, 2026-11-09)
   waitlist: require('./waitlistService').settingsOf(venue),
+  // Bring a friend (services/storeReferrals, 2026-11-09)
+  referrals: require('./storeReferrals').settingsOf(venue),
   offers: venue.offers || [],
   announcements: venue.announcements || [],
   stats: venue.stats || {},

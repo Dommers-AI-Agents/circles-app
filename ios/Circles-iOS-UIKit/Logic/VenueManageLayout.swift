@@ -64,6 +64,8 @@ enum VenueManageLayout {
         case deliveryOrders
         /// Automatic nudges: win-back, birthday treat, almost there (2026-11-09)
         case automations
+        /// Bring a friend: both earn when the friend's first purchase is scanned (2026-11-09)
+        case referrals
         case offer(Int)
         case addOffer
         case showRegisterCard
@@ -136,7 +138,7 @@ enum VenueManageLayout {
 
         var loyalty: [Row] = [.earnRate]
         if physical { loyalty += [.savePoints, .deliveryOrders] }
-        loyalty.append(.automations)
+        loyalty += [.automations, .referrals]
         loyalty += (0..<facts.offerCount).map { Row.offer($0) }
         loyalty += [.addOffer, .rewardsUsed]
 
@@ -175,7 +177,7 @@ enum VenueManageLayout {
         switch row {
         case .insights, .savers, .followers, .activity,
              .menu, .fullMenu, .orders, .onlineOrdering, .waitlist, .orderPage, .gallery,
-             .earnRate, .savePoints, .deliveryOrders, .automations, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .customers,
+             .earnRate, .savePoints, .deliveryOrders, .automations, .referrals, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .customers,
              .announcement, .addAnnouncement:
             return true
         default:

@@ -24,6 +24,8 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
                         ordering: StoreOrdering?, venue: PlaceVenue)
     /// "Join the line" / "You're #3 in line": the store's waitlist (2026-11-09)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapWaitlist waitlist: StoreWaitlist, entry: WaitlistEntry?, venue: PlaceVenue)
+    /// "Invite a friend · you both get points": the store's referral link (2026-11-09)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapInviteFriend referral: StoreReferral, venue: PlaceVenue)
 }
 
 /// The rewards section of a place page: the venue's announcements and offers,
@@ -191,6 +193,19 @@ class PlaceVenueRewardsView: UIView {
                 guard let self else { return }
                 self.delegate?.placeVenueView(self, didTapAddToWallet: venue)
             })
+        }
+        // Bring a friend (2026-11-09): the store pays both when the friend's first purchase is scanned
+        if let referral = data.referral, referral.enabled, referral.inviteUrl != nil, data.isOwner != true || viewAsCustomer {
+            let invite = UIButton.secondaryButton(title: StoreReferralCopy.inviteButton(referral))
+            invite.setImage(UIImage(systemName: "person.badge.plus"), for: .normal)
+            invite.imageEdgeInsets = UIEdgeInsets(top: 0, left: -6, bottom: 0, right: 6)
+            invite.titleLabel?.adjustsFontSizeToFitWidth = true
+            invite.titleLabel?.minimumScaleFactor = 0.8
+            invite.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                self.delegate?.placeVenueView(self, didTapInviteFriend: referral, venue: venue)
+            }, for: .touchUpInside)
+            containerStack.addArrangedSubview(invite)
         }
 
         if let storefront = data.storefront {

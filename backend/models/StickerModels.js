@@ -24,7 +24,8 @@ const REWARD_EVENT_TYPES = [
   'venue_visit',
   'share_conversion',
   'redemption',
-  'code_redemption'
+  'code_redemption',
+  'referral' // bring a friend (services/storeReferrals): role 'referrer' | 'friend'
 ];
 
 // Venue with a window sticker (discovery) and a register card (purchase proof).
@@ -271,6 +272,8 @@ const createRewardEvent = (data) => {
     ...(data.via ? { via: data.via } : {}),
     // Bonus points a store automation promised, paid on this visit (services/storeAutomations)
     ...(data.bonus ? { bonus: data.bonus } : {}),
+    // Bring a friend (services/storeReferrals): which side of the referral this paid
+    ...(data.role ? { role: data.role } : {}),
     // Redemption voucher fields (only set for type === 'redemption')
     voucherCode: data.voucherCode || null,
     offerId: data.offerId || null,

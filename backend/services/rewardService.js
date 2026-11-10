@@ -247,13 +247,13 @@ class RewardService {
 
   // Awards points exactly once per idempotencyKey.
   // Returns { awarded: true, points } or { awarded: false, duplicate: true }.
-  async awardPoints({ userId, type, points, idempotencyKey, venueId, venueName, code, googlePlaceId, sourceUserId, location, via, bonus = null, bucketUpdate }) {
+  async awardPoints({ userId, type, points, idempotencyKey, venueId, venueName, code, googlePlaceId, sourceUserId, location, via, bonus = null, role = null, bucketUpdate }) {
     const eventRef = this.db
       .collection(STICKER_COLLECTIONS.REWARD_EVENTS)
       .doc(sanitizeKeyPart(idempotencyKey));
 
     const event = createRewardEvent({
-      userId, type, points, venueId, venueName, code, googlePlaceId, sourceUserId, location, via, bonus
+      userId, type, points, venueId, venueName, code, googlePlaceId, sourceUserId, location, via, bonus, role
     });
 
     try {
@@ -647,6 +647,12 @@ class RewardService {
     if (result.awarded) {
       if (bonus) result.bonus = bonus;
       await this.incrementVenueStats(venue.venueId, 'visits');
+      // A friend's first purchase pays the person who brought them (services/storeReferrals)
+      if (bucket.referredBy && !(bucket.purchases > 0)) {
+        require('./storeReferrals').creditOnVisit({ venue, friendUserId: userId, bucketBefore: bucket })
+          .then((r) => { if (r && r.credited) result.referral = r; })
+          .catch((e) => console.error('referral credit failed', e.message));
+      }
     } else if (result.duplicate) {
       result.reason = 'already_today';
     }

@@ -71,6 +71,12 @@ enum VenueInsightsCopy {
         return "\(pct)% of your \(total == 1 ? "customer has" : "\(total) customers have") bought here more than once"
     }
 
+    /// "3 new customers came through a friend's invite"; nil when none
+    static func referredLine(_ count: Int?) -> String? {
+        guard let count, count > 0 else { return nil }
+        return count == 1 ? "1 new customer came through a friend's invite" : "\(count) new customers came through a friend's invite"
+    }
+
     static func visitsLine(visits: Int, visitors: Int, range: Range) -> String {
         guard visits > 0 else { return "No register scans in the last \(range.title)" }
         let people = visitors == 1 ? "1 person" : "\(visitors) people"
