@@ -18,11 +18,10 @@ function cleanIds(activityIds) {
   return [...new Set(activityIds.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim()))];
 }
 
-/** The notification line for a group reaction. */
-function groupReactionBody(name, emoji, count) {
-  return count === 1
-    ? `${name} reacted ${emoji} to your activity`
-    : `${name} reacted ${emoji} to ${count} of your activities`;
+/** The notification line for a group reaction: names the first activity
+ *  ("…to your check-in at Ed's Tavern and 4 more"). */
+function groupReactionBody(name, emoji, count, activity = null) {
+  return require('./activity/describe').reactionBody(name, emoji, activity, count);
 }
 
 /**
@@ -50,6 +49,7 @@ async function reactToGroup({ userId, activityIds, emoji, remove = false }, deps
   const batch = db.batch();
   const results = [];
   const newlyReacted = [];
+  const activityById = new Map(live.map((d) => [d.id, d.data()]));
 
   if (remove) {
     live.forEach((doc, i) => {
@@ -92,15 +92,18 @@ async function reactToGroup({ userId, activityIds, emoji, remove = false }, deps
     piggyBank = await require('./piggyBankService').credit({
       userId, eventType: 'activity_reaction', sourceRef: { activityId: newlyReacted[0] }
     });
-    await notifyOnce(db, { actorId, userId, user, userName, emoji, activityIds: newlyReacted }, deps);
+    await notifyOnce(db, { actorId, userId, user, userName, emoji, activityIds: newlyReacted,
+      firstActivity: activityById.get(newlyReacted[0]) }, deps);
   }
   return { results, newCount: newlyReacted.length, actorId, piggyBank };
 }
 
-async function notifyOnce(db, { actorId, userId, user, userName, emoji, activityIds }, deps) {
+async function notifyOnce(db, { actorId, userId, user, userName, emoji, activityIds, firstActivity }, deps) {
   const sse = deps.sseService || require('./sseService');
   const push = deps.notificationService || require('./notificationService');
-  const body = groupReactionBody(userName, emoji, activityIds.length);
+  const body = groupReactionBody(userName, emoji, activityIds.length, firstActivity);
+  // The tap opens what the first activity was about
+  const { target } = require('./activity/describe').describeActivity(firstActivity);
   const notificationData = createNotification({
     userId: actorId,
     type: 'activity_reaction',
@@ -108,6 +111,7 @@ async function notifyOnce(db, { actorId, userId, user, userName, emoji, activity
     body,
     data: {
       activityId: activityIds[0],
+      ...target,
       activityIds,
       fromUserId: userId,
       fromUserName: userName,
@@ -125,7 +129,7 @@ async function notifyOnce(db, { actorId, userId, user, userName, emoji, activity
     type: 'activity_reaction',
     title: 'New Reaction',
     body,
-    data: { activityId: activityIds[0], userId, emoji }
+    data: { activityId: activityIds[0], ...target, userId, emoji }
   });
 }
 

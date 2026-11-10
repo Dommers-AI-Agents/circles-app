@@ -236,6 +236,15 @@ enum NotificationTapRouter {
         case "check_in_response":
             return placeId.map { .place(id: $0, showComments: nil) }
 
+        case "activity_reaction":
+            // Opens what the activity was about (the server names it:
+            // services/activity/describe, 2026-11-10). Older reactions carry
+            // only the activity id → the feed.
+            if let videoId = videoId(userInfo) { return .video(id: videoId) }
+            if let placeId { return .place(id: placeId, showComments: nil) }
+            if let circleId { return .circle(id: circleId, showComments: nil) }
+            return .activity(id: activityId)
+
         case "activity_update", "activity_like", "activity_comment":
             return .activity(id: activityId)
 

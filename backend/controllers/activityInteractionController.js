@@ -113,14 +113,20 @@ exports.addReaction = async (req, res) => {
       
       // Send notification to activity owner if different from reactor
       if (activity.actorId !== userId) {
+        // Says which activity, and the tap opens what it was about
+        // (services/activity/describe; Wes, 2026-11-10)
+        const { describeActivity, reactionBody } = require('../services/activity/describe');
+        const { target } = describeActivity(activity);
+        const body = reactionBody(userData.displayName, emoji, activity);
         // Save notification to Firestore
         const notificationData = createNotification({
           userId: activity.actorId,
           type: 'activity_reaction',
           title: 'New Reaction',
-          body: `${userData.displayName} reacted ${emoji} to your activity`,
+          body,
           data: {
             activityId: activityId,
+            ...target,
             fromUserId: userId,
             fromUserName: userData.displayName,
             fromUserPhoto: userData.profilePicture || null,
@@ -148,9 +154,10 @@ exports.addReaction = async (req, res) => {
         await notificationService.sendToUser(activity.actorId, {
           type: 'activity_reaction',
           title: 'New Reaction',
-          body: `${userData.displayName} reacted ${emoji} to your activity`,
+          body,
           data: {
             activityId: activityId,
+            ...target,
             userId: userId,
             emoji: emoji
           }
@@ -373,12 +380,14 @@ exports.addComment = async (req, res) => {
     
     // Send notification to activity owner if different from commenter
     if (activity.actorId !== userId) {
+      // Names the activity ("commented on your check-in at Ed's Tavern")
+      const commentBody = `${userData.displayName} commented on ${require('../services/activity/describe').describeActivity(activity).phrase}`;
       // Save notification to Firestore
       const notificationData = createNotification({
         userId: activity.actorId,
         type: 'activity_comment',
         title: 'New Comment',
-        body: `${userData.displayName} commented on your activity`,
+        body: commentBody,
         data: {
           activityId: activityId,
           commentId: commentRef.id,
@@ -409,7 +418,7 @@ exports.addComment = async (req, res) => {
       await notificationService.sendToUser(activity.actorId, {
         type: 'activity_comment',
         title: 'New Comment',
-        body: `${userData.displayName} commented on your activity`,
+        body: commentBody,
         data: {
           activityId: activityId,
           commentId: commentRef.id,

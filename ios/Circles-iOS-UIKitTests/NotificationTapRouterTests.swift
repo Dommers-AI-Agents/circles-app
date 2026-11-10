@@ -107,6 +107,11 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "circle_commented", "circleId": "c"]) == .circle(id: "c", showComments: true))
         #expect(route(["type": "circle_liked", "activityId": "a"]) == .activity(id: "a"))
         #expect(route(["type": "activity_like", "activityId": "a"]) == .activity(id: "a"))
+        // A reaction opens what the activity was about (Wes, 2026-11-10)
+        #expect(route(["type": "activity_reaction", "activityId": "a", "placeId": "p"]) == .place(id: "p", showComments: nil))
+        #expect(route(["type": "activity_reaction", "activityId": "a", "videoId": "v"]) == .video(id: "v"))
+        #expect(route(["type": "activity_reaction", "activityId": "a", "circleId": "c"]) == .circle(id: "c", showComments: nil))
+        #expect(route(["type": "activity_reaction", "activityId": "a"]) == .activity(id: "a"))
         #expect(route(["type": "activity_update"]) == .activity(id: nil))
     }
 
