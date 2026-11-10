@@ -56,6 +56,10 @@ extension Notification.Name {
     /// object = venue id: the store's Private feedback screen (a customer sent some)
     static let navigateToVenueFeedback = Notification.Name("NavigateToVenueFeedback")
     static let navigateToVenueReceipts = Notification.Name("NavigateToVenueReceipts")
+    /// A waitlist push for the host: open the store's Waitlist screen (2026-11-09)
+    static let navigateToVenueWaitlist = Notification.Name("NavigateToVenueWaitlist")
+    /// Any waitlist push landed: open waitlist screens refresh
+    static let waitlistChanged = Notification.Name("WaitlistChanged")
     static let navigateToPlaceApprovals = Notification.Name("NavigateToPlaceApprovals")
     /// Home's map to one spot at neighborhood level (userInfo latitude/longitude)
     static let focusHomeMap = Notification.Name("FocusHomeMap")

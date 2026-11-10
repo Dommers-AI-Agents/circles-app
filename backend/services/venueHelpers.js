@@ -70,6 +70,8 @@ const ownerVenueInfo = (venue) => ({
   deliveryReceipts: ['approve', 'auto'].includes(venue.deliveryReceipts) ? venue.deliveryReceipts : 'off',
   // Automatic nudges: win-back / birthday / almost there (services/storeAutomations, 2026-11-09)
   automations: require('./storeAutomations').settingsOf(venue),
+  // The waitlist's settings (services/waitlistService, 2026-11-09)
+  waitlist: require('./waitlistService').settingsOf(venue),
   offers: venue.offers || [],
   announcements: venue.announcements || [],
   stats: venue.stats || {},

@@ -230,6 +230,11 @@ struct BusinessFeatures {
             iconName: "bell.and.waves.left.and.right"
         ),
         PremiumFeatures.Feature(
+            title: "Waitlist",
+            description: "Customers join the line from your window sticker or your page and get a notification when their table is ready",
+            iconName: "person.3.sequence"
+        ),
+        PremiumFeatures.Feature(
             title: "Full Stats Dashboard",
             description: "Monthly trends for saves, followers, visits, and redemptions",
             iconName: "chart.bar.xaxis"

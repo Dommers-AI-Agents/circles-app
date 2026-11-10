@@ -191,7 +191,7 @@ describe('placing as a guest', () => {
     const res = await place();
     await flush(); mockPushes.length = 0; mockMails.length = 0;
     const later = new Date(Date.now() + 31 * 60000);
-    expect(await orders.sweep({ now: later })).toEqual({ expired: 1, closed: 0 });
+    expect(await orders.sweep({ now: later })).toMatchObject({ expired: 1, closed: 0 });
     await flush();
     expect(mockPushes).toEqual([]);
     expect(mockMails.length).toBe(1);

@@ -649,6 +649,8 @@ exports.getVenueByPlace = async (req, res) => {
         nextReward: venueLoyaltyLive ? rewardProgress.nextReward(activeOffers(venue), venueBalance, rewardService.effectiveEarnRate(venue)) : null,
         myOrders,
         myOrder: myOrders[0] || null,
+        // The caller's spot in the store's waitlist, if any (2026-11-09)
+        myWaitlist: await require('../../services/waitlistService').mine(venue.venueId, req.user.uid).catch(() => null),
         isOwner,
         // Super-users keep the place page's "Store Admin" door once
         // the store is enrolled too (it opens the Store page)

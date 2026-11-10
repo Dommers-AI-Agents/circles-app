@@ -94,7 +94,9 @@ exports.getVenuePreview = async (req, res) => {
         offers,
         firstReward: offers[0] || null,
         coverUrl,
-        location: clipLocation(venue.location)
+        location: clipLocation(venue.location),
+        // The store's waitlist, when it's on and the plan is live: the clip offers "Join the line" (2026-11-09)
+        waitlist: await clipWaitlist(venue)
       }
     });
   } catch (error) {
@@ -106,6 +108,17 @@ exports.getVenuePreview = async (req, res) => {
 // POST /api/clip/install-converted — the full app calls this once on first
 // launch when it adopted clip credentials. Idempotent per user; a successful
 // no-op for organic users so the client never needs to special-case.
+/** The store's waitlist for the clip, or null; never fails the preview. */
+async function clipWaitlist(venue) {
+  try {
+    const { isVenueBusinessLive } = require('../services/ownerSubscriptionService');
+    const live = typeof isVenueBusinessLive === 'function' ? await isVenueBusinessLive(venue) : false;
+    return require('../services/waitlistService').waitlistFor(venue, { live });
+  } catch (error) {
+    return null;
+  }
+}
+
 exports.installConverted = async (req, res) => {
   try {
     const userId = req.user.uid;

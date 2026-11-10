@@ -315,6 +315,7 @@ app.use('/api/piggy-bank', require('./routes/piggyBankRoutes')); // FavCoin pigg
 app.use('/api/home', require('./routes/dashboardRoutes'));
 // Order ahead from a store's menu, pay at pickup (services/orders)
 app.use('/api/orders', require('./routes/orderRoutes'));
+app.use('/api/waitlist', require('./routes/waitlistRoutes')); // a store's waitlist, customer side (2026-11-09)
 app.use('/api/widgets', require('./routes/widgetRoutes')); // Home Widgets tab: per-widget JSON docs + postcard send
 
 // Notification test routes (development only)

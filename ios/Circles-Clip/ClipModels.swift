@@ -31,6 +31,8 @@ struct VenuePreview: Decodable {
     let coverUrl: String?
     /// Where the store is, for Apple's at-the-store check on register codes
     let location: ClipLocation?
+    /// The store's waitlist, while it's on: the clip offers "Join the line" (2026-11-09)
+    let waitlist: ClipWaitlist?
 
     var isGeneric: Bool { generic == true }
     /// A store's window code: the clip saves the store as it signs them in
@@ -143,6 +145,25 @@ struct ScanResult: Decodable {
     }
 
     var isOnTheirMap: Bool { saved == true || alreadySaved == true }
+}
+
+struct ClipWaitlist: Decodable {
+    let enabled: Bool
+    let quoteMinutes: Int
+}
+
+/// The clip's spot in a store's line (the same shape the app decodes)
+struct ClipWaitlistEntry: Decodable {
+    let entryId: String
+    let status: String
+    let position: Int?
+    let estimateMinutes: Int?
+    let alreadyInLine: Bool?
+}
+
+struct ClipWaitlistResponse: Decodable {
+    let success: Bool
+    let data: ClipWaitlistEntry
 }
 
 struct ScanAward: Decodable {

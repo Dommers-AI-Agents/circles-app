@@ -1321,6 +1321,8 @@ struct PlaceVenueData: Codable {
     @LenientlyDecoded var myOrder: StoreOrder?
     /// All of them, newest first: two orders at one store never hide each other
     @LenientlyDecoded var myOrders: [StoreOrder]?
+    /// The caller's open spot in the store's waitlist, if any (2026-11-09)
+    @LenientlyDecoded var myWaitlist: WaitlistEntry?
     let isOwner: Bool?
     // Present only when isOwner: whether the owner has the Business tier
     // (false drives the in-place "Upgrade to Business" teaser)
@@ -1374,6 +1376,8 @@ struct VenueStorefront: Codable {
     /// Order ahead from the menu (pay at pickup): for customers, present only
     /// while it's on; for the owner, the setting
     let ordering: StoreOrdering?
+    /// The store's waitlist, present while it's on and the plan is live (2026-11-09)
+    var waitlist: StoreWaitlist? = nil
     let actions: StorefrontActions?
     let gallery: [StorefrontGalleryPhoto]
     /// The store's web page (order.favcircles.com/<slug>), owner view only;
@@ -1746,6 +1750,8 @@ struct AdminVenue: Codable {
     var pendingReceipts: Int? = nil
     /// Automatic nudges: win-back / birthday / almost there (2026-11-09)
     var automations: StoreAutomations? = nil
+    /// The waitlist's setting (2026-11-09)
+    var waitlist: StoreWaitlist? = nil
 }
 
 // MARK: - Super-user store page

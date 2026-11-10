@@ -13,8 +13,8 @@ enum VenueManageCopy {
         switch section {
         case .ordersNow:
             return Header(
-                title: "Orders",
-                explanation: "Orders customers placed from your menu. Accept each one with a ready time, mark it ready, then picked up; customers pay at the counter. Orders nobody accepts within 30 minutes expire and the customer is told.")
+                title: "Right now",
+                explanation: "Orders customers placed from your menu — accept each one with a ready time, mark it ready, then picked up; customers pay at the counter — and the parties in your waitlist, who get a notification when you tap Notify.")
         case .glance:
             return Header(
                 title: "At a glance",

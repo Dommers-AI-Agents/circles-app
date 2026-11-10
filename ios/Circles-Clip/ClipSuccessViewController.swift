@@ -31,6 +31,12 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     private let rateStack = UIStackView()
     private let rateLabel = ClipTheme.label(.systemFont(ofSize: 15, weight: .semibold))
     private var ratePlaceId: String?
+    /// "Waiting for a table?" — the store's waitlist (2026-11-09)
+    private let waitStack = UIStackView()
+    private let waitLabel = ClipTheme.label(.systemFont(ofSize: 15, weight: .semibold))
+    private let partyControl = UISegmentedControl(items: (1...6).map { "\($0)" })
+    private lazy var joinLineButton = ClipTheme.primaryButton("Join the line")
+    private var waitlistVenueId: String?
 
     init(session: ClipSession, isNewSignIn: Bool, invocation: ClipInvocation, code: String, preview: VenuePreview) {
         self.session = session
@@ -123,11 +129,24 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
         rateStack.addArrangedSubview(rateLabel)
         rateStack.addArrangedSubview(pills)
 
-        [hookLabel, nameLabel, detailLabel, rateStack, panel, getAppButton, signOutButton].forEach { stack.addArrangedSubview($0) }
+        waitStack.axis = .vertical
+        waitStack.spacing = 8
+        waitStack.isHidden = true
+        waitLabel.text = "Waiting for a table? Party of"
+        ClipTheme.lift(waitLabel)
+        partyControl.selectedSegmentIndex = 1
+        partyControl.selectedSegmentTintColor = ClipTheme.gold
+        partyControl.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .normal)
+        partyControl.setTitleTextAttributes([.foregroundColor: ClipTheme.ink], for: .selected)
+        joinLineButton.addTarget(self, action: #selector(joinLineTapped), for: .touchUpInside)
+        [waitLabel, partyControl, joinLineButton].forEach { waitStack.addArrangedSubview($0) }
+
+        [hookLabel, nameLabel, detailLabel, rateStack, waitStack, panel, getAppButton, signOutButton].forEach { stack.addArrangedSubview($0) }
         stack.setCustomSpacing(14, after: hookLabel)
         stack.setCustomSpacing(6, after: nameLabel)
         stack.setCustomSpacing(18, after: detailLabel)
         stack.setCustomSpacing(18, after: rateStack)
+        stack.setCustomSpacing(18, after: waitStack)
         stack.setCustomSpacing(18, after: panel)
         stack.setCustomSpacing(4, after: getAppButton)
         stack.isHidden = true
@@ -237,7 +256,34 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
         if earnsHere {
             fillRewardsPanel(balance: balance, earnRate: result.earnRate ?? preview.earnRate, nextLine: result.nextRewardLine)
         }
+        offerWaitlist(result)
         reveal(celebrate: result.awarded != nil)
+    }
+
+    /// The store takes a waitlist: join it right here, and the host's Notify pushes this phone
+    private func offerWaitlist(_ result: ScanResult) {
+        guard preview.waitlist?.enabled == true, let venueId = result.venue?.venueId else { return }
+        waitlistVenueId = venueId
+        waitStack.isHidden = false
+    }
+
+    @objc private func joinLineTapped() {
+        guard let venueId = waitlistVenueId else { return }
+        let party = partyControl.selectedSegmentIndex + 1
+        joinLineButton.isEnabled = false
+        Task { @MainActor in
+            do {
+                let entry = try await ClipAPIClient.shared.joinWaitlist(venueId: venueId, partySize: party, bearer: session.token)
+                let place = entry.position.map { "You're #\($0) in line" } ?? "You're in line"
+                let wait = entry.estimateMinutes.map { " · about \($0) min" } ?? ""
+                waitLabel.text = "\(place)\(wait). We'll notify this phone when your table is ready."
+                partyControl.isHidden = true
+                joinLineButton.isHidden = true
+            } catch {
+                joinLineButton.isEnabled = true
+                waitLabel.text = "Couldn't join the line just now — ask at the host stand."
+            }
+        }
     }
 
     /// A store's window code (Wes, 2026-11-01): the store is saved, said once,
@@ -269,6 +315,7 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
             rateLabel.text = "Rate \(name) 0–10"
             rateStack.isHidden = false
         }
+        offerWaitlist(result)
         // Confetti for the save itself, not for a repeat scan
         reveal(celebrate: result.awarded != nil || result.saved == true)
     }

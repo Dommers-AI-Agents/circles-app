@@ -50,6 +50,8 @@ enum VenueManageLayout {
         /// Order ahead from the menu, pay at pickup (2026-10-20)
         case orders
         case onlineOrdering
+        /// The store's waitlist: the setting and the line; leads the screen while it's on (2026-11-09)
+        case waitlist
         /// The store's web page, order.favcircles.com/<slug>: link it from the
         /// store's own site (2026-10-28)
         case orderPage
@@ -104,6 +106,9 @@ enum VenueManageLayout {
         /// Order ahead is on: Orders leads the screen (off, Online ordering
         /// in "Menu & ordering" is the way in)
         var orderingOn = false
+        /// The waitlist is on: it leads the screen with Orders (off, it sits
+        /// in "Menu & ordering" as the way in)
+        var waitlistOn = false
     }
 
     /// Wes, 2026-11-06: the old screen mixed the menu, ordering and buttons in
@@ -126,6 +131,7 @@ enum VenueManageLayout {
         // Ordering off: the Online ordering row is the way in (Orders opened
         // the same settings screen, so it isn't listed twice)
         var menuOrdering: [Row] = [.fullMenu, .menu, .onlineOrdering]
+        if physical && !facts.waitlistOn { menuOrdering.append(.waitlist) }
         if physical { menuOrdering.append(.orderPage) }
 
         var loyalty: [Row] = [.earnRate]
@@ -144,7 +150,10 @@ enum VenueManageLayout {
             : [.loyaltyCodes]
 
         var result: [(Section, [Row])] = []
-        if facts.orderingOn { result.append((.ordersNow, [.orders])) }
+        var rightNow: [Row] = []
+        if facts.orderingOn { rightNow.append(.orders) }
+        if facts.waitlistOn && physical { rightNow.append(.waitlist) }
+        if !rightNow.isEmpty { result.append((.ordersNow, rightNow)) }
         result += [
             (.glance, glance),
             (.placePage, placePage),
@@ -165,7 +174,7 @@ enum VenueManageLayout {
     static func isBusiness(_ row: Row) -> Bool {
         switch row {
         case .insights, .savers, .followers, .activity,
-             .menu, .fullMenu, .orders, .onlineOrdering, .orderPage, .gallery,
+             .menu, .fullMenu, .orders, .onlineOrdering, .waitlist, .orderPage, .gallery,
              .earnRate, .savePoints, .deliveryOrders, .automations, .offer, .addOffer, .showRegisterCard, .replaceRegisterCard, .loyaltyCodes, .rewardsUsed, .customers,
              .announcement, .addAnnouncement:
             return true

@@ -109,6 +109,13 @@ final class ClipAPIClient {
                                                       body: ["userRating": rating], bearerToken: bearer)
     }
 
+    /// Join the store's waitlist from the clip (2026-11-09); the host's Notify pushes this phone
+    func joinWaitlist(venueId: String, partySize: Int, bearer: String) async throws -> ClipWaitlistEntry {
+        let response: ClipWaitlistResponse = try await request(path: "waitlist/\(venueId)/join", method: "POST",
+                                                               body: ["partySize": partySize], bearerToken: bearer)
+        return response.data
+    }
+
     func registerDevice(token deviceToken: String, code: String?, bearer: String) async throws {
         var body: [String: Any] = ["token": deviceToken]
         if let code { body["code"] = code }

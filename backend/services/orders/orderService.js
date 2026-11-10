@@ -365,7 +365,9 @@ async function sweep({ db = getFirestore(), now = new Date() } = {}) {
     await doc.ref.update({ status: STATUS.PICKED_UP, updatedAt: now.toISOString(), history: [...(o.history || []), { status: STATUS.PICKED_UP, at: now.toISOString(), by: 'system' }] });
     closed += 1;
   }
-  return { expired, closed };
+  // The store's waitlist ages out on the same sweep (services/waitlistService)
+  const waitlist = await require('../waitlistService').sweep({ now }).catch((e) => { console.error('waitlist sweep failed', e.message); return {}; });
+  return { expired, closed, ...waitlist };
 }
 
 module.exports = { ORDERS, view, isGuest, loadVenue, createOrder, place, mine, openOrdersAtVenue, get, cancel, pickedUp, cancelAsGuest, newCount, forVenue, storeAction, normalizeSettings, saveSettings, sweep, timeText, summary };

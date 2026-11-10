@@ -293,6 +293,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(navigateToVenueOrders(_:)), name: .navigateToVenueOrders, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(navigateToVenueFeedback(_:)), name: .navigateToVenueFeedback, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(navigateToVenueReceipts(_:)), name: .navigateToVenueReceipts, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(navigateToVenueWaitlist(_:)), name: .navigateToVenueWaitlist, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(navigateToPlaceApprovals(_:)), name: .navigateToPlaceApprovals, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(navigateToAdminDashboard(_:)), name: .navigateToAdminDashboard, object: nil)
         NotificationCenter.default.addObserver(
@@ -629,6 +630,13 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
     @objc private func navigateToVenueReceipts(_ note: Notification) {
         guard let venueId = note.object as? String else { return }
         let nav = UINavigationController(rootViewController: VenueReceiptsViewController(venueId: venueId))
+        nav.modalPresentationStyle = .pageSheet
+        topPresenter.present(nav, animated: true)
+    }
+
+    @objc private func navigateToVenueWaitlist(_ note: Notification) {
+        guard let venueId = note.object as? String else { return }
+        let nav = UINavigationController(rootViewController: VenueWaitlistViewController(venueId: venueId, settings: nil))
         nav.modalPresentationStyle = .pageSheet
         topPresenter.present(nav, animated: true)
     }

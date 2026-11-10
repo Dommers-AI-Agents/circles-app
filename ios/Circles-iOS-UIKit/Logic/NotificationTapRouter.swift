@@ -46,6 +46,8 @@ enum NotificationDestination: Equatable {
     case venueFeedback(venueId: String)
     /// A delivery receipt waiting for the store's team (2026-11-06)
     case venueReceipts(venueId: String)
+    /// The host's waitlist (a party joined), 2026-11-09
+    case venueWaitlist(venueId: String)
     /// Super users: a place saved without a map match waits to be approved (2026-11-06)
     case placeApprovals(placeId: String?)
     /// Super users: any other admin alert opens the dashboard, signed in
@@ -192,6 +194,15 @@ enum NotificationTapRouter {
 
         case "new_place":
             return circleId.map { .circle(id: $0, showComments: nil) }
+
+        case "waitlist_joined":
+            // A party joined the store's line → the host's Waitlist screen
+            if let venueId = string("venueId", in: userInfo) { return .venueWaitlist(venueId: venueId) }
+            return nil
+
+        case "waitlist_ready", "waitlist_update":
+            // Your table is ready / your spot changed → the store's page, where your spot shows
+            return placeId.map { .place(id: $0, showComments: nil) }
 
         case "store_alert", "store_nudge":
             // A followed store's new special, event or news, or a store's

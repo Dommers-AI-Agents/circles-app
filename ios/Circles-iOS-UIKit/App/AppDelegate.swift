@@ -400,6 +400,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         // An order push with the app open: any order screen on show refreshes
         switch NotificationTapRouter.destination(for: userInfo) {
         case .storeOrder?, .venueOrders?: NotificationCenter.default.post(name: VenueOrdersViewController.ordersChanged, object: nil)
+        case .venueWaitlist?: NotificationCenter.default.post(name: .waitlistChanged, object: nil)
         default: break
         }
 
@@ -708,6 +709,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             postOrStashDeepLink(navName: Notification.Name.navigateToVenueFeedback.rawValue, pending: "venue-feedback:\(venueId)", object: venueId)
         case .venueReceipts(let venueId):
             postOrStashDeepLink(navName: Notification.Name.navigateToVenueReceipts.rawValue, pending: "venue-receipts:\(venueId)", object: venueId)
+        case .venueWaitlist(let venueId):
+            postOrStashDeepLink(navName: Notification.Name.navigateToVenueWaitlist.rawValue, pending: "venue-waitlist:\(venueId)", object: venueId)
         case .placeApprovals(let placeId):
             postOrStashDeepLink(navName: Notification.Name.navigateToPlaceApprovals.rawValue, pending: "place-approvals:\(placeId ?? "all")", object: placeId)
         case .googleMaps:

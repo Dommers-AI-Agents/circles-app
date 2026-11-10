@@ -22,6 +22,8 @@ protocol PlaceVenueRewardsViewDelegate: AnyObject {
     /// The store's full menu (sections of items)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapFullMenu menu: StorefrontMenu, label: String,
                         ordering: StoreOrdering?, venue: PlaceVenue)
+    /// "Join the line" / "You're #3 in line": the store's waitlist (2026-11-09)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapWaitlist waitlist: StoreWaitlist, entry: WaitlistEntry?, venue: PlaceVenue)
 }
 
 /// The rewards section of a place page: the venue's announcements and offers,
@@ -200,6 +202,9 @@ class PlaceVenueRewardsView: UIView {
             if let fullMenu {
                 containerStack.addArrangedSubview(makeFullMenuButton(fullMenu, label: storefront.offeringsLabel,
                                                                      ordering: storefront.ordering, venue: venue))
+            }
+            if let waitlist = storefront.waitlist, waitlist.enabled, data.isOwner != true || viewAsCustomer {
+                containerStack.addArrangedSubview(makeWaitlistButton(waitlist, entry: data.myWaitlist, venue: venue))
             }
             if let offerings = storefront.offerings, !offerings.isEmpty {
                 if !offerings.featured.isEmpty {
@@ -766,6 +771,19 @@ class PlaceVenueRewardsView: UIView {
         button.addAction(UIAction { [weak self] _ in
             guard let self else { return }
             self.delegate?.placeVenueView(self, didTapFullMenu: menu, label: label, ordering: ordering, venue: venue)
+        }, for: .touchUpInside)
+        return button
+    }
+
+    /// The store's waitlist: join, or your place in line (2026-11-09)
+    private func makeWaitlistButton(_ waitlist: StoreWaitlist, entry: WaitlistEntry?, venue: PlaceVenue) -> UIView {
+        let open = entry.flatMap { $0.isOpen ? $0 : nil }
+        let button = UIButton.secondaryButton(title: open.map(WaitlistCopy.placeRow) ?? WaitlistCopy.joinButton)
+        button.setImage(UIImage(systemName: open == nil ? "person.3.sequence" : "clock.badge.checkmark"), for: .normal)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -6, bottom: 0, right: 6)
+        button.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.delegate?.placeVenueView(self, didTapWaitlist: waitlist, entry: open, venue: venue)
         }, for: .touchUpInside)
         return button
     }

@@ -53,6 +53,8 @@ enum PendingLink: Equatable {
     case venueFeedback(venueId: String)
     /// "venue-receipts:<venueId>": a delivery-receipt push on a cold start (store)
     case venueReceipts(venueId: String)
+    /// "venue-waitlist:<venueId>": a party joined the store's waitlist, on a cold start (2026-11-09)
+    case venueWaitlist(venueId: String)
     /// "place-approvals:<globalPlaceId>" / "admin-dashboard:open": admin alerts on a cold start
     case placeApprovals(placeId: String)
     case adminDashboard
@@ -138,6 +140,7 @@ enum PendingLinkParser {
         case "venue-orders": return .venueOrders(venueId: payload)
         case "venue-feedback": return .venueFeedback(venueId: payload)
         case "venue-receipts": return .venueReceipts(venueId: payload)
+        case "venue-waitlist": return .venueWaitlist(venueId: payload)
         case "place-approvals": return .placeApprovals(placeId: payload)
         case "admin-dashboard": return .adminDashboard
         case "tab": return HomeContentSegment(shareSlug: payload).map(PendingLink.homeTab)

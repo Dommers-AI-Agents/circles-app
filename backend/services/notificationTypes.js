@@ -52,6 +52,11 @@ const TYPES = {
   // A store's automatic nudge — win-back, birthday, one more visit to a
   // reward (services/storeAutomations, 2026-11-09). Muted with store alerts.
   store_nudge:             { category: null,                      pref: 'storeAlerts',            badge: false, record: true },
+  // A store's waitlist (services/waitlistService, 2026-11-09): someone is
+  // waiting on each of these, so Time Sensitive like orders
+  waitlist_joined:         { category: null,                      pref: null,                     badge: true, record: true, urgent: true },
+  waitlist_ready:          { category: null,                      pref: null,                     badge: true, record: true, urgent: true },
+  waitlist_update:         { category: null,                      pref: null,                     badge: true, record: true },
   store_claim_approved:    { category: null,                      pref: null,                     badge: true },
   // Order ahead (services/orders): a new or cancelled order to the store's
   // team, and each step (accepted, ready, declined, not answered) to the

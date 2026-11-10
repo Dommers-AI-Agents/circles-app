@@ -233,5 +233,10 @@ router.put('/venues/:venueId/delivery-receipts', requireVenueOwner, requireOwner
 const venueAutomations = require('../controllers/venues/venueAutomationsController');
 router.get('/venues/:venueId/automations', requireVenueOwner, requireOwnerPremium, venueAutomations.get);
 router.put('/venues/:venueId/automations', requireVenueOwner, requireOwnerPremium, venueAutomations.update);
+// The host's waitlist: the line, its settings, notify / seat / remove, Business (2026-11-09)
+const waitlistHost = require('../controllers/venues/waitlistController');
+router.get('/venues/:venueId/waitlist', requireVenueOwner, requireOwnerPremium, waitlistHost.list);
+router.put('/venues/:venueId/waitlist', requireVenueOwner, requireOwnerPremium, waitlistHost.saveSettings);
+router.post('/venues/:venueId/waitlist/:entryId/:action', requireVenueOwner, requireOwnerPremium, waitlistHost.act);
 
 module.exports = router;

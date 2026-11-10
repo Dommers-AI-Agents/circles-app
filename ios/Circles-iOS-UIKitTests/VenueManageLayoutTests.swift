@@ -52,7 +52,7 @@ struct VenueManageLayoutTests {
     }
 
     @Test func menuAndOrderingSitTogether() {
-        #expect(rows(L.Facts(), .menuOrdering) == [.fullMenu, .menu, .onlineOrdering, .orderPage])
+        #expect(rows(L.Facts(), .menuOrdering) == [.fullMenu, .menu, .onlineOrdering, .waitlist, .orderPage])
         #expect(rows(L.Facts(isVirtual: true, hasPlace: false), .menuOrdering) == [.fullMenu, .menu, .onlineOrdering])
     }
 
@@ -63,6 +63,12 @@ struct VenueManageLayoutTests {
         // Off: Online ordering is the way in; Orders opened the same screen
         #expect(L.sections(L.Facts()).first?.section == .glance)
         #expect(!L.sections(L.Facts()).flatMap(\.rows).contains(.orders))
+        // The waitlist leads the screen too while it's on, and leaves "Menu & ordering"
+        let waitlist = L.sections(L.Facts(orderingOn: true, waitlistOn: true))
+        #expect(waitlist.first?.rows == [.orders, .waitlist])
+        #expect(!(rows(L.Facts(waitlistOn: true), .menuOrdering) ?? []).contains(.waitlist))
+        #expect(L.sections(L.Facts(waitlistOn: true)).first?.rows == [.waitlist])
+        #expect(L.isBusiness(.waitlist))
     }
 
     @Test func rewardsCustomersAndCodesAreSeparate() {

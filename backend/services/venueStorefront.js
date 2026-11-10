@@ -181,7 +181,8 @@ const publicStorefront = (venue, { live, orderingLive = live }) => {
   const gallery = live && Array.isArray(s.gallery) ? s.gallery : [];
   const menu = live && hasMenu(s.menu) ? { sections: s.menu.sections, updatedAt: s.menu.updatedAt || null } : null;
   const hasOfferings = !!(offerings && (offerings.link || (offerings.files || []).length || (offerings.featured || []).length));
-  if (!hasAnyAction && !hasOfferings && !gallery.length && !menu) return null;
+  const waitlist = require('./waitlistService').waitlistFor(venue, { live: orderingLive });
+  if (!hasAnyAction && !hasOfferings && !gallery.length && !menu && !waitlist) return null;
   return {
     offeringsLabel: offeringsLabel(venue.category),
     offerings: hasOfferings ? offerings : null,
@@ -190,6 +191,8 @@ const publicStorefront = (venue, { live, orderingLive = live }) => {
     // Order ahead (services/orders): only while the owner pays for Business
     // (no comps), so the caller passes that separately
     ordering: require('./orders/orderRules').orderingFor(venue, { live: orderingLive }),
+    // The waitlist (services/waitlistService): join from the place page while it's on and the plan is live
+    waitlist,
     actions: hasAnyAction ? actions : null,
     gallery
   };

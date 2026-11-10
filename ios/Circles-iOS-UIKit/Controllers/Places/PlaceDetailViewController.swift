@@ -3678,6 +3678,17 @@ extension PlaceDetailViewController: PlaceVenueRewardsViewDelegate {
         present(nav, animated: true)
     }
 
+    /// The store's waitlist: join, or see your place in line (2026-11-09)
+    func placeVenueView(_ view: PlaceVenueRewardsView, didTapWaitlist waitlist: StoreWaitlist, entry: WaitlistEntry?, venue: PlaceVenue) {
+        let status = WaitlistStatusViewController(venue: venue, waitlist: waitlist, entry: entry)
+        status.onChanged = { [weak self] _ in self?.venueLoader.loadVenueRewards() }
+        if let presentation = status.sheetPresentationController {
+            presentation.detents = [.medium(), .large()]
+            presentation.prefersGrabberVisible = true
+        }
+        present(status, animated: true)
+    }
+
     /// "Send your receipt": a delivery order's points (2026-11-06)
     func placeVenueView(_ view: PlaceVenueRewardsView, didTapSendReceipt venue: PlaceVenue, mode: String?) {
         let send = SendReceiptViewController(venueId: venue.venueId, venueName: venue.venueName, mode: mode)
