@@ -278,23 +278,21 @@ async function deliver(venue, globalPlaceId, nudge, customer, now) {
     throw error;
   }
 
-  // Field-path pairs, so the nested bucket fields are set without touching their siblings
-  const bucketUpdate = [field(venue.venueId, 'lastNudgeAt'), now.toISOString()];
-  if (nudge.bonusPoints > 0) {
-    bucketUpdate.push(field(venue.venueId, 'pendingBonus'), {
-      points: nudge.bonusPoints, automation: nudge.type,
-      expiresAt: new Date(now.getTime() + BONUS_TTL_DAYS * DAY_MS).toISOString()
-    });
-  }
-  await db().collection(COLLECTIONS.USERS).doc(nudge.userId).update(...bucketUpdate);
-
   if (channel === 'push') {
-    require('./notifyQuiet').sendInBackground(nudge.userId, {
+    // Awaited, not fire-and-forget: sendToUser DROPS a push inside the
+    // person's quiet hours, and a nudge keyed per quiet spell would never
+    // come back. Deferred = no send doc, no bucket stamp; tomorrow's run
+    // plans it again.
+    const outcome = await require('./notificationService').sendToUser(nudge.userId, {
       type: 'store_nudge',
       title: nudge.message.title,
       body: nudge.message.body,
-      data: { venueId: venue.venueId, placeId: globalPlaceId || null, automation: nudge.type }
-    }, 'store nudge');
+      data: { type: 'store_nudge', venueId: venue.venueId, placeId: globalPlaceId || null, automation: nudge.type }
+    });
+    if (outcome && outcome.success === false) {
+      await sendRef.delete().catch(() => {});
+      return /quiet hours/i.test(outcome.error || '') ? 'deferred' : 'unreachable';
+    }
   } else {
     const { unsubscribeUrl } = require('./followSuggestionEmailService');
     const unsub = unsubscribeUrl(nudge.userId, EMAIL_KIND);
@@ -306,6 +304,16 @@ async function deliver(venue, globalPlaceId, nudge, customer, now) {
       headers: { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
     });
   }
+
+  // Delivered: stamp the bucket (field-path pairs, so sibling fields stay)
+  const bucketUpdate = [field(venue.venueId, 'lastNudgeAt'), now.toISOString()];
+  if (nudge.bonusPoints > 0) {
+    bucketUpdate.push(field(venue.venueId, 'pendingBonus'), {
+      points: nudge.bonusPoints, automation: nudge.type,
+      expiresAt: new Date(now.getTime() + BONUS_TTL_DAYS * DAY_MS).toISOString()
+    });
+  }
+  await db().collection(COLLECTIONS.USERS).doc(nudge.userId).update(...bucketUpdate);
   return channel;
 }
 
@@ -317,7 +325,7 @@ async function runDue({ now = new Date(), dryRun = false } = {}) {
   const { isVenueBusinessLive } = require('./ownerSubscriptionService');
   const { venueGlobalPlaceId } = require('./venueHelpers');
   const snapshot = await db().collection(STICKER_COLLECTIONS.STICKER_VENUES).where('active', '==', true).get();
-  const summary = { dryRun, venues: 0, lapsed: 0, planned: 0, sent: { push: 0, email: 0 }, unreachable: 0, duplicate: 0, byType: {}, would: [] };
+  const summary = { dryRun, venues: 0, lapsed: 0, planned: 0, sent: { push: 0, email: 0 }, unreachable: 0, deferred: 0, duplicate: 0, byType: {}, would: [] };
   for (const doc of snapshot.docs) {
     const venue = { venueId: doc.id, ...doc.data() };
     const settings = settingsOf(venue);

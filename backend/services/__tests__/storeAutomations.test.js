@@ -8,8 +8,8 @@ jest.mock('../../config/firebase', () => ({
   FieldValue: MockFieldValue,
   admin: { firestore: { FieldValue: MockFieldValue } }
 }));
-const mockPush = jest.fn();
-jest.mock('../notifyQuiet', () => ({ sendInBackground: (...args) => mockPush(...args) }));
+const mockPush = jest.fn(async () => ({ success: true }));
+jest.mock('../notificationService', () => ({ sendToUser: (...args) => mockPush(...args) }));
 const mockEmail = jest.fn(async () => ({}));
 jest.mock('../emailService', () => ({ sendEmail: (...args) => mockEmail(...args) }));
 jest.mock('../followSuggestionEmailService', () => ({ unsubscribeUrl: (uid, kind) => `https://x/unsub?uid=${uid}&kind=${kind}` }));
@@ -128,7 +128,7 @@ describe('runDue', () => {
     const first = await auto.runDue({ now: NOW });
     expect(first.sent).toEqual({ push: 1, email: 1 });
     expect(first.unreachable).toBe(1);
-    expect(mockPush).toHaveBeenCalledWith('pushy', expect.objectContaining({ type: 'store_nudge', title: "We miss you at Sal's", data: expect.objectContaining({ venueId: 'v1', placeId: 'gp1' }) }), 'store nudge');
+    expect(mockPush).toHaveBeenCalledWith('pushy', expect.objectContaining({ type: 'store_nudge', title: "We miss you at Sal's", data: expect.objectContaining({ type: 'store_nudge', venueId: 'v1', placeId: 'gp1' }) }));
     expect(mockEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'm@example.com', subject: "We miss you at Sal's" }));
     expect(mockEmail.mock.calls[0][0].headers['List-Unsubscribe']).toContain('kind=storeNudges');
     const pushy = (await mockDb.collection('users').doc('pushy').get()).data().rewardPointsByVenue.v1;
@@ -139,6 +139,21 @@ describe('runDue', () => {
     const again = await auto.runDue({ now: new Date(NOW.getTime() + 3600000) });
     expect(again.sent).toEqual({ push: 0, email: 0 });
     expect(mockPush).toHaveBeenCalledTimes(1);
+  });
+
+  it('a push dropped by quiet hours is deferred: nothing recorded, so tomorrow plans it again', async () => {
+    mockPush.mockResolvedValueOnce({ success: false, error: 'Quiet hours' });
+    const first = await auto.runDue({ now: NOW });
+    expect(first.deferred).toBe(1);
+    expect(first.sent).toEqual({ push: 0, email: 1 });
+    const pushy = (await mockDb.collection('users').doc('pushy').get()).data().rewardPointsByVenue.v1;
+    expect(pushy.lastNudgeAt).toBeUndefined();
+    expect(pushy.pendingBonus).toBeUndefined();
+    expect(mockDb.rows('storeAutomationSends').size).toBe(1);
+
+    const tomorrow = await auto.runDue({ now: new Date(NOW.getTime() + 86400000) });
+    expect(tomorrow.sent).toEqual({ push: 1, email: 0 });
+    expect(mockDb.rows('storeAutomationSends').size).toBe(2);
   });
 
   it('stats count sends and who came back', async () => {

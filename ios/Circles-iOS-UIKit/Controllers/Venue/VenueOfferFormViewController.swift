@@ -13,6 +13,8 @@ final class VenueOfferFormViewController: BaseViewController {
     private var draft: VenueOfferEdit
     /// The venue's full offer list after the save
     var onSaved: (([RewardOffer]) -> Void)?
+    /// A brand-new offer was posted: the screen underneath offers to share it (Instagram, 2026-11-09)
+    var onPosted: ((StorePost, String?) -> Void)?
 
     override var loadsDataOnViewDidLoad: Bool { false }
     override var showsLoadingIndicator: Bool { false }
@@ -149,7 +151,15 @@ extension VenueOfferFormViewController {
         let line = alertedLine
         alertedLine = nil
         let nav = navigationController
+        let posted: StorePost? = existing == nil && onPosted != nil
+            ? .offer(title: draft.title.trimmingCharacters(in: .whitespaces), pointsCost: Int(draft.pointsText) ?? 0) : nil
+        let onPosted = self.onPosted
         nav?.popViewController(animated: true)
+        if let posted, let onPosted {
+            // One sheet on the screen underneath: who it alerted, and share it
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { onPosted(posted, line) }
+            return
+        }
         if let line, let presenter = nav?.topViewController {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 AlertPresenter.showSuccess(line, from: presenter)

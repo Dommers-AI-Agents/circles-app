@@ -476,6 +476,10 @@ class VenueManageViewController: BaseViewController {
             self?.offers = offers
             self?.reload()
         }
+        form.onPosted = { [weak self] post, alertedLine in
+            guard let self else { return }
+            StorePostShareController.offer(post: post, alertedLine: alertedLine, venueName: self.venueName, placeId: self.venuePlaceId, from: self)
+        }
         navigationController?.pushViewController(form, animated: true)
     }
 
@@ -487,6 +491,10 @@ class VenueManageViewController: BaseViewController {
         form.onSaved = { [weak self] announcements in
             self?.announcements = announcements
             self?.reload()
+        }
+        form.onPosted = { [weak self] post, alertedLine in
+            guard let self else { return }
+            StorePostShareController.offer(post: post, alertedLine: alertedLine, venueName: self.venueName, placeId: self.venuePlaceId, from: self)
         }
         navigationController?.pushViewController(form, animated: true)
     }

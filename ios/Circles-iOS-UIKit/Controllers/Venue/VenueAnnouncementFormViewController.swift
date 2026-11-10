@@ -15,6 +15,8 @@ final class VenueAnnouncementFormViewController: BaseViewController {
     private var draft: VenueAnnouncementEdit
     /// The venue's full announcement list after the save or delete
     var onSaved: (([VenueAnnouncement]) -> Void)?
+    /// A brand-new announcement or event was posted: the screen underneath offers to share it (Instagram, 2026-11-09)
+    var onPosted: ((StorePost, String?) -> Void)?
 
     override var loadsDataOnViewDidLoad: Bool { false }
     override var showsLoadingIndicator: Bool { false }
@@ -352,7 +354,17 @@ extension VenueAnnouncementFormViewController {
         let line = alertedLine
         alertedLine = nil
         let nav = navigationController
+        let posted: StorePost? = existing == nil && onPosted != nil
+            ? .announcement(title: draft.title.trimmingCharacters(in: .whitespaces),
+                            message: draft.message.trimmingCharacters(in: .whitespacesAndNewlines),
+                            eventStart: draft.eventStart) : nil
+        let onPosted = self.onPosted
         nav?.popViewController(animated: true)
+        if let posted, let onPosted {
+            // One sheet on the screen underneath: who it alerted, and share it
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { onPosted(posted, line) }
+            return
+        }
         if let line, let presenter = nav?.topViewController {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 AlertPresenter.showSuccess(line, from: presenter)

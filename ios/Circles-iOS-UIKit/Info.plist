@@ -106,6 +106,8 @@
 	<string>AIzaSyAwcmtCmYmq5dbsBsYA1T3Fx949VeK0Cv8</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
+		<string>instagram</string>
+		<string>instagram-stories</string>
 		<string>fbapi</string>
 		<string>fb-messenger-api</string>
 		<string>fb-messenger-share-api</string>

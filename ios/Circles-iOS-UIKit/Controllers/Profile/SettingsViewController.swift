@@ -54,6 +54,9 @@ class SettingsViewController: BaseTableViewController {
         }
     }
     
+    /// The saved birthday (MM-DD), for the Birthday treats row
+    private var birthday: String?
+
     private enum DataRow: Int, CaseIterable {
         case myOrders
         /// Stores you earn with can send a birthday reward (2026-11-09)
@@ -208,6 +211,15 @@ class SettingsViewController: BaseTableViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        if birthday == nil {
+            RewardsService.shared.fetchBirthday { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self, case .success(let saved) = result, saved != self.birthday else { return }
+                    self.birthday = saved
+                    self.tableView.reloadData()
+                }
+            }
+        }
         // Re-check permissions when returning from settings
         checkNotificationPermissions()
         // Detail text on the privacy rows ("Custom", the Inner Circle count)
@@ -709,7 +721,7 @@ extension SettingsViewController {
                 case .birthday:
                     var config = cell.defaultContentConfiguration()
                     config.text = row.title
-                    config.secondaryText = StoreAutomationsCopy.birthdayRowDetail(nil)
+                    config.secondaryText = StoreAutomationsCopy.birthdayRowDetail(birthday)
                     config.secondaryTextProperties.color = .secondaryLabel
                     config.image = UIImage(systemName: "gift")
                     config.imageProperties.tintColor = Constants.Colors.primary
@@ -1001,7 +1013,12 @@ extension SettingsViewController {
                 case .myOrders:
                     navigationController?.pushViewController(MyOrdersViewController(), animated: true)
                 case .birthday:
-                    navigationController?.pushViewController(BirthdayViewController(), animated: true)
+                    let vc = BirthdayViewController()
+                    vc.onChanged = { [weak self] saved in
+                        self?.birthday = saved
+                        self?.tableView.reloadData()
+                    }
+                    navigationController?.pushViewController(vc, animated: true)
                 case .importPlaces:
                     showPlaceImport()
                 case .exportData:
