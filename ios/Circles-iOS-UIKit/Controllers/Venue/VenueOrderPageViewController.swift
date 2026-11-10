@@ -1,9 +1,11 @@
 import UIKit
 
-/// The store's web page, order.favcircles.com/<slug> (Wes, 2026-10-28): the
-/// same menu and the same Orders list as the app, for customers without it.
-/// Here the owner copies, shares or opens the address, puts it behind an
-/// "Order online" button on the store's own website, or changes the slug.
+/// The store's website, order.favcircles.com/<slug> (Wes, 2026-10-28 ordering;
+/// 2026-11-09 the whole page): photos, about, hours, buttons, what's on, the
+/// menu with ordering when it's on, the waitlist when it's on, how to earn
+/// here — everything the owner already keeps in Manage Store, on the web for
+/// people without the app. Here the owner copies, shares or opens the
+/// address, links it from their own site, or changes the slug.
 final class VenueOrderPageViewController: BaseViewController {
 
     override var showsLoadingIndicator: Bool { false }
@@ -36,14 +38,14 @@ final class VenueOrderPageViewController: BaseViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Your ordering page"
+        title = "Your website"
         view.backgroundColor = Constants.Colors.background
         let stack = VenueFormLayout.install(in: view)
 
         stack.addArrangedSubview(VenueFormLayout.hintLabel(
             orderingOn
-                ? "Customers without the app order from this page and pay at pickup. It shows the same menu you keep here, and their orders land in Orders with everyone else's."
-                : "This page shows your menu, hours and address to anyone. Turn on Online ordering and customers can order from it too, with the same menu and the same Orders list."))
+                ? "Your store's page on the web: photos, hours, what's on, your menu with ordering (paid at pickup, into the same Orders list), your waitlist when it's on, and how to earn rewards here. There's nothing to edit — it shows what you keep in Manage Store."
+                : "Your store's page on the web: photos, hours, buttons, what's on, your menu, your waitlist when it's on, and how to earn rewards here. It shows what you keep in Manage Store. Turn on Online ordering and customers order from it too."))
 
         guard page != nil else {
             stack.addArrangedSubview(VenueFormLayout.hintLabel("Your web address is being set up. Close and reopen Manage Store in a moment."))

@@ -30,7 +30,7 @@ enum VenueManageCopy {
                 title: "Menu & ordering",
                 explanation: isVirtual
                     ? "Your menu, featured items, and online ordering from it. Comes with FavCircles Business."
-                    : "Scan your menu once and every item goes on your page, where customers can search it. Pick a few featured items with a picture and a price. Turn on online ordering and customers order ahead from that menu and pay at pickup \u{2014} in the app, or on your own ordering page (order.favcircles.com/your-store) to link from your website. Comes with FavCircles Business.")
+                    : "Scan your menu once and every item goes on your page, where customers can search it. Pick a few featured items with a picture and a price. Turn on online ordering and customers order ahead from that menu and pay at pickup \u{2014} in the app, or on your store's own web page (order.favcircles.com/your-store), which also shows your photos, hours, what's on and your waitlist. Comes with FavCircles Business.")
         case .loyalty:
             return Header(
                 title: "Rewards",

@@ -75,7 +75,7 @@ describe('the page', () => {
     expect(p.menu.sections.map((s) => s.name)).toEqual(['Pastries', 'Specials']);
     expect(JSON.stringify(p)).not.toMatch(/WIN123|REG123|ownerUserId|mgr/);
   });
-  test('ordering off: the page stays (menu only); not on Business or no menu: no page', async () => {
+  test('ordering off: the page stays (menu only); no menu: the page stays as the store\'s website; not on Business: no page', async () => {
     await mockDb.collection('stickerVenues').doc('v1').set({ ...VENUE, ordering: { enabled: false } });
     let page = await web.pageFor('test-bakery');
     expect(page.ordering).toBeNull();
@@ -83,7 +83,9 @@ describe('the page', () => {
     expect(await web.pageFor('test-bakery')).toBeNull();
     mockLive.value = true;
     await mockDb.collection('stickerVenues').doc('v1').set({ ...VENUE, storefront: { menu: { sections: [] } } });
-    expect(await web.pageFor('test-bakery')).toBeNull();
+    page = await web.pageFor('test-bakery');
+    expect(page).not.toBeNull();
+    expect(page.ordering).toBeNull();
     expect(await web.pageFor('no-such')).toBeNull();
   });
   test('a retired address redirects to the current one', async () => {

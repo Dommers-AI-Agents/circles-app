@@ -21,6 +21,11 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 const { STICKER_COLLECTIONS } = require('../models/StickerModels');
 const { ServiceError } = require('../utils/serviceError');
 const { newId, nowIso } = require('../utils/ids');
+const jwt = require('jsonwebtoken');
+
+const GUEST_TOKEN_PURPOSE = 'web_waitlist';
+const GUEST_TOKEN_TTL = '2d';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 const ENTRIES = 'waitlistEntries';
 const STATUS = {
@@ -121,8 +126,76 @@ async function count(venueId) {
 /** This person's open entry at the store, with their place in line; null when none. */
 async function mine(venueId, userId) {
   const entries = await openEntries(venueId);
-  const own = entries.find((e) => String(e.userId) === String(userId));
+  const own = entries.find((e) => e.userId && String(e.userId) === String(userId));
   return own ? entryView(own.id, own, own.quoteMinutes) : null;
+}
+
+// ---------- Web guests (the store's web page, Phase 5) ----------
+
+/** A token that can read or leave one guest entry; `protect` rejects tokens with a purpose. */
+const signGuestToken = (entryId) => jwt.sign({ entryId, purpose: GUEST_TOKEN_PURPOSE }, require('../config/secrets').jwtSecret(), { expiresIn: GUEST_TOKEN_TTL });
+const verifyGuestToken = (token, entryId) => {
+  try {
+    const decoded = jwt.verify(String(token || ''), require('../config/secrets').jwtSecret(), { algorithms: ['HS256'] });
+    return decoded.purpose === GUEST_TOKEN_PURPOSE && decoded.entryId === String(entryId);
+  } catch (error) { return false; }
+};
+
+/**
+ * Join from the store's web page without an account: a name, a party size
+ * and an email, which is where "your table is ready" goes. Returns the entry
+ * and a token for its status.
+ */
+async function joinGuest({ venueId, name, email, partySize, now = new Date() }) {
+  const venue = await loadVenue(venueId);
+  const settings = settingsOf(venue);
+  const { isVenueBusinessLive } = require('./ownerSubscriptionService');
+  if (!settings.enabled || !(await isVenueBusinessLive(venue))) {
+    throw new ServiceError(409, 'waitlist_off', `${venue.venueName} isn't taking a waitlist right now.`);
+  }
+  const party = normalizeParty(partySize);
+  const displayName = String(name || '').trim().replace(/\s+/g, ' ').slice(0, LIMITS.nameMax);
+  if (displayName.length < 2) throw new ServiceError(400, 'bad_name', 'Tell the host who the table is for.');
+  const address = String(email || '').trim().toLowerCase().slice(0, 120);
+  if (!EMAIL_RE.test(address)) throw new ServiceError(400, 'bad_email', 'Enter the email we should notify when your table is ready.');
+
+  const open = await openEntries(venue.venueId);
+  const same = open.find((e) => e.guest && e.guest.email === address);
+  if (same) return { entry: entryView(same.id, same, same.quoteMinutes), token: signGuestToken(same.id), alreadyInLine: true };
+
+  const { venueGlobalPlaceId } = require('./venueHelpers');
+  const placeId = await venueGlobalPlaceId(venue).catch(() => null);
+  const id = newId();
+  const entry = {
+    venueId: venue.venueId, venueName: venue.venueName || null, placeId: placeId || null,
+    userId: null, guest: { name: displayName, email: address }, name: displayName, partySize: party,
+    status: STATUS.WAITING, joinedAt: now.toISOString(), quoteMinutes: settings.quoteMinutes
+  };
+  await db().collection(ENTRIES).doc(id).set(entry);
+  notifyTeam(venue, entry).catch((e) => console.error('waitlist: team push failed', e.message));
+  const placed = (await openEntries(venue.venueId)).find((e) => e.id === id);
+  return { entry: entryView(id, placed || { ...entry, position: open.length + 1 }, settings.quoteMinutes), token: signGuestToken(id) };
+}
+
+/** A guest's entry by token: its status and place in line (null position once closed). */
+async function guestStatus(entryId, token) {
+  if (!verifyGuestToken(token, entryId)) throw new ServiceError(403, 'bad_token', 'That link is not valid.');
+  const doc = await db().collection(ENTRIES).doc(String(entryId)).get();
+  if (!doc.exists) throw new ServiceError(404, 'not_found', 'That spot in line was not found.');
+  const e = doc.data();
+  if (!OPEN.includes(e.status)) return entryView(doc.id, e, e.quoteMinutes);
+  const placed = (await openEntries(e.venueId)).find((x) => x.id === doc.id);
+  return entryView(doc.id, placed || e, e.quoteMinutes);
+}
+
+async function leaveGuest(entryId, token) {
+  if (!verifyGuestToken(token, entryId)) throw new ServiceError(403, 'bad_token', 'That link is not valid.');
+  const ref = db().collection(ENTRIES).doc(String(entryId));
+  const doc = await ref.get();
+  if (!doc.exists) throw new ServiceError(404, 'not_found', 'That spot in line was not found.');
+  if (!OPEN.includes(doc.data().status)) return { left: true, status: doc.data().status };
+  await ref.update({ status: STATUS.LEFT, closedAt: nowIso() });
+  return { left: true, status: STATUS.LEFT };
 }
 
 async function loadVenue(venueId) {
@@ -227,11 +300,26 @@ const guestNotice = (e, kind) => ({
 
 function pushGuest(e, kind) {
   const notice = guestNotice(e, kind);
-  if (!notice || !e.userId) return;
+  if (!notice) return;
+  if (!e.userId) {
+    // A web guest has no app: the same word, by email
+    if (e.guest && e.guest.email) emailGuest(e, notice).catch((err) => console.error('waitlist: guest email failed', err.message));
+    return;
+  }
   require('./notifyQuiet').sendInBackground(e.userId, {
     type: notice.type, title: notice.title, body: notice.body,
     data: { venueId: e.venueId, placeId: e.placeId || null, entryId: e.entryId || null, status: e.status }
   }, notice.type);
+}
+
+async function emailGuest(e, notice) {
+  const { escapeHtml } = require('../utils/text');
+  const html = `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px">
+<h2 style="margin:0 0 8px">${escapeHtml(notice.title)}</h2>
+<p style="margin:0 0 14px;font-size:16px;line-height:1.5">${escapeHtml(notice.body)}</p>
+<p style="color:#6B7280;font-size:13px">You joined the waitlist at ${escapeHtml(e.venueName || 'the store')} on its FavCircles page.</p>
+</div>`;
+  await require('./emailService').sendEmail({ to: e.guest.email, subject: notice.title, html, text: `${notice.title}\n\n${notice.body}` });
 }
 
 async function notifyTeam(venue, entry) {
@@ -271,5 +359,6 @@ async function sweep({ now = new Date() } = {}) {
 module.exports = {
   ENTRIES, STATUS, OPEN, LIMITS,
   settingsOf, normalizeSettings, waitlistFor, withPositions, estimateMinutes, normalizeParty,
-  line, count, mine, join, leave, act, saveSettings, sweep
+  line, count, mine, join, leave, act, saveSettings, sweep,
+  joinGuest, guestStatus, leaveGuest, signGuestToken, verifyGuestToken
 };

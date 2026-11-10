@@ -937,7 +937,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("Online ordering", o?.enabled == true ? "On \u{00B7} usually ready in \(o?.leadMinutes ?? 15) min" : "Off \u{00B7} let customers order ahead and pay at pickup", "switch.2")
         case .orderPage:
             let url = storefront?.orderingPage?.url.replacingOccurrences(of: "https://", with: "")
-            set("Your ordering page", url ?? "Your menu and ordering on the web \u{2014} link it from your site", "globe")
+            set("Your website", url ?? "Your store's page on the web \u{2014} photos, hours, what's on, menu, waitlist", "globe")
         case .menu:
             let label = storefront?.offeringsLabel ?? "Menu"
             let o = storefront?.offerings

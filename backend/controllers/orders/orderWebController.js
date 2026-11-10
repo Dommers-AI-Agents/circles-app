@@ -26,7 +26,8 @@ exports.page = async (req, res) => {
     const page = await web.pageFor(req.params.slug);
     if (page && page.redirectTo) return res.redirect(301, `${baseFor(req)}/${page.redirectTo}`);
     if (!page) return html(res, pages.renderNotFound({ base: baseFor(req) }), { status: 404, cache: 'no-store', noindex: true });
-    const p = web.projection(page.venue, page.place, { live: page.live, ordering: page.ordering });
+    // The menu and ordering, plus the website parts (photos, about, what's on, score, earn, waitlist)
+    const p = { ...web.projection(page.venue, page.place, { live: page.live, ordering: page.ordering }), ...(await web.siteProjection(page.venue, page.place, { live: page.live })) };
     const body = pages.renderOrderPage(p, { base: baseFor(req), canonicalUrl: `https://order.favcircles.com/${p.slug}`, noindex: page.isTestStore });
     html(res, body, { noindex: page.isTestStore });
   } catch (error) {
@@ -81,6 +82,58 @@ exports.cancel = async (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ success: true, data: await web.cancel(req.params.orderId, tokenFrom(req)) });
   } catch (error) { fail(res, error); }
+};
+
+// ---- the waitlist on the store's page (services/waitlistService, web guests)
+
+// @route POST /order/:slug/waitlist   body: { name, email, partySize, website (honeypot) }
+exports.joinWaitlist = async (req, res) => {
+  try {
+    const { name, email, partySize, website } = req.body || {};
+    if (website) return res.json({ success: true }); // a bot filled the hidden field
+    const page = await web.pageFor(req.params.slug);
+    if (!page || page.redirectTo) return res.status(404).json({ success: false, code: 'store_not_found', message: 'That store isn’t on FavCircles.' });
+    const result = await require('../../services/waitlistService').joinGuest({ venueId: page.venue.venueId, name, email, partySize });
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, data: result });
+  } catch (error) { fail(res, error); }
+};
+
+// @route GET /order/api/waitlist/:entryId?t=   (token-checked)
+exports.waitlistStatus = async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, data: await require('../../services/waitlistService').guestStatus(req.params.entryId, tokenFrom(req)) });
+  } catch (error) { fail(res, error); }
+};
+
+// @route POST /order/api/waitlist/:entryId/leave?t=
+exports.leaveWaitlist = async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, data: await require('../../services/waitlistService').leaveGuest(req.params.entryId, tokenFrom(req)) });
+  } catch (error) { fail(res, error); }
+};
+
+// @route GET /order/sitemap.xml — every public store page (cached an hour)
+exports.sitemap = async (req, res) => {
+  try {
+    const rows = await web.sitemapSlugs();
+    const urls = rows.map((r) => `<url><loc>https://order.favcircles.com/${r.slug}</loc>${r.updatedAt ? `<lastmod>${String(r.updatedAt).slice(0, 10)}</lastmod>` : ''}</url>`).join('');
+    res.set('Content-Type', 'application/xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`);
+  } catch (error) {
+    console.error('Sitemap failed:', error.message);
+    res.status(500).send('');
+  }
+};
+
+// @route GET /order/robots.txt
+exports.robots = (req, res) => {
+  res.set('Content-Type', 'text/plain');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.send('User-agent: *\nAllow: /\nDisallow: /o/\nDisallow: /api/\nSitemap: https://order.favcircles.com/sitemap.xml\n');
 };
 
 // Anything else under /order is a page, not an API: say so in HTML

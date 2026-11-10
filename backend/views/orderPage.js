@@ -1,6 +1,8 @@
-// backend/views/orderPage.js — the public ordering page behind
-// order.favcircles.com/<slug> (services/orders/webOrderService). Server
-// renders the store and its menu so the page reads without JavaScript;
+// backend/views/orderPage.js — a store's public page behind
+// order.favcircles.com/<slug> (services/orders/webOrderService): its website
+// (Wes, 2026-11-09) — photos, about, hours, buttons, what's on, the menu with
+// ordering when it's on, the waitlist when it's on, how to earn here. Server
+// renders it all so the page reads without JavaScript;
 // public/order-page.js adds the cart and checkout. CSP allows no inline
 // code, so the menu rides in a JSON data block and the script is a file.
 const { escapeHtml: esc } = require('../utils/text');
@@ -51,7 +53,15 @@ input,textarea,select{width:100%;border:1px solid var(--line);border-radius:10px
 .status .big{font-size:22px;font-weight:800;margin:0 0 6px}.status .sub{color:var(--muted);margin:0}
 .status ul{list-style:none;padding:0;margin:14px 0 0}.status li{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)}
 footer{margin-top:40px;text-align:center;color:var(--muted);font-size:14px}footer a.inapp{display:inline-block;margin-top:12px;font-weight:600}footer a.get{display:inline-block;margin-top:8px;background:var(--brand);color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none;font-weight:700}
-@media (prefers-color-scheme:dark){:root{--ink:#F7FAFC;--muted:#A0AEC0;--line:#2D3748;--bg:#111827;--card:#1A202C}.banner{background:#1A365D;border-color:#2C5282}.chips{background:var(--bg)}}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 0}.actions a{display:inline-block;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:9px 14px;font-weight:600;text-decoration:none;color:var(--ink)}.actions a.go{background:var(--brand);border-color:var(--brand);color:#fff}
+.about{margin:14px 0 0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
+.score{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0}.score div{flex:1 1 140px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}.score b{display:block;font-size:22px}.score span{color:var(--muted);font-size:13px}
+.photos{display:flex;gap:8px;overflow-x:auto;margin:16px -16px 0;padding:0 16px;scrollbar-width:none}.photos::-webkit-scrollbar{display:none}.photos img{flex:0 0 auto;width:220px;height:160px;object-fit:cover;border-radius:14px;background:var(--line)}
+section.site{margin-top:22px}section.site h2{font-size:20px;margin:0 0 8px}
+.note{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}.note b{display:block;font-size:16px}.note .when{color:var(--brand);font-weight:600;font-size:14px}.note p{margin:4px 0 0;color:var(--muted);font-size:15px;overflow-wrap:anywhere}
+.earn{background:#EBF8FF;border:1px solid #BEE3F8;border-radius:14px;padding:14px;margin-top:12px;font-size:15px}.earn ul{margin:8px 0 0;padding-left:18px}
+.wait{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:12px}.wait .big{font-size:20px;font-weight:800;margin:0 0 4px}.wait .sub{color:var(--muted);margin:0}.wait .inline{display:flex;gap:8px}.wait .inline label{flex:1}
+@media (prefers-color-scheme:dark){:root{--ink:#F7FAFC;--muted:#A0AEC0;--line:#2D3748;--bg:#111827;--card:#1A202C}.banner,.earn{background:#1A365D;border-color:#2C5282}.chips{background:var(--bg)}}
 `;
 
 const head = ({ title, description, url, image, noindex, extraMeta = '' }) => `<!DOCTYPE html>
@@ -97,15 +107,90 @@ const itemHtml = (item, canOrder) => `<button class="item" type="button" data-it
  * The store page. `base` is '' on the ordering host and '/order' on the
  * API host, so links work on both.
  */
+const dayText = (event) => [event.localDate, event.localTime].filter(Boolean).join(' · ');
+
+/** schema.org LocalBusiness for search engines: what the page already shows, nothing more. */
+const jsonLd = (p, url) => {
+  const data = {
+    '@context': 'https://schema.org', '@type': 'LocalBusiness', name: p.name, url,
+    ...(p.address ? { address: p.address } : {}),
+    ...(p.phone ? { telephone: p.phone } : {}),
+    ...(p.description ? { description: p.description } : {}),
+    ...(p.photos && p.photos.length ? { image: p.photos } : (p.coverPhotoUrl ? { image: [p.coverPhotoUrl] } : {})),
+    ...(p.location ? { geo: { '@type': 'GeoCoordinates', latitude: p.location.latitude, longitude: p.location.longitude } } : {}),
+    ...(p.score && p.score.google && p.score.google.total > 0
+      ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: p.score.google.rating, reviewCount: p.score.google.total } } : {})
+  };
+  if (p.ordering && p.ordering.enabled) data.potentialAction = { '@type': 'OrderAction', target: url };
+  return `<script type="application/ld+json">${jsonBlock(data)}</script>`;
+};
+
+const scoreHtml = (score) => {
+  if (!score) return '';
+  const cells = [];
+  if (typeof score.average === 'number') {
+    const who = score.recommend > 0 ? `${score.recommend} of ${score.ratings} recommend it` : `${score.ratings} rating${score.ratings === 1 ? '' : 's'}`;
+    cells.push(`<div><b>${esc(String(score.average))}<small>/10</small></b><span>FavCircles score · ${esc(who)}</span></div>`);
+  }
+  if (score.google) {
+    cells.push(`<div><b>${esc(String(score.google.rating))}★</b><span>Google · ${esc(String(score.google.total))} review${score.google.total === 1 ? '' : 's'}</span></div>`);
+  }
+  return cells.length ? `<div class="score">${cells.join('')}</div>` : '';
+};
+
+const announcementsHtml = (list) => list && list.length ? `<section class="site" id="news"><h2>What's on</h2>${list.map((a) =>
+  `<div class="note"><b>${esc(a.title)}</b>${a.event ? `<span class="when">${esc(dayText(a.event))}${a.event.isFree ? ' · Free' : ''}</span>` : ''}${a.message ? `<p>${esc(a.message)}</p>` : ''}</div>`).join('')}</section>` : '';
+
+const earnHtml = (earn, name) => {
+  if (!earn) return '';
+  const first = earn.firstReward ? ` ${earn.firstReward.pointsCost} points = ${esc(earn.firstReward.title)}.` : '';
+  const list = earn.offers && earn.offers.length > 1 ? `<ul>${earn.offers.map((o) => `<li>${esc(o.title)} · ${o.pointsCost} pts</li>`).join('')}</ul>` : '';
+  return `<div class="earn"><b>Earn rewards here with FavCircles.</b> Every visit earns ${earn.earnRate} points at ${esc(name)}.${first}${list}</div>`;
+};
+
+const waitlistHtml = (p, base) => p.waitlist && p.waitlist.enabled ? `<section class="site" id="waitlist"><h2>Waitlist</h2>
+<div class="wait">
+<div id="waitlistStatus" aria-live="polite" hidden></div>
+<form id="waitlistForm" novalidate>
+<p class="sub">Join the line here. The host quotes about ${p.waitlist.quoteMinutes} minutes per party ahead of you, and you'll get an email the moment your table is ready.</p>
+<div class="inline"><label class="field"><span>Your name</span><input name="name" autocomplete="name" required maxlength="60"></label>
+<label class="field" style="flex:0 0 110px"><span>Party of</span><select name="party">${[1, 2, 3, 4, 5, 6, 7, 8].map((n) => `<option value="${n}"${n === 2 ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div>
+<label class="field"><span>Email for the "table's ready" note</span><input name="email" type="email" autocomplete="email" required maxlength="120"></label>
+<div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+<p class="err" id="waitlistError" role="alert"></p>
+<button type="submit" class="primary">Join the line</button>
+</form>
+<div style="text-align:center"><button type="button" class="ghost danger" id="waitlistLeave" hidden>Leave the line</button></div>
+</div>
+<script type="application/json" id="waitlist-data">${jsonBlock({ slug: p.slug, base })}</script>
+<script src="/public/store-waitlist.js" defer></script>
+</section>` : '';
+
+/**
+ * The store's page (Wes, 2026-11-09: its website): photos, about, hours,
+ * buttons, what's on, the menu with ordering when it's on, the waitlist
+ * when it's on, and how to earn here. `base` is '' on the ordering host
+ * and '/order' on the API host, so links work on both.
+ */
 function renderOrderPage(p, { base = '', canonicalUrl, noindex = false } = {}) {
   const canOrder = !!(p.ordering && p.ordering.enabled);
-  const title = canOrder ? `Order from ${p.name}` : `${p.name} · ${p.offeringsLabel}`;
-  const description = canOrder
-    ? `Order ahead from ${p.name} and pay at pickup.${p.address ? ` ${p.address}.` : ''}`
-    : `${p.name}'s ${p.offeringsLabel.toLowerCase()}, hours and address.`;
+  const sections = (p.menu && p.menu.sections) || [];
+  const hasMenu = sections.length > 0;
+  const title = canOrder ? `Order from ${p.name}` : `${p.name}${p.address ? ` · ${p.address.split(',').slice(-2).join(',').trim()}` : ''}`;
+  const description = p.description
+    ? p.description.slice(0, 155)
+    : canOrder
+      ? `Order ahead from ${p.name} and pay at pickup.${p.address ? ` ${p.address}.` : ''}`
+      : `${p.name}: hours, photos, what's on${hasMenu ? `, the ${p.offeringsLabel.toLowerCase()}` : ''} and rewards.${p.address ? ` ${p.address}.` : ''}`;
   const mapsHref = p.address ? `https://maps.apple.com/?q=${encodeURIComponent(p.address)}` : null;
-  const sections = p.menu.sections;
-  return `${head({ title, description, url: canonicalUrl, image: p.coverPhotoUrl, noindex })}
+  const photos = (p.photos || []).filter((u) => u !== p.coverPhotoUrl);
+  const actions = [
+    ...(mapsHref ? [{ label: 'Directions', url: mapsHref, go: false }] : []),
+    ...(p.phone ? [{ label: 'Call', url: `tel:${p.phone.replace(/[^+\d]/g, '')}`, go: false }] : []),
+    ...(p.website ? [{ label: 'Website', url: p.website, go: false }] : []),
+    ...((p.actions || []).map((a) => ({ label: a.label, url: a.url, go: a.key === 'reserve' || a.key === 'order' })))
+  ];
+  return `${head({ title, description, url: canonicalUrl, image: p.coverPhotoUrl, noindex, extraMeta: jsonLd(p, canonicalUrl) })}
 <body>
 ${p.coverPhotoUrl ? `<div class="cover" style="background-image:url('${esc(p.coverPhotoUrl)}')" role="img" aria-label="${esc(p.name)}"></div>` : ''}
 <div class="wrap">
@@ -114,13 +199,20 @@ ${p.coverPhotoUrl ? `<div class="cover" style="background-image:url('${esc(p.cov
 ${p.address ? `<p class="meta"><a href="${esc(mapsHref)}" target="_blank" rel="noopener">${esc(p.address)}</a></p>` : ''}
 ${p.phone ? `<p class="meta"><a href="tel:${esc(p.phone.replace(/[^+\d]/g, ''))}">${esc(p.phone)}</a></p>` : ''}
 ${hoursHtml(p.hours)}
-${canOrder ? `<p class="lead">Order ahead · <b>pay at pickup</b> · usually ready in ${p.ordering.leadMinutes} min${p.ordering.note ? `<br><span class="meta">${esc(p.ordering.note)}</span>` : ''}</p>`
-  : `<div class="banner">Online ordering isn't on here right now. Save ${esc(p.name)} in the FavCircles app to keep it on your map${p.globalPlaceId ? ` — <a href="${API_BASE}/place/${esc(p.globalPlaceId)}">open it in the app</a>` : ''}.</div>`}
+${actions.length ? `<div class="actions">${actions.map((a) => `<a${a.go ? ' class="go"' : ''} href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.label)}</a>`).join('')}</div>` : ''}
+${p.description ? `<p class="about">${esc(p.description)}</p>` : ''}
+${scoreHtml(p.score)}
+${canOrder ? `<p class="lead">Order ahead · <b>pay at pickup</b> · usually ready in ${p.ordering.leadMinutes} min${p.ordering.note ? `<br><span class="meta">${esc(p.ordering.note)}</span>` : ''}</p>` : ''}
 </header>
-${sections.length > 1 ? `<nav class="chips" aria-label="${esc(p.offeringsLabel)} sections">${sections.map((s, i) => `<a class="chip${i === 0 ? ' on' : ''}" href="#s-${esc(s.id)}">${esc(s.name)}</a>`).join('')}</nav>` : ''}
+${photos.length ? `<div class="photos">${photos.map((u) => `<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>` : ''}
+${announcementsHtml(p.announcements)}
+${waitlistHtml(p, base)}
+${hasMenu ? `<section class="site" id="menu-top"><h2>${esc(canOrder ? `Order from the ${p.offeringsLabel.toLowerCase()}` : p.offeringsLabel)}</h2></section>` : ''}
+${hasMenu && sections.length > 1 ? `<nav class="chips" aria-label="${esc(p.offeringsLabel)} sections">${sections.map((s, i) => `<a class="chip${i === 0 ? ' on' : ''}" href="#s-${esc(s.id)}">${esc(s.name)}</a>`).join('')}</nav>` : ''}
 <main id="menu">
 ${sections.map((s) => `<section class="menu" id="s-${esc(s.id)}"><h2>${esc(s.name)}</h2>${s.items.map((i) => itemHtml(i, canOrder)).join('')}</section>`).join('')}
 </main>
+${earnHtml(p.earn, p.name)}
 ${footer(p)}
 </div>
 ${canOrder ? `
@@ -171,10 +263,10 @@ function renderOrderStatusPage({ base = '', orderId }) {
 }
 
 function renderNotFound({ base = '' } = {}) {
-  return `${head({ title: 'Not taking online orders yet', description: 'This store isn’t on FavCircles online ordering yet.', url: `${base}/`, noindex: true })}
-<body><div class="wrap"><header class="head"><h1>Not taking online orders yet</h1>
-<p class="meta">This store isn’t set up for FavCircles online ordering, or the address has changed.</p>
-<p class="lead">Run a store? <a href="https://favcircles.com/store-owners.html">Online ordering is part of FavCircles Business</a>.</p></header>
+  return `${head({ title: 'This store isn’t on FavCircles yet', description: 'This store doesn’t have a FavCircles page yet.', url: `${base}/`, noindex: true })}
+<body><div class="wrap"><header class="head"><h1>This store isn’t on FavCircles yet</h1>
+<p class="meta">This store doesn’t have a FavCircles page, or the address has changed.</p>
+<p class="lead">Run a store? <a href="https://favcircles.com/store-owners.html">Your store page, ordering and waitlist are part of FavCircles Business</a>.</p></header>
 <footer>Powered by <b>FavCircles</b> · <a class="get" href="${APP_STORE_URL}">Get the app</a></footer></div></body></html>`;
 }
 

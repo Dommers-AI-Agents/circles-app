@@ -44,13 +44,113 @@ async function pageFor(slug, { db = getFirestore() } = {}) {
   if (hit.retired && venue.slug && venue.slug !== slug) return { redirectTo: venue.slug };
   if (!venue.slug || venue.slug !== slug) return null;
   const live = await isVenueBusinessLive(venue);
-  if (!live || !hasMenu(venue.storefront && venue.storefront.menu)) return null;
+  // Every Business store has a page (Wes, 2026-11-09: it is the store's
+  // website); the menu and ordering are sections of it when they exist
+  if (!live) return null;
   let place = null;
   if (venue.globalPlaceId) {
     const doc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(venue.globalPlaceId).get().catch(() => null);
     place = doc && doc.exists ? doc.data() : null;
   }
   return { venue, place, live, ordering: rules.orderingFor(venue, { live }), isTestStore: venue.isTestStore === true };
+}
+
+const MAX_PHOTOS = 8;
+const DESCRIPTION_MAX = 600;
+
+/** The store's public photos, cover first, as URLs. */
+const photosOf = (place) => {
+  if (!place) return [];
+  const list = (place.photos || [])
+    .filter((p) => p && (typeof p === 'string' || (p.url && !p.removedAt && !p.isPrivate && p.hidden !== true)))
+    .map((p) => (typeof p === 'string' ? p : p.url));
+  const cover = coverPhotoOf(place);
+  const ordered = cover ? [cover, ...list.filter((u) => u !== cover)] : list;
+  return [...new Set(ordered)].slice(0, MAX_PHOTOS);
+};
+
+/** Live announcements (not expired), events first by date. */
+const announcementsOf = (venue, now = new Date()) => {
+  const nowIso = now.toISOString();
+  return (venue.announcements || [])
+    .filter((a) => a && a.title && (!a.expiresAt || String(a.expiresAt) > nowIso))
+    .filter((a) => !a.event || !a.event.endsAt || String(a.event.endsAt) > nowIso || !a.event.startsAt || String(a.event.startsAt) > nowIso)
+    .map((a) => ({
+      title: a.title, message: a.message || null,
+      event: a.event ? { startsAt: a.event.startsAt || null, localDate: a.event.localDate || null, localTime: a.event.localTime || null, isFree: a.event.isFree === true } : null
+    }))
+    .sort((a, b) => (a.event ? 0 : 1) - (b.event ? 0 : 1));
+};
+
+/** The store's FavCircles score and Google rating, from the hourly Insights cache (never computed on a page view). */
+const scoreOf = (venue, place) => {
+  const cached = venue.insightsCache && venue.insightsCache['30d'] && venue.insightsCache['30d'].data;
+  const score = cached && cached.score;
+  const g = (place && place.googleData) || {};
+  const google = typeof g.rating === 'number' ? { rating: g.rating, total: g.userRatingsTotal || 0 } : null;
+  if (!score && !google) return null;
+  return {
+    average: score && typeof score.average === 'number' ? score.average : null,
+    ratings: (score && score.ratings) || 0,
+    recommend: (score && score.recommend) || 0,
+    google
+  };
+};
+
+/** Earn here: the rate and the first reward, while the loyalty program is live. */
+const earnOf = async (venue) => {
+  const { venueLoyaltyStatus } = require('../ownerSubscriptionService');
+  const status = await venueLoyaltyStatus(venue).catch(() => ({ active: false }));
+  if (!status.active) return null;
+  const rewardService = require('../rewardService');
+  const progress = require('../rewardProgress');
+  const { activeOffers } = require('../venueHelpers');
+  const first = progress.firstReward(activeOffers(venue));
+  return {
+    earnRate: rewardService.effectiveEarnRate(venue),
+    savePoints: rewardService.effectiveSavePoints(venue),
+    firstReward: first ? { title: first.title, pointsCost: first.pointsCost } : null,
+    offers: progress.rewardLadder(activeOffers(venue)).slice(0, 6)
+  };
+};
+
+/** The store's buttons (Reserve, Order, Catering, Book, Menu): links the owner set, minus the ones hidden. */
+const actionsOf = (venue) => {
+  const { ACTION_KEYS, ACTION_LABELS } = require('../venueStorefront');
+  const s = (venue.storefront && venue.storefront.actions) || {};
+  const hidden = new Set(Array.isArray(s.hide) ? s.hide : []);
+  return ACTION_KEYS.filter((k) => s[k] && !hidden.has(k)).map((k) => ({ key: k, label: ACTION_LABELS[k], url: String(s[k]) }));
+};
+
+/** Everything the store page shows beyond the menu: the website parts (2026-11-09). */
+async function siteProjection(venue, place, { live = true } = {}) {
+  const loc = (place && place.location) || venue.location || null;
+  const coords = loc && Array.isArray(loc.coordinates) ? { latitude: loc.coordinates[1], longitude: loc.coordinates[0] }
+    : loc && typeof loc.lat === 'number' ? { latitude: loc.lat, longitude: loc.lng }
+      : loc && typeof loc.latitude === 'number' ? { latitude: loc.latitude, longitude: loc.longitude } : null;
+  return {
+    description: String((place && place.description) || venue.description || '').trim().slice(0, DESCRIPTION_MAX) || null,
+    photos: photosOf(place),
+    announcements: announcementsOf(venue),
+    score: scoreOf(venue, place),
+    earn: live ? await earnOf(venue) : null,
+    actions: actionsOf(venue),
+    waitlist: require('../waitlistService').waitlistFor(venue, { live }),
+    location: coords
+  };
+}
+
+/** The stores with a public page, for the sitemap: active, on Business, with a slug, not test stores. */
+async function sitemapSlugs({ db = getFirestore() } = {}) {
+  const snap = await db.collection('stickerVenues').where('active', '==', true).get();
+  const out = [];
+  for (const doc of snap.docs) {
+    const v = { venueId: doc.id, ...doc.data() };
+    if (!v.slug || v.isTestStore === true) continue;
+    if (!(await isVenueBusinessLive(v))) continue;
+    out.push({ slug: v.slug, updatedAt: v.updatedAt || null });
+  }
+  return out.sort((a, b) => a.slug.localeCompare(b.slug));
 }
 
 /** What the page and menu.json carry. Nothing private: no codes, no team, no keys. */
@@ -169,4 +269,4 @@ async function cancel(orderId, token, { db = getFirestore() } = {}) {
   return guestView(orderId, fresh.data(), await venuePhoneFor(o, { db }));
 }
 
-module.exports = { TOKEN_PURPOSE, pageFor, projection, signOrderToken, verifyOrderToken, statusUrl, guestView, placeGuest, status, cancel };
+module.exports = { TOKEN_PURPOSE, pageFor, projection, siteProjection, sitemapSlugs, photosOf, announcementsOf, scoreOf, actionsOf, signOrderToken, verifyOrderToken, statusUrl, guestView, placeGuest, status, cancel };

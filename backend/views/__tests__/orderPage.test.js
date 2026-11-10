@@ -19,7 +19,8 @@ test('the page escapes the store and its items, and never carries inline code', 
   expect(html).toContain('/public/order-page.js');
   // The only script blocks are the data block and the external file
   const scripts = html.match(/<script[^>]*>/g);
-  expect(scripts.every((s) => /type="application\/json"|src="\/public\//.test(s))).toBe(true);
+  // JSON data blocks (the menu, the waitlist, schema.org LocalBusiness) and our own files only — never inline code
+  expect(scripts.every((s) => /type="application\/(ld\+)?json"|src="\/public\//.test(s))).toBe(true);
   expect(html).not.toMatch(/ on\w+="/);
   // The data block can't be broken out of by an item name
   const data = html.match(/<script type="application\/json" id="menu-data">([\s\S]*?)<\/script>/)[1];
@@ -33,7 +34,8 @@ test('the page escapes the store and its items, and never carries inline code', 
 
 test('ordering off keeps the menu and drops the cart; a test store is noindex', () => {
   const html = pages.renderOrderPage({ ...P, ordering: null, isTestStore: true }, { base: '/order', canonicalUrl: 'x', noindex: true });
-  expect(html).toContain("Online ordering isn't on here right now");
+  // The page is the store's website now: the menu stays, with no way to order
+  expect(html).toContain('<main id="menu">');
   expect(html).not.toContain('Place order');
   expect(html).not.toContain('order-page.js');
   expect(html).toContain('<meta name="robots" content="noindex">');
@@ -58,5 +60,5 @@ test('the status shell and the not-found page', () => {
   expect(status).toContain('"orderId":"abc123"');
   expect(status).toContain('noindex');
   const nf = pages.renderNotFound({ base: '/order' });
-  expect(nf).toContain('Not taking online orders yet');
+  expect(nf).toContain('This store isn’t on FavCircles yet');
 });
