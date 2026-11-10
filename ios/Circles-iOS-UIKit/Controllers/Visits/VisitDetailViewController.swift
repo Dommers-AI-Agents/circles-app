@@ -357,7 +357,7 @@ class VisitDetailViewController: UIViewController {
         placeChoices.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !choiceCandidates.isEmpty else { return }
         let header = UILabel()
-        header.text = VisitPlaceSuggestion.looksLikeAddress(visit.placeName)
+        header.text = VisitPlaceSuggestion.needsName(visit)
             ? "Which place were you at?"
             : "Not \(visit.placeName)? Pick the place you were at"
         header.font = .systemFont(ofSize: 15, weight: .semibold)

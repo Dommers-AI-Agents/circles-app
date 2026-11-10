@@ -145,6 +145,8 @@ extension Notification.Name {
     static let placeDeleted = Notification.Name("PlaceDeleted")
     static let placeUpdated = Notification.Name("PlaceUpdated")
     static let refreshCircles = Notification.Name("RefreshCircles")
+    /// A visit got its business name (userInfo["visit"]: the updated PlaceVisit)
+    static let visitRenamed = Notification.Name("VisitRenamed")
     static let savePlaceToCircle = Notification.Name("SavePlaceToCircle")
     static let showLoginForPromotedPurchase = Notification.Name("ShowLoginForPromotedPurchase")
     static let showOnboardingTour = Notification.Name("ShowOnboardingTour")

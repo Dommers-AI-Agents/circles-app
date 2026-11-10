@@ -64,6 +64,8 @@ class VisitDetectionService: NSObject {
         // Visits saved while offline go out now, and again whenever the
         // connection comes back — not only on the rare background fetch.
         syncPendingVisits()
+        // Visits still named for their street get their business later
+        VisitNamer.shared.start()
         NotificationCenter.default.addObserver(forName: .networkReachabilityDidChange, object: nil, queue: .main) { [weak self] note in
             guard note.userInfo?[NetworkMonitor.isConnectedKey] as? Bool == true else { return }
             self?.syncPendingVisits()
@@ -284,14 +286,16 @@ class VisitDetectionService: NSObject {
             let (geocodedName, placeAddress) = self.extractPlaceInfo(from: bestPlacemark)
 
             // Geocoding names the street, not the business inside it: name
-            // the visit for the nearest business Apple Maps lists there
-            guard VisitPlaceSuggestion.looksLikeAddress(geocodedName) else {
+            // the visit for the business Apple Maps lists there, allowing for
+            // how rough the visit's fix is. A failed or unsure lookup keeps
+            // the address; VisitNamer tries again with the app open.
+            guard VisitPlaceSuggestion.looksLikeAddress(geocodedName, address: placeAddress) else {
                 return self.recordVisit(at: location, startTime: startTime, name: geocodedName,
                                         address: placeAddress, category: bestPlacemark.areasOfInterest?.first)
             }
             VisitPlaceSuggester.candidates(latitude: location.coordinate.latitude,
                                            longitude: location.coordinate.longitude) { [weak self] candidates in
-                let best = VisitPlaceSuggestion.autoName(from: candidates)
+                let best = VisitPlaceSuggestion.autoName(from: candidates, accuracy: location.horizontalAccuracy)
                 self?.recordVisit(at: location, startTime: startTime, name: best?.name ?? geocodedName,
                                   address: placeAddress, category: best?.category ?? bestPlacemark.areasOfInterest?.first)
             }

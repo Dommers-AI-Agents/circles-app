@@ -187,8 +187,16 @@ class VisitCell: UITableViewCell {
     func configure(with visit: PlaceVisit) {
         self.visit = visit
         
-        placeNameLabel.text = visit.placeName
-        addressLabel.text = visit.placeAddress
+        // Not named for a business yet: say where, and that a tap picks it
+        if VisitPlaceSuggestion.needsName(visit) {
+            placeNameLabel.text = VisitPlaceSuggestion.nearTitle(visit)
+            addressLabel.text = "Tap to pick the place"
+            addressLabel.textColor = Constants.Colors.primary
+        } else {
+            placeNameLabel.text = visit.placeName
+            addressLabel.text = visit.placeAddress
+            addressLabel.textColor = .secondaryLabel
+        }
         
         // Format visit info
         let formatter = DateFormatter()

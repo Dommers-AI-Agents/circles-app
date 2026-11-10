@@ -147,6 +147,24 @@ class VisitHistoryViewController: BaseViewController {
             name: .visitHistoryCleared,
             object: nil
         )
+        // A visit named in the background updates its row in place
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleVisitRenamed(_:)),
+            name: .visitRenamed,
+            object: nil
+        )
+    }
+
+    @objc private func handleVisitRenamed(_ note: Notification) {
+        guard let named = note.userInfo?["visit"] as? PlaceVisit,
+              let index = visits.firstIndex(where: { $0.id == named.id }) else { return }
+        visits[index].placeName = named.placeName
+        visits[index].placeAddress = named.placeAddress
+        visits[index].category = named.category
+        applyFilter()
+        tableView.reloadData()
+        if isMapView { updateMapAnnotations() }
     }
     
     deinit {
@@ -266,6 +284,8 @@ class VisitHistoryViewController: BaseViewController {
                 switch result {
                 case .success(let response):
                     self.visits = response.data.map { PlaceVisit.from($0) }
+                    // Any still named for their street: look them up again
+                    VisitNamer.shared.name(self.visits)
                     self.applyFilter()
                     self.tableView.reloadData()
                     if self.filteredVisits.isEmpty {
@@ -294,7 +314,7 @@ class VisitHistoryViewController: BaseViewController {
         let annotations = filteredVisits.filter { !$0.dismissed }.map { visit -> MKPointAnnotation in
             let annotation = MKPointAnnotation()
             annotation.coordinate = CLLocationCoordinate2D(latitude: visit.latitude, longitude: visit.longitude)
-            annotation.title = visit.placeName
+            annotation.title = VisitPlaceSuggestion.needsName(visit) ? VisitPlaceSuggestion.nearTitle(visit) : visit.placeName
             annotation.subtitle = visit.placeAddress
             return annotation
         }
