@@ -68,6 +68,8 @@ const ownerVenueInfo = (venue) => ({
   savePoints: rewardService.effectiveSavePoints(venue),
   // Delivery receipts for points: 'off' | 'approve' | 'auto' (services/receiptClaims)
   deliveryReceipts: ['approve', 'auto'].includes(venue.deliveryReceipts) ? venue.deliveryReceipts : 'off',
+  // Automatic nudges: win-back / birthday / almost there (services/storeAutomations, 2026-11-09)
+  automations: require('./storeAutomations').settingsOf(venue),
   offers: venue.offers || [],
   announcements: venue.announcements || [],
   stats: venue.stats || {},

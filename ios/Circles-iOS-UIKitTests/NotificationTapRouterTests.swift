@@ -98,6 +98,8 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "place_liked", "placeId": "p"]) == .place(id: "p", showComments: false))
         #expect(route(["type": "store_alert", "placeId": "g"]) == .place(id: "g", showComments: nil))
         #expect(route(["type": "store_alert"]) == nil)
+        #expect(route(["type": "store_nudge", "placeId": "g", "venueId": "v"]) == .place(id: "g", showComments: nil))
+        #expect(route(["type": "store_nudge"]) == nil)
         #expect(route(["type": "place_liked", "activityId": "a"]) == .activity(id: "a"))
         #expect(route(["type": "circle_commented", "circleId": "c"]) == .circle(id: "c", showComments: true))
         #expect(route(["type": "circle_liked", "activityId": "a"]) == .activity(id: "a"))

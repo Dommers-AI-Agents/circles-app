@@ -41,6 +41,8 @@ class VenueManageViewController: BaseViewController {
     private var newOrders: Int
     /// Delivery receipts: the store's setting and how many wait (2026-11-06)
     private var deliveryMode: DeliveryReceiptMode
+    /// Automatic nudges — win-back, birthday, almost there (2026-11-09)
+    private var automations: StoreAutomations
     private var pendingReceipts: Int
     private var ordersObserver: NSObjectProtocol?
     private let stats: AdminVenueStats?
@@ -158,6 +160,7 @@ class VenueManageViewController: BaseViewController {
         self.venueName = venue.venueName
         self.newOrders = venue.newOrders ?? 0
         self.deliveryMode = DeliveryReceiptMode(rawValue: venue.deliveryReceipts ?? "off") ?? .off
+        self.automations = venue.automations ?? .off
         self.pendingReceipts = venue.pendingReceipts ?? 0
         self.offers = venue.offers ?? []
         self.announcements = venue.announcements ?? []
@@ -942,6 +945,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("Points per purchase", "\(earnRate) points each time a customer scans", "dollarsign.circle")
         case .savePoints:
             set("Points for saving your store", savePoints > 0 ? "\(savePoints) points when a customer saves your store after a register scan" : "Off", "bookmark")
+        case .automations:
+            set("Bring them back", StoreAutomationsCopy.summary(automations), "bell.and.waves.left.and.right")
         case .deliveryOrders:
             let waiting = pendingReceipts > 0 ? " \u{00B7} \(pendingReceipts) waiting" : ""
             set(pendingReceipts > 0 ? "Delivery receipts to approve (\(pendingReceipts))" : "Delivery orders earn points",
@@ -1069,6 +1074,14 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             navigationController?.pushViewController(VenueCodesViewController(venueId: venueId, venueName: venueName), animated: true)
         case .rewardsUsed:
             navigationController?.pushViewController(VenueRewardTicketsViewController(venueId: venueId), animated: true)
+        case .automations:
+            let vc = VenueAutomationsViewController(venueId: venueId, settings: automations)
+            vc.onChanged = { [weak self] settings in
+                guard let self, settings != self.automations else { return }
+                self.automations = settings
+                self.tableView.reloadData()
+            }
+            navigationController?.pushViewController(vc, animated: true)
         case .deliveryOrders:
             let vc = VenueReceiptsViewController(venueId: venueId, mode: deliveryMode)
             vc.onChanged = { [weak self] mode, waiting in

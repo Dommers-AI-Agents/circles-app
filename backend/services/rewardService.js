@@ -247,13 +247,13 @@ class RewardService {
 
   // Awards points exactly once per idempotencyKey.
   // Returns { awarded: true, points } or { awarded: false, duplicate: true }.
-  async awardPoints({ userId, type, points, idempotencyKey, venueId, venueName, code, googlePlaceId, sourceUserId, location, via, bucketUpdate }) {
+  async awardPoints({ userId, type, points, idempotencyKey, venueId, venueName, code, googlePlaceId, sourceUserId, location, via, bonus = null, bucketUpdate }) {
     const eventRef = this.db
       .collection(STICKER_COLLECTIONS.REWARD_EVENTS)
       .doc(sanitizeKeyPart(idempotencyKey));
 
     const event = createRewardEvent({
-      userId, type, points, venueId, venueName, code, googlePlaceId, sourceUserId, location, via
+      userId, type, points, venueId, venueName, code, googlePlaceId, sourceUserId, location, via, bonus
     });
 
     try {
@@ -616,25 +616,36 @@ class RewardService {
   // `via: 'delivery_receipt'` (services/receiptClaims): a delivery order's
   // receipt, approved — the same visit, keyed to the day it was sent
   async awardVenueVisit(userId, venue, { location = null, via = null, day: onDay = null } = {}) {
-    if (await require('./storeCustomers').isRemoved(userId, venue.venueId)) {
+    const userDoc = await this.db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const bucket = ((userDoc.exists && userDoc.data().rewardPointsByVenue) || {})[venue.venueId] || {};
+    if (bucket.removedFromRewards) {
       return { awarded: false, reason: 'removed' };
     }
-    const now = new Date().toISOString();
+    const nowDate = new Date();
+    const now = nowDate.toISOString();
     const day = onDay || now.slice(0, 10);
+    // A win-back or birthday bonus promised by the store's automations rides
+    // on this visit (services/storeAutomations); a repeat scan today leaves it
+    // waiting, since the bucket isn't touched on a duplicate
+    const { bonus, consume } = require('./storeAutomations').applyPendingBonus(bucket, nowDate);
+    const bucketUpdate = { purchases: FieldValue.increment(1), lastScanAt: now };
+    if (consume) bucketUpdate.pendingBonus = FieldValue.delete();
     const result = await this.awardPoints({
       userId,
       type: 'venue_visit',
       via,
-      points: this.effectiveEarnRate(venue),
+      points: this.effectiveEarnRate(venue) + bonus,
+      bonus: bonus || null,
       idempotencyKey: `visit:${userId}:${venue.venueId}:${day}`, // 1/venue/day
       venueId: venue.venueId,
       venueName: venue.venueName,
       code: venue.registerCode,
       googlePlaceId: venue.googlePlaceId,
       location,
-      bucketUpdate: { purchases: FieldValue.increment(1), lastScanAt: now }
+      bucketUpdate
     });
     if (result.awarded) {
+      if (bonus) result.bonus = bonus;
       await this.incrementVenueStats(venue.venueId, 'visits');
     } else if (result.duplicate) {
       result.reason = 'already_today';

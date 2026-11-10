@@ -269,6 +269,8 @@ const createRewardEvent = (data) => {
     location: data.location || null,
     // How a visit was earned when it wasn't the register: 'delivery_receipt'
     ...(data.via ? { via: data.via } : {}),
+    // Bonus points a store automation promised, paid on this visit (services/storeAutomations)
+    ...(data.bonus ? { bonus: data.bonus } : {}),
     // Redemption voucher fields (only set for type === 'redemption')
     voucherCode: data.voucherCode || null,
     offerId: data.offerId || null,

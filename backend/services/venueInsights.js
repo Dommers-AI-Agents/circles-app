@@ -189,7 +189,7 @@ async function loadInputs(venue, since) {
     .where('createdAt', '>=', since.toISOString())
     .orderBy('createdAt', 'desc')
     .limit(MAX_EVENTS);
-  const [eventsSnap, customers, savesSnap, commentsSnap, globalDoc] = await Promise.all([
+  const [eventsSnap, customers, savesSnap, commentsSnap, globalDoc, ownerDoc] = await Promise.all([
     eventsQuery.get(),
     storeCustomers.listCustomers(venue),
     globalPlaceId
@@ -199,7 +199,9 @@ async function loadInputs(venue, since) {
     globalPlaceId
       ? db().collection('placeComments').where('globalPlaceId', '==', globalPlaceId).get()
       : Promise.resolve({ docs: [] }),
-    globalPlaceId ? db().collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId).get() : Promise.resolve(null)
+    globalPlaceId ? db().collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId).get() : Promise.resolve(null),
+    // The store has no time zone of its own; the owner is at the store, so theirs is the next best
+    venue.timeZone || !venue.ownerUserId ? Promise.resolve(null) : db().collection(COLLECTIONS.USERS).doc(String(venue.ownerUserId)).get()
   ]);
   const globalData = globalDoc && globalDoc.exists ? globalDoc.data() : {};
   return {
@@ -210,7 +212,7 @@ async function loadInputs(venue, since) {
     teamIds: [venue.ownerUserId, ...venueManagerIds(venue)].filter(Boolean),
     google: (globalData.googleData && typeof globalData.googleData.rating === 'number') ? globalData.googleData : null,
     followersCount: globalData.followersCount || 0,
-    timeZone: venue.timeZone || null
+    timeZone: venue.timeZone || (ownerDoc && ownerDoc.exists && ownerDoc.data().notificationPreferences && ownerDoc.data().notificationPreferences.timezone) || null
   };
 }
 

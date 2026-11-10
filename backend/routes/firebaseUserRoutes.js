@@ -77,6 +77,10 @@ router.get('/me/activity', ownActivityController.list);
 router.get('/me/activity/summary', ownActivityController.summary);
 // Your month of adding places (the top-contributor / milestone push's screen)
 router.get('/me/contributions', require('../controllers/users/contributionsController').mine);
+// Birthday, month and day: stores where they earn can send a treat (2026-11-09)
+const birthday = require('../controllers/users/birthdayController');
+router.get('/me/birthday', birthday.get);
+router.put('/me/birthday', birthday.set);
 
 // User routes
 router.route('/search')

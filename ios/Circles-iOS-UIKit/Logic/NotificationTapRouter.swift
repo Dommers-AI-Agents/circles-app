@@ -193,8 +193,9 @@ enum NotificationTapRouter {
         case "new_place":
             return circleId.map { .circle(id: $0, showComments: nil) }
 
-        case "store_alert":
-            // A followed store's new special, event or news → its place page
+        case "store_alert", "store_nudge":
+            // A followed store's new special, event or news, or a store's
+            // automatic nudge (win-back, birthday, almost there) → its place page
             return placeId.map { .place(id: $0, showComments: nil) }
 
         case "place_liked", "place_commented":

@@ -661,6 +661,7 @@ Your Business subscription${forVenue} is active. Everything below is live now �
 • Announcements — reach your followers' feeds and the app's Locals tab.
 • Stats & Insights — saves, followers, visits, scans and redemptions; who's new and who came back, your busiest hours, your FavCircles score and the reviews waiting for your reply; plus a monthly report by email.
 • Redemption codes — single-use codes for orders or events.
+• Bring them back — automatic win-back, birthday and almost-there nudges to your customers, by push or email, with bonus points if you like.
 
 A good first move: post one offer worth walking in for, and put the window sticker where people can see it. Reply to this email if you need stickers or help getting set up.
 Manage your venue: https://api.favcircles.com/app/open?path=me
@@ -804,6 +805,7 @@ Reply to this email if you get stuck.
             <li>Offers customers redeem in person, at prices you set</li>
             <li>Announcements that reach your followers' feeds and the app's Locals tab</li>
             <li>Insights — who's new and who came back, your busiest hours, your FavCircles score, and the reviews waiting for your reply</li>
+            <li>Automatic win-back, birthday and almost-there nudges to your customers, with bonus points if you like</li>
           </ul>
           <p style="font-size: 15px; line-height: 1.6;">
             The upgrade lives on your place page in the app. Questions, or need a window sticker? Just reply to this email — happy to help personally.
@@ -826,6 +828,7 @@ With a FavCircles Business subscription you also get:
 • Offers customers redeem in person, at prices you set
 • Announcements that reach your followers' feeds and the app's Locals tab
 • Insights — who's new and who came back, your busiest hours, your FavCircles score, and the reviews waiting for your reply
+• Automatic win-back, birthday and almost-there nudges to your customers, with bonus points if you like
 
 The upgrade lives on your place page in the app. Questions, or need a window sticker? Just reply to this email.
 

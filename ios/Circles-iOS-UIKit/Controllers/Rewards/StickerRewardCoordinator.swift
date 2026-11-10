@@ -488,6 +488,10 @@ final class StickerRewardCoordinator: NSObject {
             message = balanceHere <= awarded.points
                 ? "Welcome! You now have \(balanceHere) points here."
                 : "Thanks for coming back. You now have \(balanceHere) points here."
+            // A win-back or birthday bonus the store promised, paid on this visit
+            if let bonus = awarded.bonus, bonus > 0 {
+                message = "That includes your +\(bonus) bonus from \(scan.venue.venueName). " + message
+            }
         } else if scan.notAtStore == true {
             title = "Scan this at the store"
             message = "Points are for purchases at \(scan.venue.venueName), so the register code only earns when your phone is there. You have \(balanceHere) points here."

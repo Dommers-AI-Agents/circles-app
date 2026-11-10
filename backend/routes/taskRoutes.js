@@ -104,6 +104,8 @@ router.post('/farmers-markets-sync', verifyCloudScheduler, farmersMarketsTask.sy
 router.post('/local-coverage-report', verifyCloudScheduler, localCoverageTask.report);
 // Daily noon ET: the next approved post on @favcircles (admin dashboard → Instagram)
 router.post('/instagram-post', verifyCloudScheduler, instagramTask.post);
+// Daily: Business stores' automatic nudges (win-back, birthday, almost there); ?dryRun=1 previews
+router.post('/store-automations', verifyCloudScheduler, require('../controllers/tasks/storeAutomationsController').run);
 
 // Health check endpoint for scheduled tasks
 router.get('/health', (req, res) => {

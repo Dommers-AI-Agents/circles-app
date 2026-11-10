@@ -229,5 +229,9 @@ router.get('/venues/:venueId/receipts', requireVenueOwner, requireOwnerPremium, 
 router.post('/venues/:venueId/receipts/:claimId/approve', requireVenueOwner, requireOwnerPremium, receiptClaims.approve);
 router.post('/venues/:venueId/receipts/:claimId/decline', requireVenueOwner, requireOwnerPremium, receiptClaims.decline);
 router.put('/venues/:venueId/delivery-receipts', requireVenueOwner, requireOwnerPremium, receiptClaims.setMode);
+// Automatic nudges — win-back, birthday, almost there — and their results, Business (2026-11-09)
+const venueAutomations = require('../controllers/venues/venueAutomationsController');
+router.get('/venues/:venueId/automations', requireVenueOwner, requireOwnerPremium, venueAutomations.get);
+router.put('/venues/:venueId/automations', requireVenueOwner, requireOwnerPremium, venueAutomations.update);
 
 module.exports = router;

@@ -9,12 +9,13 @@ const followSuggestions = require('../services/followSuggestionEmailService');
 
 const router = express.Router();
 
-const KNOWN_KINDS = new Set([followSuggestions.PREFERENCE_KEY, 'weeklyMapDigest', 'productUpdates', 'activityEmails']);
+const KNOWN_KINDS = new Set([followSuggestions.PREFERENCE_KEY, 'weeklyMapDigest', 'productUpdates', 'activityEmails', 'storeNudges']);
 const LABELS = {
   [followSuggestions.PREFERENCE_KEY]: '"People you may know" emails',
   weeklyMapDigest: 'the map email',
   productUpdates: 'product update emails',
-  activityEmails: 'emails about messages, followers and comments'
+  activityEmails: 'emails about messages, followers and comments',
+  storeNudges: 'emails from stores where you earn rewards'
 };
 
 const page = (title, body) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

@@ -1104,6 +1104,8 @@ struct RewardCoordinate: Codable {
 struct RewardAward: Codable {
     let type: String
     let points: Int
+    /// Part of `points` that a store automation promised (win-back, birthday)
+    let bonus: Int?
 }
 
 struct RewardOffer: Codable {
@@ -1742,6 +1744,8 @@ struct AdminVenue: Codable {
     /// many wait for the team (2026-11-06)
     var deliveryReceipts: String? = nil
     var pendingReceipts: Int? = nil
+    /// Automatic nudges: win-back / birthday / almost there (2026-11-09)
+    var automations: StoreAutomations? = nil
 }
 
 // MARK: - Super-user store page

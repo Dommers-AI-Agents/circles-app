@@ -225,6 +225,11 @@ struct BusinessFeatures {
             iconName: "chart.xyaxis.line"
         ),
         PremiumFeatures.Feature(
+            title: "Bring Them Back",
+            description: "Automatic win-back, birthday and almost-there nudges to your customers, with bonus points if you like",
+            iconName: "bell.and.waves.left.and.right"
+        ),
+        PremiumFeatures.Feature(
             title: "Full Stats Dashboard",
             description: "Monthly trends for saves, followers, visits, and redemptions",
             iconName: "chart.bar.xaxis"

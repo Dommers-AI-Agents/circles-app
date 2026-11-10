@@ -56,6 +56,8 @@ class SettingsViewController: BaseTableViewController {
     
     private enum DataRow: Int, CaseIterable {
         case myOrders
+        /// Stores you earn with can send a birthday reward (2026-11-09)
+        case birthday
         case importPlaces
         case exportData
         case homeShortcuts
@@ -63,6 +65,7 @@ class SettingsViewController: BaseTableViewController {
         var title: String {
             switch self {
             case .myOrders: return "My Orders"
+            case .birthday: return StoreAutomationsCopy.birthdayRowTitle
             case .importPlaces: return "Import Places"
             case .exportData: return "Export My Data"
             case .homeShortcuts: return "Home Screen Shortcuts"
@@ -703,6 +706,15 @@ extension SettingsViewController {
                     config.imageProperties.tintColor = Constants.Colors.primary
                     cell.contentConfiguration = config
                     cell.accessoryType = .disclosureIndicator
+                case .birthday:
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    config.secondaryText = StoreAutomationsCopy.birthdayRowDetail(nil)
+                    config.secondaryTextProperties.color = .secondaryLabel
+                    config.image = UIImage(systemName: "gift")
+                    config.imageProperties.tintColor = Constants.Colors.primary
+                    cell.contentConfiguration = config
+                    cell.accessoryType = .disclosureIndicator
                 case .homeShortcuts:
                     var config = cell.defaultContentConfiguration()
                     config.text = row.title
@@ -988,6 +1000,8 @@ extension SettingsViewController {
                 switch row {
                 case .myOrders:
                     navigationController?.pushViewController(MyOrdersViewController(), animated: true)
+                case .birthday:
+                    navigationController?.pushViewController(BirthdayViewController(), animated: true)
                 case .importPlaces:
                     showPlaceImport()
                 case .exportData:
