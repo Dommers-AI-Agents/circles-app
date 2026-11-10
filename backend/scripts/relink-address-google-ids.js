@@ -8,6 +8,11 @@
 //   DRY_RUN=true  node scripts/relink-address-google-ids.js   (lookups only, no writes)
 //   DRY_RUN=false node scripts/relink-address-google-ids.js
 //   WIDE=1 adds a Text Search (list) try for the ones Find Place missed.
+//   MISSING=1 (2026-11-09, Wes: "fill in the 755 places") works on venues
+//   with NO googlePlaceId at all (Google Maps list imports that never
+//   resolved: no photo, hours, stars or phone, and the "website" was the
+//   google.com/maps link). That link is cleared so the real website fills,
+//   and venues nobody saves now still get one Google photo.
 // A match must be a business within 250 m sharing a distinctive name word.
 // Venues already holding the business id elsewhere are reported for a merge
 // (scripts/merge-venue-pair.js), never re-linked. No match → reported, left as is.
@@ -22,6 +27,10 @@ const { findVenueByGooglePlaceId } = require('../services/globalPlaceResolver');
 
 const DRY_RUN = String(process.env.DRY_RUN || 'true').toLowerCase() !== 'false';
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
+const MISSING = !!process.env.MISSING;
+// Ids a dry run showed matching the wrong thing (a town, another business)
+const SKIP = new Set(String(process.env.SKIP || '').split(',').filter(Boolean));
+const isMapsLink = (url) => /^https?:\/\/(www\.)?google\.[a-z.]+\/maps|^https?:\/\/maps\.google\.|^https?:\/\/(maps\.app\.)?goo\.gl\//i.test(String(url || ''));
 const MAX_METERS = 250;
 const key = process.env.GOOGLE_MAPS_API_KEY;
 const client = new Client({});
@@ -64,10 +73,11 @@ async function findBusiness(venue) {
   const snap = await db.collection('globalPlaces').get();
   const todo = snap.docs.filter((d) => {
     const v = d.data();
-    return (!ONLY || ONLY.has(d.id)) && v.googlePlaceId && !v.deletedAt && !v.mergedInto
-      && isAddressOnly(v.googleTypes) && v.location && Array.isArray(v.location.coordinates);
+    const target = MISSING ? !v.googlePlaceId : (v.googlePlaceId && isAddressOnly(v.googleTypes));
+    return (!ONLY || ONLY.has(d.id)) && !SKIP.has(d.id) && target && !v.deletedAt && !v.mergedInto
+      && v.location && Array.isArray(v.location.coordinates);
   });
-  console.log(`${todo.length} venues tied to an address entry (${DRY_RUN ? 'dry run' : 'live'})`);
+  console.log(`${todo.length} venues ${MISSING ? 'with no Google id' : 'tied to an address entry'} (${DRY_RUN ? 'dry run' : 'live'})`);
   const r = { relinked: [], merge: [], noMatch: [] };
   for (const doc of todo) {
     const venue = doc.data();
@@ -84,10 +94,13 @@ async function findBusiness(venue) {
 
     const oldId = venue.googlePlaceId;
     const now = new Date().toISOString();
-    await doc.ref.update({
+    const link = {
       googlePlaceId: match.place_id, deduplicationKey: `google:${match.place_id}`,
       googleTypes: match.types || [], 'googleData.detailsCheckedAt': null, updatedAt: now
-    });
+    };
+    // The import's google.com/maps link isn't the business's website
+    if (isMapsLink(venue.googleData && venue.googleData.website)) link['googleData.website'] = null;
+    await doc.ref.update(link);
     const saves = await db.collection('places').where('globalPlaceId', '==', doc.id).get();
     for (const s of saves.docs) {
       if (!s.data().googlePlaceId || s.data().googlePlaceId === oldId) {
@@ -99,7 +112,10 @@ async function findBusiness(venue) {
     let photo = 'kept';
     if (!photoService.hasVisiblePhotos(venue.photos)) {
       const url = await require('../services/googlePlacePhoto').fetchGooglePhotoUrl({ googlePlaceId: match.place_id });
-      const saver = saves.docs.find((s) => !s.data().deletedAt);
+      // Google's photo is stored unattributed ('auto'); the user only
+      // satisfies adoptSavePhotos' guard, so a venue nobody saves today
+      // uses whoever saved it last
+      const saver = saves.docs.find((s) => !s.data().deletedAt) || (MISSING ? saves.docs[0] : null);
       if (url && saver) {
         await photoService.adoptSavePhotos({ globalPlaceId: doc.id, user: { uid: saver.data().addedBy }, photos: [url], ownUrls: [] });
         photo = 'added';
