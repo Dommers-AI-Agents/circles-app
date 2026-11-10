@@ -88,6 +88,17 @@ const STICKER_INK = '#1B1E24';
 // find attractive). The window code never promises points; the register code
 // names the store's first reward when it has one.
 function copyFor(kind, venue) {
+  // The generic "Join FavCircles" code: not a store (Wes, 2026-11-09) — the
+  // sign invites people into the app, never to "save us"
+  if (venue && venue.genericJoin) {
+    return {
+      pill: "What's your favorite spot?",
+      scan: 'Point your phone camera here',
+      reward: null,
+      steps: ['Scan', 'Join free', 'Save your favorites'],
+      foot: 'Your map of favorite places · favcircles.com'
+    };
+  }
   if (kind === 'register') {
     const earnRate = rewardService.effectiveEarnRate(venue);
     const first = rewardProgress.firstReward(venue.offers);

@@ -348,8 +348,8 @@ class VenueAdminDetailViewController: BaseViewController {
             : VenueQRViewController(
                 venueName: venueName,
                 stickerUrl: windowStickerUrl,
-                screenTitle: "Window Sticker QR",
-                caption: VenueAdminCopy.windowStickerExplanation(),
+                screenTitle: detail?.venue.genericJoin == true ? "Join FavCircles QR" : "Window Sticker QR",
+                caption: VenueAdminCopy.windowStickerExplanation(genericJoin: detail?.venue.genericJoin == true),
                 kind: .window,
                 venueId: listVenue.venueId)
         navigationController?.pushViewController(qrVC, animated: true)
@@ -486,11 +486,12 @@ extension VenueAdminDetailViewController: UITableViewDataSource, UITableViewDele
 
         case .windowCode:
             let cell = tableView.dequeueReusableCell(withIdentifier: QRCodeCell.reuseId, for: indexPath) as! QRCodeCell
+            let generic = detail?.venue.genericJoin == true
             cell.configure(
-                symbol: "storefront",
-                title: "Window sticker",
+                symbol: generic ? "person.crop.circle.badge.plus" : "storefront",
+                title: generic ? "Join FavCircles code" : "Window sticker",
                 code: windowCode,
-                explanation: VenueAdminCopy.windowStickerExplanation(),
+                explanation: VenueAdminCopy.windowStickerExplanation(genericJoin: generic),
                 dimmed: false
             )
             return cell

@@ -124,8 +124,11 @@ enum VenueAdminCopy {
 
     // MARK: - Codes
 
-    static func windowStickerExplanation() -> String {
-        "For the front window. Anyone can scan it to save the store; someone new to FavCircles also gets the signup bonus. Works on the free plan."
+    static func windowStickerExplanation(genericJoin: Bool = false) -> String {
+        // The JOINUS code is not a store (Wes, 2026-11-09): it takes people into FavCircles
+        genericJoin
+            ? "The Join FavCircles code, for flyers and coasters. Anyone can scan it to join and start saving their own favorite places. It isn't a store — nothing gets saved from it."
+            : "For the front window. Anyone can scan it to save the store; someone new to FavCircles also gets the signup bonus. Works on the free plan."
     }
 
     static func registerCardExplanation(earnRate: Int?, loyaltyActive: Bool) -> String {
