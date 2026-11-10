@@ -141,6 +141,12 @@ class CircleSelectionViewController: BaseViewController {
             top = navigationBar.bottomAnchor
         }
         
+        // Why a circle (Wes, 2026-11-09): moving a place, or picking one for it
+        tableView.tableHeaderView = CirclePickerHeaderView.make(
+            headline: CirclePickerCopy.headline(forMove: placeToMove != nil),
+            explanation: CirclePickerCopy.explanation(forMove: placeToMove != nil, circleCount: 1),
+            width: view.bounds.width)
+
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: top),
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),

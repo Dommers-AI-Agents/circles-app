@@ -108,9 +108,15 @@ class CirclePickerViewController: BaseViewController {
         tableView.tableHeaderView = makePlaceHeader()
     }
 
-    /// "📍 Ilios Crafted Greek / 123 Main St · Choose a circle for it."
+    /// "📍 Ilios Crafted Greek / 123 Main St · Choose a circle for it." —
+    /// or, before any place is chosen (Home's Add Place), why a circle comes
+    /// first (Wes, 2026-11-09)
     private func makePlaceHeader() -> UIView? {
-        guard let name = placeName, !name.isEmpty else { return nil }
+        guard let name = placeName, !name.isEmpty else {
+            return CirclePickerHeaderView.make(headline: CirclePickerCopy.headline(forMove: false),
+                                               explanation: CirclePickerCopy.explanation(forMove: false, circleCount: circles.count),
+                                               width: view.bounds.width)
+        }
         let icon = UIImageView(image: UIImage(systemName: "mappin.circle.fill"))
         icon.tintColor = Constants.Colors.primary
         icon.contentMode = .scaleAspectFit
@@ -130,9 +136,10 @@ class CirclePickerViewController: BaseViewController {
         addressLabel.isHidden = (placeAddress ?? "").isEmpty
 
         let promptLabel = UILabel()
-        promptLabel.text = "Choose a circle to save it to"
-        promptLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        promptLabel.text = CirclePickerCopy.explanation(forMove: false, circleCount: circles.count)
+        promptLabel.font = .systemFont(ofSize: 14)
         promptLabel.textColor = Constants.Colors.secondaryLabel
+        promptLabel.numberOfLines = 0
 
         let textStack = UIStackView(arrangedSubviews: [nameLabel, addressLabel])
         textStack.axis = .vertical
@@ -170,11 +177,7 @@ class CirclePickerViewController: BaseViewController {
     
     // MARK: - Actions
     @objc private func infoButtonTapped() {
-        AlertPresenter.showInfo(
-            title: "What's a circle?",
-            message: "A circle is a list of your places: a city, a trip, a neighborhood, a theme like \"Best Coffee\". Pick the circle this place belongs in, or tap New Circle to start one.\n\nEach circle has its own privacy: Public, My Network or Private. You can move a place to another circle later.",
-            from: self
-        )
+        AlertPresenter.showInfo(title: CirclePickerCopy.infoTitle, message: CirclePickerCopy.info, from: self)
     }
 
     @objc private func cancelButtonTapped() {

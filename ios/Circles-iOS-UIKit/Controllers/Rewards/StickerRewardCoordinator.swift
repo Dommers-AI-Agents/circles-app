@@ -41,6 +41,14 @@ final class StickerRewardCoordinator: NSObject {
             RewardsService.shared.savePendingStickerCode(code)
             return
         }
+        // The generic "Join FavCircles" code: not a store, so no location, no
+        // "Checking rewards…", no store page — straight into the app. The
+        // server still counts the scan (quietly), and answers 'generic' too.
+        if GenericJoinCode.matches(code) {
+            RewardsService.shared.scan(code: code) { _ in }
+            Task { @MainActor [weak self] in self?.startGettingStarted() }
+            return
+        }
         // Where the phone is first (ScanLocationProvider): a register scan
         // from far away earns nothing, location off still earns
         ScanLocationProvider.shared.locate(from: presenter) { [weak self] place in
@@ -60,7 +68,7 @@ final class StickerRewardCoordinator: NSObject {
 
         scanWithRetry(code: code, place: place) { [weak self] result in
             DispatchQueue.main.async {
-                if case .success(let scan) = result {
+                if case .success(let scan) = result, scan.kind != "generic", scan.venue.genericJoin != true {
                     UserDefaults.standard.set(scan.venue.venueName, forKey: "storeNameForCode." + code.uppercased())
                 }
                 loading.dismiss(animated: true) {
