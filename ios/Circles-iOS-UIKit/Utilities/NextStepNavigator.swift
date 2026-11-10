@@ -32,7 +32,8 @@ enum NextStepNavigator {
     static func moments() { home { $0.showHomeTab(.moments) } }
     static func explore() { home { _ in } }
     static func findPeople() { tabBar?.selectedIndex = 1 }
-    static func checkIns() { push(VisitHistoryViewController()) }
+    /// Your check-ins summed up per place (2026-11-09) — not visit tracking
+    static func checkIns() { push(MyCheckInsViewController()) }
     static func profile(_ user: User) { push(ProfileViewController(user: user)) }
     /// Where a step goes when it needs nothing from the screen (the
     /// server's boosts use these)

@@ -614,6 +614,17 @@ exports.getMySummary = async (req, res) => {
   }
 };
 
+// Every place you've checked in at, newest first (the "My check-ins" next
+// step, Wes 2026-11-09): count, first/last, how many lately, venue cover
+exports.getMyPlaces = async (req, res) => {
+  try {
+    const { listMyCheckInPlaces } = require('../services/checkInHistory');
+    res.json({ success: true, data: await listMyCheckInPlaces(req.user.uid) });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Error listing check-in places', fallbackMessage: 'Failed to load your check-ins' });
+  }
+};
+
 // Get user's own active check-ins
 exports.getMyActiveCheckIns = async (req, res) => {
   try {

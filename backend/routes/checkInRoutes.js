@@ -17,6 +17,9 @@ router.get('/active', checkInController.getActiveCheckIns);
 // Your check-in numbers + who's out now (the Check In screen's header)
 router.get('/me/summary', checkInController.getMySummary);
 
+// Every place you've checked in at, with counts (the My check-ins screen)
+router.get('/me/places', checkInController.getMyPlaces);
+
 // Get user's own active check-ins
 router.get('/my-active', checkInController.getMyActiveCheckIns);
 

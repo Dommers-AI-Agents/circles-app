@@ -44,6 +44,14 @@ final class CheckInService {
         }
     }
     
+    /// Every place you've checked in at, newest first, with counts (My check-ins)
+    private struct PlacesEnvelope: Decodable { let data: CheckInPlacesPage }
+    func getMyCheckInPlaces(completion: @escaping (Result<CheckInPlacesPage, APIError>) -> Void) {
+        api.request(endpoint: "check-ins/me/places", method: .get, requiresAuth: true) { (result: Result<PlacesEnvelope, APIError>) in
+            completion(result.map(\.data))
+        }
+    }
+
     func getActiveCheckIns(completion: @escaping (Result<[CheckIn], APIError>) -> Void) {
         api.request(
             endpoint: "check-ins/active",
