@@ -44,7 +44,9 @@ router.get('/:code', async (req, res) => {
 <a id="get-app" href="${appStoreUrl}" data-clipboard="favcircles-sticker:${code}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get the App &amp; Earn Rewards</a>
 <p style="margin:20px 0 0;font-size:14px;opacity:.85">After installing, open FavCircles and your reward for<br>${safeVenueName} picks up right where you left off &mdash;<br>or just scan the code again.</p>
 </div>
-<script src="/public/scan-landing.js"></script>
+<meta name="fc-app-link" content="circles://sticker?code=${code}">
+<meta name="fc-store-url" content="${appStoreUrl}">
+<script src="/public/landing.js"></script>
 </body></html>`);
 });
 

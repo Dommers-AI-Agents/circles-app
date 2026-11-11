@@ -61,10 +61,9 @@ router.get('/connect/:userId', async (req, res) => {
 <body style="font-family:-apple-system,Helvetica,Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#3182CE;color:#fff;text-align:center">
 <div><h1>${heading}</h1><p>If nothing happens, get the app and join ${safeName ? 'them' : 'me'}:</p>
 <a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Download FavCircles</a></div>
-<script>
-  window.location = 'circles://connect/${userId}${appQuery}';
-  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
-</script>
+<meta name="fc-app-link" content="${String(`circles://connect/${userId}${appQuery}`).replace(/"/g, '&quot;')}">
+<meta name="fc-store-url" content="${appStoreUrl}">
+<script src="/public/landing.js"></script>
 </body></html>`);
 });
 
@@ -123,10 +122,9 @@ ${photoUrl ? `<meta property="og:image" content="${esc(photoUrl)}">` : ''}
 ${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
 <p>See it — and who recommends it — in the Circles app:</p>
 <a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Download Circles</a></div>
-<script>
-  window.location = '${deepLink}';
-  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
-</script>
+<meta name="fc-app-link" content="${String(`${deepLink}`).replace(/"/g, '&quot;')}">
+<meta name="fc-store-url" content="${appStoreUrl}">
+<script src="/public/landing.js"></script>
 </body></html>`);
 });
 // Scan Actions (Wes, 2026-11-11): the page behind a /q/<code> QR. With the
@@ -134,7 +132,7 @@ ${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
 // without the app gets the App Clip card (Smart App Banner + the /q App Clip
 // experience). Anyone else sees what the code holds and the way to the app;
 // "Get FavCircles" leaves the code on the clipboard so the app finishes the
-// save after installing (public/scan-landing.js).
+// save after installing (public/landing.js).
 router.get('/q/:code', async (req, res) => {
   const scanActions = require('../services/scanActionService');
   const appStoreUrl = APP_STORE_URL;
@@ -201,7 +199,7 @@ ${list}
 <a id="get-app" href="${appStoreUrl}"${code && !(action && action.expired) ? ` data-clipboard="favcircles-scan:${esc(code)}"` : ''} style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">${esc(cta)}</a>
 ${code && !(action && action.expired) ? '<p style="margin:18px 0 0;font-size:14px;opacity:.85">Already have FavCircles? Scan the code with your Camera and it opens right in the app.</p>' : ''}
 </div>
-<script src="/public/scan-landing.js"></script>
+<script src="/public/landing.js"></script>
 </body></html>`);
 });
 
@@ -260,10 +258,9 @@ ${photoUrl ? `<meta property="og:image" content="${esc(photoUrl)}">` : ''}
 <h1 style="margin:0 0 16px">${heading}</h1>
 <p>See their circles and favorite places in the app:</p>
 <a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Download Circles</a></div>
-<script>
-  window.location = 'circles://user/${userId}';
-  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
-</script>
+<meta name="fc-app-link" content="${String(`circles://user/${userId}`).replace(/"/g, '&quot;')}">
+<meta name="fc-store-url" content="${appStoreUrl}">
+<script src="/public/landing.js"></script>
 </body></html>`);
 });
 
@@ -337,10 +334,9 @@ ${copy.page && !query ? `<link rel="canonical" href="${esc(copy.page)}">` : ''}
 <p style="margin:0 0 24px;opacity:.9">${blurb}</p>
 <a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a>${copy.page ? `
 <p style="margin:20px 0 0"><a href="${esc(copy.page)}" style="color:#fff;opacity:.9">More about ${title}</a></p>` : ''}</div>
-<script>
-  window.location = 'circles://widget/${id}${query}';
-  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
-</script>
+<meta name="fc-app-link" content="${String(`circles://widget/${id}${query}`).replace(/"/g, '&quot;')}">
+<meta name="fc-store-url" content="${appStoreUrl}">
+<script src="/public/landing.js"></script>
 </body></html>`);
 });
 
@@ -373,10 +369,9 @@ router.get('/app/tab/:slug', (req, res) => {
 <p style="margin:0 0 24px;opacity:.9">${blurb}</p>
 <a href="${appStoreUrl}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a>${copy.page ? `
 <p style="margin:20px 0 0"><a href="${esc(copy.page)}" style="color:#fff;opacity:.9">More about ${title}</a></p>` : ''}</div>
-<script>
-  window.location = 'circles://tab/${slug}';
-  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
-</script>
+<meta name="fc-app-link" content="${String(`circles://tab/${slug}`).replace(/"/g, '&quot;')}">
+<meta name="fc-store-url" content="${appStoreUrl}">
+<script src="/public/landing.js"></script>
 </body></html>`);
 });
 
@@ -454,10 +449,9 @@ ${author ? `<p style="color:#7C6BD6;font-size:18px;font-weight:500;margin:0 0 36
 <p style="color:#8e8e93;font-size:15px;margin:0 0 16px">Swipe through more quotes like this in FavCircles.</p>
 <a href="${appStoreUrl}" style="background:#7C6BD6;color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:600;display:inline-block">Get FavCircles</a>
 </div>
-<script>
-  window.location = 'circles://quote/${id}';
-  setTimeout(function(){ if (!document.hidden) window.location = '${appStoreUrl}'; }, 1500);
-</script>
+<meta name="fc-app-link" content="${String(`circles://quote/${id}`).replace(/"/g, '&quot;')}">
+<meta name="fc-store-url" content="${appStoreUrl}">
+<script src="/public/landing.js"></script>
 </body></html>`);
 });
 

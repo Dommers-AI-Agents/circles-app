@@ -68,18 +68,7 @@ ${appLinks && appLinkUrl ? `<meta name="apple-itunes-app" content="app-id=674680
   </div>
   <p class="lb-hint" id="lb-hint">On iPhone: press and hold the postcard, then choose “Save to Photos”.</p>
 </div>
-<script>
-  (function () {
-    var lb = document.getElementById('lightbox');
-    var open = function () { lb.classList.add('open'); document.body.style.overflow = 'hidden'; };
-    var close = function () { lb.classList.remove('open'); document.body.style.overflow = ''; };
-    document.getElementById('card').addEventListener('click', open);
-    document.getElementById('lb-close').addEventListener('click', close);
-    lb.addEventListener('click', function (e) { if (e.target === lb) close(); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
-    if (!/iPhone|iPad/.test(navigator.userAgent)) document.getElementById('lb-hint').textContent = 'Save downloads the full-size postcard.';
-  })();
-</script>
+<script src="/public/postcard-page.js"></script>
 </body></html>`;
 }
 
