@@ -301,6 +301,8 @@ const createPlace = (placeData, circleId, addedBy) => {
     // placeLocationDerivation). Copied onto the canonical venue at link time.
     neighborhood: placeData.neighborhood || null,       // e.g. Apple placemark.subLocality
     applePoiCategory: placeData.applePoiCategory || null, // MKPointOfInterestCategory rawValue
+    applePlaceId: placeData.applePlaceId || null,       // MKMapItem.identifier (iOS 18+); dedup key too
+    appleMatched: placeData.appleMatched === true,      // picked from an Apple Maps POI result (vouches on older iOS)
     googleTypes: placeData.googleTypes || [],
     googlePrimaryType: placeData.googlePrimaryType || null,
     rating: placeData.rating || null,

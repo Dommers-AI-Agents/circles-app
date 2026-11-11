@@ -55,10 +55,12 @@ enum PhotoPeriod: Hashable {
         } else {
             let month = DateFormatter()
             month.calendar = calendar
+            month.timeZone = calendar.timeZone
             month.locale = calendar.locale ?? .current
             month.setLocalizedDateFormatFromTemplate("MMM yyyy")
             let monthOnly = DateFormatter()
             monthOnly.calendar = calendar
+            monthOnly.timeZone = calendar.timeZone
             monthOnly.locale = calendar.locale ?? .current
             monthOnly.setLocalizedDateFormatFromTemplate("MMM")
             let sameMonth = calendar.isDate(span.start, equalTo: span.end, toGranularity: .month)

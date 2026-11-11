@@ -425,7 +425,7 @@ class PlaceService {
         )
     }
     
-    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, globalPlaceId: String? = nil, privateNotes: String? = nil, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    func createPlace(name: String, description: String?, address: String, category: PlaceCategory, customCategory: String? = nil, subcategory: String? = nil, circleId: String, privacy: PlacePrivacy = .followCirclePrivacy, website: String? = nil, phone: String? = nil, tags: [String]? = nil, photos: [Data]? = nil, photoUrls: [String]? = nil, location: CLLocationCoordinate2D? = nil, googlePlaceId: String? = nil, globalPlaceId: String? = nil, privateNotes: String? = nil, neighborhood: String? = nil, applePoiCategory: String? = nil, applePlaceId: String? = nil, appleMatched: Bool = false, userRating: Int? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Use provided location or geocode the address
         if let providedLocation = location {
@@ -472,7 +472,7 @@ class PlaceService {
                 photoUrls: photoUrls,
                 privateNotes: privateNotes,
                 neighborhood: neighborhood,
-                applePoiCategory: applePoiCategory,
+                applePoiCategory: applePoiCategory, applePlaceId: applePlaceId, appleMatched: appleMatched,
                 userRating: userRating,
                 googlePlaceId: googlePlaceId,
                 globalPlaceId: globalPlaceId,
@@ -502,7 +502,7 @@ class PlaceService {
                         photoUrls: photoUrls,
                         privateNotes: privateNotes,
                         neighborhood: neighborhood,
-                        applePoiCategory: applePoiCategory,
+                        applePoiCategory: applePoiCategory, applePlaceId: applePlaceId, appleMatched: appleMatched,
                         userRating: userRating,
                         googlePlaceId: googlePlaceId,
                         globalPlaceId: globalPlaceId,
@@ -517,7 +517,7 @@ class PlaceService {
         }
     }
     
-    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, googlePlaceId: String? = nil, globalPlaceId: String? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func continueCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photos: [Data]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, applePlaceId: String? = nil, appleMatched: Bool = false, userRating: Int? = nil, googlePlaceId: String? = nil, globalPlaceId: String? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         // If we already have photo URLs, use them directly
         if let urls = photoUrls, !urls.isEmpty {
             Logger.debug("Using \(urls.count) pre-uploaded photo URLs")
@@ -537,7 +537,7 @@ class PlaceService {
                 photoUrls: urls,
                 privateNotes: privateNotes,
                 neighborhood: neighborhood,
-                applePoiCategory: applePoiCategory,
+                applePoiCategory: applePoiCategory, applePlaceId: applePlaceId, appleMatched: appleMatched,
                 userRating: userRating,
                 googlePlaceId: googlePlaceId,
                 globalPlaceId: globalPlaceId,
@@ -569,7 +569,7 @@ class PlaceService {
                         photoUrls: photoUrls,
                         privateNotes: privateNotes,
                         neighborhood: neighborhood,
-                        applePoiCategory: applePoiCategory,
+                        applePoiCategory: applePoiCategory, applePlaceId: applePlaceId, appleMatched: appleMatched,
                         userRating: userRating,
                         googlePlaceId: googlePlaceId,
                         globalPlaceId: globalPlaceId,
@@ -597,7 +597,7 @@ class PlaceService {
                         photoUrls: nil,
                         privateNotes: privateNotes,
                         neighborhood: neighborhood,
-                        applePoiCategory: applePoiCategory,
+                        applePoiCategory: applePoiCategory, applePlaceId: applePlaceId, appleMatched: appleMatched,
                         userRating: userRating,
                         googlePlaceId: googlePlaceId,
                         globalPlaceId: globalPlaceId,
@@ -626,7 +626,7 @@ class PlaceService {
                 photoUrls: nil,
                 privateNotes: privateNotes,
                 neighborhood: neighborhood,
-                applePoiCategory: applePoiCategory,
+                applePoiCategory: applePoiCategory, applePlaceId: applePlaceId, appleMatched: appleMatched,
                 userRating: userRating,
                 googlePlaceId: googlePlaceId,
                 globalPlaceId: globalPlaceId,
@@ -637,7 +637,7 @@ class PlaceService {
         }
     }
     
-    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, userRating: Int? = nil, googlePlaceId: String? = nil, globalPlaceId: String? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
+    private func performCreatePlace(name: String, description: String?, address: String, location: CLLocationCoordinate2D, category: PlaceCategory, customCategory: String?, subcategory: String?, circleId: String, privacy: PlacePrivacy, website: String?, phone: String?, tags: [String]?, photoUrls: [String]?, privateNotes: String?, neighborhood: String? = nil, applePoiCategory: String? = nil, applePlaceId: String? = nil, appleMatched: Bool = false, userRating: Int? = nil, googlePlaceId: String? = nil, globalPlaceId: String? = nil, force: Bool = false, offersPostSaveNudges: Bool = false, completion: @escaping (Result<Place, Error>) -> Void) {
         
         // Validate coordinates before sending to backend
         guard location.latitude >= -90 && location.latitude <= 90 &&
@@ -691,6 +691,14 @@ class PlaceService {
         // from Apple placemark.subLocality; POI category helps categorize).
         if let neighborhood = neighborhood, !neighborhood.isEmpty {
             body["neighborhood"] = neighborhood
+        }
+        // Apple's own identity for the pick: the server treats it as a known
+        // place (no approval wait) and dedups venues on the identifier
+        if let applePlaceId = applePlaceId, !applePlaceId.isEmpty {
+            body["applePlaceId"] = applePlaceId
+        }
+        if appleMatched {
+            body["appleMatched"] = true
         }
         if let applePoiCategory = applePoiCategory, !applePoiCategory.isEmpty {
             body["applePoiCategory"] = applePoiCategory

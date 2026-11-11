@@ -81,6 +81,9 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
     // a neighborhood + refine the category (see placeLocationDerivation).
     var selectedNeighborhood: String?
     var selectedApplePoiCategory: String?
+    /// Apple's identifier for the picked result (iOS 18+); with
+    /// `selectedMapItem` it tells the server this is a place Apple knows
+    var selectedApplePlaceId: String?
     /// The last description text WE wrote into the form (synthesized from
     /// Apple data or filled from Google). While the field still equals this,
     /// a late-arriving editorial summary may replace it; once the user types
@@ -1312,6 +1315,10 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
 
                 // Clear any Google Place details since this is manual
                 self.selectedGooglePlaceDetails = nil
+                // ...and any earlier Apple pick: a spot on the map is not it
+                self.selectedMapItem = nil
+                self.selectedApplePoiCategory = nil
+                self.selectedApplePlaceId = nil
 
                 // NEVER bulldoze what the user already typed. This used to
                 // clear the whole form and overwrite the address with the
@@ -1360,7 +1367,11 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
                 if (self.nameTextField.text ?? "").isEmpty {
                     self.nameTextField.text = nearest.name ?? ""
                 }
+                // The nearest Apple POI stands behind this save only while the
+                // name is still its own (ApplePlaceIdentity.vouches at save time)
+                self.selectedMapItem = nearest
                 self.selectedApplePoiCategory = nearest.pointOfInterestCategory?.rawValue
+                self.selectedApplePlaceId = ApplePlaceIdentity.identifier(of: nearest)
 
                 if let name = nearest.name, !name.isEmpty {
                     self.fetchPlaceAssets(
@@ -1923,6 +1934,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
             // Capture neighborhood + POI category for backend derivation
             self.selectedNeighborhood = placemark.subLocality
             self.selectedApplePoiCategory = mapItem.pointOfInterestCategory?.rawValue
+            self.selectedApplePlaceId = ApplePlaceIdentity.identifier(of: mapItem)
 
             // Generate enhanced description
             let description = AppleMapItemFormFill.description(

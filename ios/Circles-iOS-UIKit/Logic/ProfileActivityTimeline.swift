@@ -118,6 +118,7 @@ enum ProfileActivityTimeline {
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) { return "Yesterday" }
         let f = DateFormatter()
         f.calendar = calendar
+        f.timeZone = calendar.timeZone
         f.locale = Locale(identifier: "en_US_POSIX")
         let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
         f.dateFormat = sameYear ? "EEE, MMM d" : "MMM d, yyyy"
@@ -236,6 +237,7 @@ enum ProfileActivityTimeline {
         guard let date = calendar.date(from: comps) else { return key }
         let f = DateFormatter()
         f.calendar = calendar
+        f.timeZone = calendar.timeZone
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = calendar.component(.year, from: date) == calendar.component(.year, from: now) ? "MMMM" : "MMMM yyyy"
         return f.string(from: date)

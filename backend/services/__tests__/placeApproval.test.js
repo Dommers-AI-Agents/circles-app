@@ -20,6 +20,9 @@ test('needsApproval: only saves no Google listing or Apple place backs', () => {
   expect(approval.needsApproval({ googlePlaceId: 'ChIJbar', googleTypes: ['bar', 'establishment'] })).toBe(false);
   expect(approval.needsApproval({ applePoiCategory: 'MKPOICategoryCafe' })).toBe(false);
   expect(approval.needsApproval({ applePlaceId: 'I123' })).toBe(false);
+  // An Apple Maps POI pick with no category and no identifier (older iOS) still counts
+  expect(approval.needsApproval({ appleMatched: true })).toBe(false);
+  expect(approval.needsApproval({ appleMatched: 'yes' })).toBe(true);
 });
 
 test('a minted unknown place waits, its save turns private, the admin is told; approve restores', async () => {

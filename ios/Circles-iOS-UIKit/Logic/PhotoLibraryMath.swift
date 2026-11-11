@@ -152,10 +152,12 @@ enum PhotoLibraryMath {
     static func circleName(place: String?, start: Date, end: Date, calendar: Calendar = .current) -> String {
         let month = DateFormatter()
         month.calendar = calendar
+        month.timeZone = calendar.timeZone
         month.setLocalizedDateFormatFromTemplate("MMM yyyy")
         if let place, !place.isEmpty { return "\(place) · \(month.string(from: start))" }
         let f = DateIntervalFormatter()
         f.calendar = calendar
+        f.timeZone = calendar.timeZone
         f.dateStyle = .medium
         f.timeStyle = .none
         return f.string(from: start, to: end)

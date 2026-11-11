@@ -23,12 +23,15 @@ const isHiddenVenue = (venue) => !!venue && HIDDEN.has(venue.approvalStatus);
 /**
  * True when a save names a place no map source knows: no Google listing
  * (an address entry doesn't count), no Apple place id, no Apple business
- * category. Pure.
+ * category, and not picked from an Apple Maps POI result at all
+ * (`appleMatched`: Apple gives many real businesses no category and, before
+ * iOS 18, no identifier — Over Easy, Chandler AZ, 2026-11-11). Pure.
  */
 function needsApproval(save) {
   if (!save) return false;
   const google = save.googlePlaceId && !isAddressOnly(save.googleTypes);
-  return !google && !save.applePlaceId && !save.applePoiCategory;
+  const apple = save.applePlaceId || save.applePoiCategory || save.appleMatched === true;
+  return !google && !apple;
 }
 
 /**

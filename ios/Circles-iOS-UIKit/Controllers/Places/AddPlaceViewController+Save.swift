@@ -444,6 +444,8 @@ extension AddPlaceViewController {
             privateNotes: privateNotes.isEmpty ? nil : privateNotes,
             neighborhood: selectedNeighborhood,
             applePoiCategory: selectedApplePoiCategory,
+            applePlaceId: selectedApplePlaceId,
+            appleMatched: ApplePlaceIdentity.vouches(mapItem: selectedMapItem, savedName: name),
             userRating: userRating,
             force: force,
             offersPostSaveNudges: true

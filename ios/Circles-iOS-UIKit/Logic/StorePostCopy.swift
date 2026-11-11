@@ -25,6 +25,7 @@ enum StorePostCopy {
             if let eventStart {
                 let formatter = DateFormatter()
                 formatter.calendar = calendar
+                formatter.timeZone = calendar.timeZone
                 formatter.dateFormat = "EEEE, MMM d · h:mm a"
                 return formatter.string(from: eventStart)
             }
