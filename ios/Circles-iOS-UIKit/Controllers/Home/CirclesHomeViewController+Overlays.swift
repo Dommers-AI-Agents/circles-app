@@ -61,10 +61,8 @@ extension CirclesHomeViewController {
                 Logger.debug("🔔 CirclesHomeViewController: Updating badge for connection activity SSE event")
                 self?.updateNotificationBadge()
                 
-                // Also refresh activity feed if on Activity tab
-                if self?.selectedContentSegment == .activity {
-                    self?.refreshActivityFeedWithNewItem()
-                }
+                // Merged now on the Activity tab, else when it next shows
+                self?.refreshActivityFeedWithNewItem()
             }
             
         case .newActivity:
@@ -82,10 +80,8 @@ extension CirclesHomeViewController {
                 Logger.debug("🔔 CirclesHomeViewController: Updating badge for new activity SSE event")
                 self.updateNotificationBadge()
                 
-                // Only refresh if Activity tab is selected
-                if self.selectedContentSegment == .activity {
-                    self.refreshActivityFeedWithNewItem()
-                }
+                // Merged now on the Activity tab, else when it next shows
+                self.refreshActivityFeedWithNewItem()
             }
             
         case .specialsUpdated:
@@ -110,10 +106,7 @@ extension CirclesHomeViewController {
                     Logger.info("Received moment uploaded event")
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
-                        // Refresh activity feed if on Activity tab
-                        if self.selectedContentSegment == .activity {
-                            self.refreshActivityFeedWithNewItem()
-                        }
+                        self.refreshActivityFeedWithNewItem()
                         // Refresh moments feed if on Moments tab
                         if self.selectedContentSegment == .moments {
                             self.fetchReels()
@@ -124,10 +117,7 @@ extension CirclesHomeViewController {
                     Logger.info("Received \(eventTypeString) event")
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
-                        // Refresh activity feed if on Activity tab
-                        if self.selectedContentSegment == .activity {
-                            self.refreshActivityFeedWithNewItem()
-                        }
+                        self.refreshActivityFeedWithNewItem()
                     }
                     
                 default:

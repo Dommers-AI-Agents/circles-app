@@ -2261,9 +2261,11 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         activityTab.updateActivityFeed()
     }
 
-    /// SSE: merge just the newest activities so scroll position survives.
+    /// SSE: merge just the newest activities so scroll position survives —
+    /// now if the Activity tab is showing, otherwise when it next shows (a
+    /// hidden tab used to drop the event and keep its stale list).
     func refreshActivityFeedWithNewItem() {
-        activityTab.refreshWithNewItems()
+        activityTab.noteNewActivity()
     }
 
     /// Deep link / notification tap: open a moment in the inline Moments tab.

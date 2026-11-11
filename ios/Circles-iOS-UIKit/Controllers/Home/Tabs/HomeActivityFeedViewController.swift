@@ -24,6 +24,9 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         }
     }
     private var isLoadingActivities = false
+    /// New rows exist server-side that this list hasn't merged yet (a live
+    /// event or your own check-in arrived while another home tab was showing).
+    private var hasUnmergedActivity = false
 
     // Pagination
     private var currentOffset = 0
@@ -125,6 +128,31 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
             name: .momentDeleted,
             object: nil
         )
+
+        // Your own check-in goes on the feed straight away (Wes, 2026-11-11:
+        // Sal checked in twice at Pete & Elda's because the first never showed).
+        // The server writes the feed row before it answers, so merging the
+        // newest rows now finds it; the live SSE echo is only a backup.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleOwnActivityPosted),
+            name: .checkInCreated,
+            object: nil
+        )
+    }
+
+    @objc private func handleOwnActivityPosted() {
+        noteNewActivity()
+    }
+
+    /// Something new is on the server's feed: merge it now if this tab is the
+    /// selected one, otherwise when it next shows.
+    func noteNewActivity() {
+        if isActiveTab {
+            refreshWithNewItems()
+        } else {
+            hasUnmergedActivity = true
+        }
     }
 
     deinit {
@@ -138,6 +166,8 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         // Load activities if needed
         if activities.isEmpty {
             fetchActivities()
+        } else if hasUnmergedActivity {
+            refreshWithNewItems()
         }
     }
 
@@ -206,6 +236,7 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
             }
             currentOffset = 0 // Reset offset for fresh load
             hasMoreActivities = true
+            hasUnmergedActivity = false
         }
 
         let offset = loadMore ? currentOffset : 0
@@ -260,6 +291,7 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
     /// merge, so scroll position survives. Also prunes rows deleted
     /// server-side.
     func refreshWithNewItems() {
+        hasUnmergedActivity = false
         // If we don't have any activities yet, do a full load
         if activities.isEmpty {
             fetchActivities()
