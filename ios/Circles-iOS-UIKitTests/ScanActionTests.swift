@@ -40,6 +40,12 @@ struct ScanActionLinkTests {
         #expect(PendingLinkParser.parse("scan:bad*code") == nil)
     }
 
+    @Test func theSharePagesAppLinkKeepsTheSharer() {
+        let router = DeepLinkRouter()
+        #expect(router.destination(for: URL(string: "circles://place/p1?ref=u9")!) == .place(id: "p1", refUserId: "u9"))
+        #expect(router.destination(for: URL(string: "circles://place/p1")!) == .placeFromExtension(id: "p1"))
+    }
+
     @Test func aSharedPlaceKeepsItsSharerThroughSignIn() {
         #expect(PendingLinkParser.parse("place:p1") == .place(id: "p1", refUserId: nil))
         #expect(PendingLinkParser.parse("place:p1:u9") == .place(id: "p1", refUserId: "u9"))

@@ -213,6 +213,9 @@ struct DeepLinkRouter {
         case "rewards" where !hostPathId.isEmpty:
             return .storeRewards(placeId: hostPathId)
         case "place" where !hostPathId.isEmpty:
+            // The share page's open-in-app link carries the sharer (?ref=);
+            // the widget / share extension's link never does
+            if let ref = query(url, "ref"), !ref.isEmpty { return .place(id: hostPathId, refUserId: ref) }
             return .placeFromExtension(id: hostPathId)
         case "upgrade":
             return .upgradePaywall
