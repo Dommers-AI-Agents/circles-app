@@ -115,22 +115,32 @@
         }
 
         .scroll-cue {
-            display: block;
-            margin: 0.4rem auto 0 auto;
-            width: 34px;
-            height: 34px;
-            color: white;
-            opacity: 0.85;
-            animation: cue-bounce 1.8s infinite;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0.9rem auto 0 auto;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            background: white;
+            color: #764ba2;
             text-decoration: none;
-            font-size: 2rem;
-            line-height: 1;
+            animation: cue-bounce 1.8s infinite, cue-glow 1.8s infinite;
+            transition: background 0.2s;
         }
+        .scroll-cue svg { width: 24px; height: 24px; }
+        .scroll-cue:hover { background: #f3efff; }
 
         @keyframes cue-bounce {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(9px); }
         }
+        @keyframes cue-glow {
+            0% { box-shadow: 0 6px 18px rgba(40, 20, 90, 0.3), 0 0 0 0 rgba(255, 255, 255, 0.7); }
+            70% { box-shadow: 0 6px 18px rgba(40, 20, 90, 0.3), 0 0 0 16px rgba(255, 255, 255, 0); }
+            100% { box-shadow: 0 6px 18px rgba(40, 20, 90, 0.3), 0 0 0 0 rgba(255, 255, 255, 0); }
+        }
+        @media (prefers-reduced-motion: reduce) { .scroll-cue { animation: none; } }
 
         .store-badge {
             display: inline-flex;
@@ -578,7 +588,7 @@
             </a>
             <p class="hero-sub">Android coming soon.</p>
             <div><a class="watch-link" href="/watch.html">▶&nbsp; Watch how it works — 90 seconds</a></div>
-            <a class="scroll-cue" href="#why" aria-label="Scroll down">⌄</a>
+            <a class="scroll-cue" href="#why" aria-label="Scroll down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></a>
         </section>
 
         <div class="features" id="why">
