@@ -19,13 +19,15 @@ There was no well-organized way to save your favorite places. FavCircles fixes t
 
 Your own personal map: every place you love goes on your map, and once it's saved you'll never forget it.
 
-Organized your way: places live in Circles that make sense to you ("Date Night", "Best Pizza", "Lisbon Trip"), each public, shared with your network, Inner Circle or private.
+Organized your way: places live in Circles that make sense to you ("Date Night", "Best Pizza"), each public, shared with your network, Inner Circle or private.
 
-Your friends' and family's maps: see the personal maps of the people you know, wherever you are. Skip reviews by strangers and get recommendations from people you trust.
+Your friends' and family's maps: see the personal maps of the people you know. Skip reviews by strangers and get recommendations from people you trust.
 
-Also: Moments (photos and videos tied to places), Locals (nearby specials and events), Widgets (everyday mini-apps built in) and Rewards (local stores give points through an App Clip and NFC stickers).
+For local stores: a window sticker and register card. Customers scan it with their camera or tap it, an App Clip opens with no download, and the store is saved to their map. Visits earn points at that store, kept in Apple Wallet. The owner gets a loyalty program and a way to be found, and customers' friends see the spot on their maps.
 
-The holidays are when people visit family and ask "where should we go?" FavCircles answers with a shared map from people you trust. We're a small independent team in Charlotte, NC.
+Also: Moments, Locals (nearby specials and events) and Widgets.
+
+Holidays bring "where should we go?" FavCircles answers with a map from people you trust.
 
 ## Notes field
 
@@ -49,3 +51,4 @@ Apple's editorial art usually asks for layered, text-free key art. That means a 
 - Submit: `PATCH /v1/nominations/<id>` with `submitted: true`. The latest date that keeps 3 weeks of lead time for a Dec 1 start is **Nov 10**. After that, move the start date out.
 - 2026-11-10 00:05 UTC: Wes said submit. Added the user-tour and Charlotte demo video links (5/5 URLs) and SUBMITTED. Type and related apps are now locked.
 - 2026-11-11: Helpful Details (the API's `notes`, limit **500** chars) set to helpful-details-500.txt. The full story is in helpful-details.txt. US only, launch in select markets first = true. No store count, since none are signed up yet.
+- 2026-11-11: description rewritten with the store paragraph (999/1000 chars), pushed in place. Still SUBMITTED.
