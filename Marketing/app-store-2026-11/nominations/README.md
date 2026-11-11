@@ -48,3 +48,4 @@ Apple's editorial art usually asks for layered, text-free key art. That means a 
 - 2026-11-09: draft created (`5699c752-7ed2-47af-ac52-8b37a8eb93a8`). Live listing: 1.5.0, 8 ratings, 5.0 average. Not submitted, waiting for Wes.
 - Submit: `PATCH /v1/nominations/<id>` with `submitted: true`. The latest date that keeps 3 weeks of lead time for a Dec 1 start is **Nov 10**. After that, move the start date out.
 - 2026-11-10 00:05 UTC: Wes said submit. Added the user-tour and Charlotte demo video links (5/5 URLs) and SUBMITTED. Type and related apps are now locked.
+- 2026-11-11: Helpful Details (the API's `notes`, limit **500** chars) set to helpful-details-500.txt. The full story is in helpful-details.txt. US only, launch in select markets first = true. No store count, since none are signed up yet.

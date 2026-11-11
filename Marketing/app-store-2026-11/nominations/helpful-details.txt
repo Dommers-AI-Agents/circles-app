@@ -1,0 +1,13 @@
+FavCircles started with a simple frustration: the places we love most were scattered everywhere. They were in old texts, screenshots, someone's Google list, a note we'd never open again. When a friend asked "where should we go?", the best answer was usually forgotten. Review apps didn't help either. They tell you what thousands of strangers think, not what your sister, your neighbor or your best friend loves.
+
+So we built a personal map. Every place you save stays on it, and you organize it your way, in Circles like "Date Night," "Best Tacos" or "Mom's Favorites." You choose who sees each one. The magic happens when the people you know do the same. Open the map in a new neighborhood or a new city and you see their favorites, not anonymous ratings. It's recommendations the way they used to work, from people you trust.
+
+We're launching in the US first, starting at home in Charlotte, North Carolina, then expanding city by city. We're signing up local stores — coffee shops, bakeries, restaurants, boutiques — to put a FavCircles sticker in their window and a card at the register. That's what connects the stores to the people using the app:
+
+• Walking by: anyone can point an iPhone camera at the window sticker, or tap the NFC sticker. An App Clip opens instantly with the store's own card. No download. One tap and the store is on their personal map for good. If the store has rewards running, they get welcome points right then.
+• At the register: each visit earns points with that store, and only that store. Small giveaways like a free coffee reward the regulars a local shop depends on. The card lives in Apple Wallet and shows up when they're nearby.
+• After the visit: the store sits on their map, where friends and family can see it. One person's favorite becomes their whole circle's discovery. It's word of mouth, finally made visible.
+
+For a small business, that means a loyalty program, a way to be found, and a reason for customers to come back, all without expensive hardware. For the customer, it's a map of the places they love that rewards them for loving them.
+
+We're a small, independent team building this for real local discovery. We use Apple technologies throughout: App Clips, Apple Wallet, NFC, Live Activities and Apple Maps. Charlotte is first. Our goal is for every neighborhood to have a living map of its favorite places, made by the people who live there.
