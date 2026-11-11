@@ -478,6 +478,7 @@ class PlaceDetailViewController: BaseViewController {
         hasAppeared = true
         openPendingPhotoIfReady()
         runOwnPlaceGuideIfSent()
+        runScanGuideIfSent()
         if showCommentsOnAppear {
             showCommentsOnAppear = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
@@ -693,8 +694,10 @@ class PlaceDetailViewController: BaseViewController {
         // place name — showing it twice wasted the top of the screen
         title = nil
 
-        // Add share button to navigation bar
-        let shareBarButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
+        // Share: a link to send, or a QR to hold up so the person across the
+        // table saves it (Scan Actions, Wes 2026-11-11)
+        let shareBarButton = UIBarButtonItem(image: UIImage(systemName: "square.and.arrow.up"), menu: shareMenu())
+        shareBarButton.accessibilityLabel = "Share"
         navigationItem.rightBarButtonItem = shareBarButton
         
         // Add close button if presented modally
@@ -1793,6 +1796,22 @@ class PlaceDetailViewController: BaseViewController {
         dismiss(animated: true)
     }
     
+    private func shareMenu() -> UIMenu {
+        UIMenu(children: [
+            UIAction(title: "Show QR to Save", image: UIImage(systemName: "qrcode")) { [weak self] _ in
+                self?.showSaveQR()
+            },
+            UIAction(title: "Send a Link", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+                self?.shareButtonTapped()
+            }
+        ])
+    }
+
+    /// A QR the person across the table scans to save this place
+    private func showSaveQR() {
+        ScanCodeSheetViewController.presentPlace(place, from: self)
+    }
+
     @objc private func shareButtonTapped() {
         // Create a formatted string with place details
         var shareText = "📍 \(place.name)"
@@ -2061,6 +2080,15 @@ class PlaceDetailViewController: BaseViewController {
         if placeVenueData?.canPrintCodes == true {
             actions.append((title: "Store Admin", style: .default, handler: { [weak self] in
                 self?.enrollStoreForPrinting()
+            }))
+            // A QR for the owner: scanning it makes the store theirs and walks
+            // them through points, a first reward and their codes (2026-11-11)
+            actions.append((title: "Store Setup QR for the Owner", style: .default, handler: { [weak self] in
+                guard let self else { return }
+                ScanCodeSheetViewController.presentStoreSetup(venueId: self.placeVenueData?.venue?.venueId,
+                                                              globalPlaceId: self.place.globalPlaceId,
+                                                              storeName: self.placeVenueData?.venue?.venueName ?? self.place.name,
+                                                              from: self)
             }))
         }
         if ownerEdit.isVenueOwner {
@@ -4105,5 +4133,24 @@ extension PlaceDetailViewController {
             ScreenGuide.Stop(copy: copy[3], target: { nil }, prepare: top)
         ], finish: ScreenGuideCopy.finish(.ownPlace), in: self,
            onBack: { [weak self] in if let self { ScreenGuide.backToTour(from: self) } })
+    }
+}
+
+// MARK: - "Share a place" walkthrough (a scanned guide QR, 2026-11-11)
+
+extension PlaceDetailViewController: ScanGuideHost {
+    func runScanGuideIfSent() {
+        guard OnboardingManager.shared.takeGuide(.sharePlace) else { return }
+        let copy = ScreenGuideCopy.stops(.sharePlace, placeName: place.name)
+        let shareButton = { [weak self] () -> UIView? in
+            self?.navigationItem.rightBarButtonItems?
+                .first(where: { $0.accessibilityLabel == "Share" })?
+                .value(forKey: "view") as? UIView
+        }
+        ScreenGuide.run([
+            ScreenGuide.Stop(copy: copy[0], target: shareButton),
+            ScreenGuide.Stop(copy: copy[1], target: shareButton),
+            ScreenGuide.Stop(copy: copy[2], target: { nil })
+        ], finish: ScreenGuideCopy.finish(.sharePlace), in: self, onBack: {})
     }
 }

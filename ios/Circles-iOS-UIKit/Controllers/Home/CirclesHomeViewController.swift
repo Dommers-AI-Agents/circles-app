@@ -3622,6 +3622,16 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
             self?.openProfileFromMapMenu()
         })
 
+        // One QR for the places this filter shows (Scan Actions, 2026-11-11)
+        let shown = filteredPlaces.count
+        if shown > 0 {
+            elements.append(UIAction(title: "Share These Places",
+                                     subtitle: shown == 1 ? "1 place as a QR" : "\(shown) places as a QR",
+                                     image: UIImage(systemName: "qrcode")) { [weak self] _ in
+                self?.showFilteredPlacesQR()
+            })
+        }
+
         return elements
     }
 
@@ -4396,5 +4406,34 @@ extension CirclesHomeViewController {
         notificationBadgeTimer?.invalidate()
         notificationBadgeTimer = nil
         Logger.debug("🔔 [Timer] Stopped periodic notification badge refresh")
+    }
+}
+
+// MARK: - Share these places (Scan Actions, 2026-11-11)
+
+extension CirclesHomeViewController {
+    /// A QR for what the map's filter shows. More than a QR holds: the
+    /// nearest to them go, and the sheet says so.
+    func showFilteredPlacesQR() {
+        var places = filteredPlaces
+        if places.count == 1, let place = places.first {
+            ScanCodeSheetViewController.presentPlace(place, from: self)
+            return
+        }
+        if places.count > ScanActionService.maxSetPlaces {
+            places = DistancePlaceSorter.sorted(places, from: LocationService.shared.lastKnownLocation).map(\.place)
+        }
+        let who: String
+        switch selectedConnectionId {
+        case nil: who = "Places on my map"
+        case "my_places_only": who = "My places"
+        case "my_connections_only": who = "My connections' places"
+        default: who = selectedConnectionUser.map { "\($0.displayName)'s places" } ?? "Places on my map"
+        }
+        let title = ScanActionCopy.setTitle(circleName: who, category: selectedCategory?.displayName, tag: nil)
+        var source: [String: String] = [:]
+        if let id = selectedConnectionId { source["connectionId"] = id }
+        if let category = selectedCategory?.displayName { source["category"] = category }
+        ScanCodeSheetViewController.presentSet(title: title, places: places, source: source, from: self)
     }
 }

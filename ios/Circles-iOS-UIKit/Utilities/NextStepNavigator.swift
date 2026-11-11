@@ -30,6 +30,7 @@ enum NextStepNavigator {
     static func addPlace() { home { $0.quickAddPlaceButtonTapped() } }
     static func postMoment() { home { $0.recordReelTapped() } }
     static func moments() { home { $0.showHomeTab(.moments) } }
+    static func widgets() { home { $0.showHomeTab(.widgets) } }
     static func explore() { home { _ in } }
     static func findPeople() { tabBar?.selectedIndex = 1 }
     /// Your check-ins summed up per place (2026-11-09) — not visit tracking

@@ -135,11 +135,35 @@ class OnboardingManager {
     /// A guide is waiting on its screen, or on the place they're adding
     var isGuideInProgress: Bool { pendingGuide != nil || awaitingOwnPlace }
 
-    /// True once, for the screen the tour sent them to
+    /// Which guide a scanned "show me how" QR sent (Scan Actions,
+    /// 2026-11-11): it runs whether or not the tour is done. Decided when its
+    /// screen takes it, so one that never opened can't change a later tour
+    /// guide.
+    private var scanGuideKind: ScreenGuideKind?
+    /// The guide on screen came from a scan: its last button ends it instead
+    /// of going back to the tour
+    private(set) var isScanGuide = false
+
+    /// True once, for the screen the tour (or a scanned QR) sent them to
     func takeGuide(_ kind: ScreenGuideKind) -> Bool {
-        guard pendingGuide == kind, shouldShowTutorial else { return false }
+        let fromScan = scanGuideKind == kind
+        guard pendingGuide == kind, shouldShowTutorial || fromScan else { return false }
         pendingGuide = nil
+        scanGuideKind = nil
+        isScanGuide = fromScan
         return true
+    }
+
+    /// A scanned guide QR: the screen it opens explains itself
+    func sendScanGuide(_ kind: ScreenGuideKind) {
+        dismissCurrentBubble()
+        scanGuideKind = kind
+        pendingGuide = kind
+    }
+
+    /// The scanned guide was finished or put away
+    func endScanGuide() {
+        isScanGuide = false
     }
 
     /// "Add a place you love" from a guide: Add Place explains itself, and

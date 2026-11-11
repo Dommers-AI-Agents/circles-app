@@ -180,6 +180,17 @@ final class RewardScannerViewController: BaseViewController {
 
     private func handle(payload: String?) {
         guard !handledCode, let payload else { return }
+        // A Scan Action QR (a place, a list, a guide, a store's setup) works
+        // from here too, not only from the Camera (2026-11-11)
+        if let url = URL(string: payload), case .scanAction(let scanCode)? = DeepLinkRouter().destination(for: url) {
+            handledCode = true
+            scanner?.stopScanning()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            (navigationController ?? self).dismiss(animated: true) {
+                ScanActionCoordinator.shared.start(code: scanCode)
+            }
+            return
+        }
         guard let code = StickerCodeExtractor.code(from: payload) else {
             if payload != lastRejectedPayload {
                 lastRejectedPayload = payload

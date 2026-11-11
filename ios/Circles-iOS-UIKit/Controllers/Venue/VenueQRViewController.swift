@@ -127,18 +127,8 @@ class VenueQRViewController: BaseViewController {
 
     // MARK: - QR generation
 
-    /// A bitmap-backed QR. A CIImage-backed UIImage shows on screen but draws
-    /// as nothing into a renderer, which made shared and printed QRs blank.
     private func generateQRCode(from string: String) -> UIImage? {
-        guard let filter = CIFilter(name: "CIQRCodeGenerator"),
-              let data = string.data(using: .utf8) else { return nil }
-        filter.setValue(data, forKey: "inputMessage")
-        filter.setValue("H", forKey: "inputCorrectionLevel")
-        guard let output = filter.outputImage else { return nil }
-        // Scale up so the modules render crisp instead of blurry
-        let scaled = output.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
-        guard let cgImage = CIContext().createCGImage(scaled, from: scaled.extent) else { return nil }
-        return UIImage(cgImage: cgImage)
+        QRCodeRenderer.image(for: string, correction: "H")
     }
 
     // MARK: - Actions

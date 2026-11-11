@@ -53,6 +53,12 @@ final class RewardCodeHandler: SceneCoordinator {
             // (redeemPendingStickerCodeIfNeeded) completes the award
             RewardsService.shared.savePendingStickerCode(pendingCode)
         }
+        if let scanCode = result.pendingScanCode.flatMap { ScanActionLink.code($0) } {
+            // A Scan Action QR the clip opened (2026-11-11): the app opens on
+            // it once it's up — the places the clip saved, or the guide or
+            // store setup only the app can run
+            UserDefaults.standard.set("scan:\(scanCode)", forKey: "pendingDeepLink")
+        }
 
         if AuthService.shared.isLoggedIn {
             notifyClipInstallConverted()
@@ -174,8 +180,18 @@ final class RewardCodeHandler: SceneCoordinator {
         // hasStrings doesn't trigger the paste permission prompt; reading
         // .string does — which is why this whole check is one-shot
         guard UIPasteboard.general.hasStrings,
-              let text = UIPasteboard.general.string,
-              let match = text.range(of: #"favcircles-sticker:([A-Z0-9]{4,16})"#, options: .regularExpression) else {
+              let text = UIPasteboard.general.string else { return }
+
+        // A Scan Action QR's page (/q/<code>) leaves "favcircles-scan:<code>"
+        // (2026-11-11): the place or list they scanned waits for sign-in
+        // like any link that arrived early, then opens
+        if let scanCode = ScanActionLink.code(fromPasteboard: text) {
+            UIPasteboard.general.items = []
+            ScanActionCoordinator.shared.start(code: scanCode)
+            return
+        }
+
+        guard let match = text.range(of: #"favcircles-sticker:([A-Z0-9]{4,16})"#, options: .regularExpression) else {
             return
         }
 

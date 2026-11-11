@@ -181,3 +181,51 @@ struct ClipErrorBody: Decodable {
 struct ClipSimpleResponse: Decodable {
     let success: Bool
 }
+
+// MARK: - Scan Actions (/q/<code>, 2026-11-11)
+
+/// What a Scan Action QR holds, as much as the clip needs (the app's
+/// Models/ScanAction.swift has the whole shape)
+struct ClipScanAction: Decodable {
+    struct Creator: Decodable { let displayName: String }
+    struct Place: Decodable {
+        let globalPlaceId: String
+        let name: String
+        let address: String?
+        let photoUrl: String?
+        let alreadySaved: Bool?
+    }
+    struct Guide: Decodable { let title: String; let blurb: String? }
+    struct Store: Decodable { let name: String? }
+
+    let code: String
+    let kind: String
+    let title: String?
+    let note: String?
+    let expired: Bool?
+    let creator: Creator?
+    let guide: Guide?
+    let store: Store?
+    let places: [Place]?
+
+    /// A place or a list the clip can save; guides and store setup need the app
+    var isSaveable: Bool { kind == "place" || kind == "placeSet" }
+}
+
+struct ClipScanActionResponse: Decodable {
+    let success: Bool
+    let data: ClipScanAction
+}
+
+struct ClipScanSaveResult: Decodable {
+    struct Row: Decodable { let globalPlaceId: String; let name: String?; let placeId: String?; let circleName: String? }
+    let circleId: String?
+    let saved: [Row]
+    let alreadySaved: [Row]
+    let failed: [Row]
+}
+
+struct ClipScanSaveResponse: Decodable {
+    let success: Bool
+    let data: ClipScanSaveResult
+}

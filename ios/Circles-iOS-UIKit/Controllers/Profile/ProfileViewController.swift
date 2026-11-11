@@ -900,6 +900,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         if AuthService.shared.isMe(user?.id) || user == nil, OnboardingManager.shared.takeGuide(.profile) {
             ScreenGuide.runSimple(.profile, in: self)
         }
+        runScanGuideIfSent()
 
         // StoreKit may not have resolved the subscription when the view was
         // built — re-check now that it's had time to.
@@ -3168,3 +3169,23 @@ extension ProfileViewController: ProfileDataLoaderDelegate {
 // MARK: - ProfileStorefrontControllerDelegate
 
 extension ProfileViewController: ProfileStorefrontControllerDelegate {}
+
+// MARK: - "Make a circle" walkthrough (a scanned guide QR, 2026-11-11)
+
+extension ProfileViewController: ScanGuideHost {
+    func runScanGuideIfSent() {
+        guard AuthService.shared.isMe(user?.id) || user == nil, OnboardingManager.shared.takeGuide(.makeCircle) else { return }
+        let copy = ScreenGuideCopy.stops(.makeCircle)
+        let plus = { [weak self] () -> UIView? in
+            guard let self else { return nil }
+            let floating = self.floatingAddButton
+            if !floating.isHidden, floating.window != nil { return floating }
+            let sticky = self.stickyTabBar.addButton
+            return sticky.window != nil && !self.stickyTabBar.isHidden ? sticky : nil
+        }
+        ScreenGuide.run([
+            ScreenGuide.Stop(copy: copy[0], target: plus),
+            ScreenGuide.Stop(copy: copy[1], target: { nil })
+        ], finish: ScreenGuideCopy.finish(.makeCircle), in: self, onBack: {})
+    }
+}

@@ -126,6 +126,20 @@ final class ClipAPIClient {
         let _: ClipSimpleResponse = try await request(path: "clip/device", method: "POST", body: body, bearerToken: bearer)
     }
 
+    /// A Scan Action QR (/q/<code>, 2026-11-11): what it holds
+    func scanAction(code: String, bearer: String?) async throws -> ClipScanAction {
+        let response: ClipScanActionResponse = try await request(path: "scan-actions/\(code)", method: "GET", bearerToken: bearer)
+        return response.data
+    }
+
+    /// Saves every place in it to their Want to Try (the clip has no circle
+    /// picker; the app lets them move it). `requestId`: a resend never saves twice.
+    func saveScanAction(code: String, requestId: String, bearer: String) async throws -> ClipScanSaveResult {
+        let response: ClipScanSaveResponse = try await request(path: "scan-actions/\(code)/complete", method: "POST",
+                                                               body: ["requestId": requestId], bearerToken: bearer)
+        return response.data
+    }
+
     // MARK: - Core
 
     private func request<T: Decodable>(path: String,

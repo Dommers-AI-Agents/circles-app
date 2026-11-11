@@ -663,6 +663,18 @@ Moments (formerly called "Reels") is a multimedia content sharing feature that a
     document writes go through `AppWidgetHost.makeDataStore(userId:)`
     (Application Support; refused saves persist as pending). Manual checklist
     before an App Review submission: `ios/OFFLINE_TESTING.md`.
+  - Scan Actions (Nov 2026): a QR that makes the app do something. Link
+    `https://api.favcircles.com/q/<code>`; the server keeps the recipe in
+    `scanActions` (`services/scanActionService.js`: kinds `place`, `placeSet`,
+    `storeSetup`; fixed "show me how" guides in `config/scanGuides.js` need no
+    doc). The app routes `.scanAction` → `ScanActionCoordinator`, which runs
+    `Logic/ScanActionPlan` (pure, tested) with existing screens; the App Clip
+    has `ClipScanViewController`. A QR hands over the VENUE only (never notes);
+    saves go through `placeSaveService.savePlace`. New kind = server kind +
+    `ScanActionPlan` case + tests; new guide = `scanGuides.js` row +
+    `ScreenGuideKind` copy + a `ScanGuideHost` screen. `/q/*` joins the AASA
+    only with `SCAN_ACTION_APP_LINKS=1` (after the app release);
+    `scripts/publish-scan-action-clip-card.js` registers the clip's `/q` card.
   - Tests: target `Circles-iOSTests`, folder `Circles-iOS-UIKitTests` (Swift
     Testing, `@testable import Circles_iOS`); every extraction above ships with a
     suite. Run: `xcodebuild test -scheme Circles-iOS -destination

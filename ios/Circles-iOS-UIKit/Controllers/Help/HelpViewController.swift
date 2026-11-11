@@ -224,7 +224,7 @@ extension HelpViewController: UITableViewDataSource {
         
         switch section {
         case 0:
-            return 1 // Quick links section
+            return 2 // Quick links section: Quick Start, Show Someone How
         case 1:
             return categories.count
         default:
@@ -253,6 +253,16 @@ extension HelpViewController: UITableViewDataSource {
             let cell = tableView.dequeueReusableCell(withIdentifier: "CategoryCell", for: indexPath)
             
             var config = UIListContentConfiguration.subtitleCell()
+            if indexPath.row == 1 {
+                // "Show me how" QR guides (Scan Actions, 2026-11-11)
+                config.text = "Show Someone How"
+                config.secondaryText = "A QR that walks a friend through sharing, circles, widgets and more"
+                config.image = UIImage(systemName: "qrcode")
+                config.imageProperties.tintColor = Constants.Colors.primary
+                cell.contentConfiguration = config
+                cell.accessoryType = .disclosureIndicator
+                return cell
+            }
             config.text = "Quick Start Guide"
             config.secondaryText = "New to FavCircles? Start here"
             config.image = UIImage(systemName: "sparkles")
@@ -303,6 +313,10 @@ extension HelpViewController: UITableViewDelegate {
             let topic = searchResults[indexPath.row]
             showHelpTopic(topic)
         } else if indexPath.section == 0 {
+            if indexPath.row == 1 {
+                navigationController?.pushViewController(ScanGuidesViewController(), animated: true)
+                return
+            }
             // Show quick start guide
             if let topic = HelpContentProvider.shared.topic(withId: "app-overview") {
                 showHelpTopic(topic)

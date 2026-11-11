@@ -57,6 +57,15 @@ enum ScreenGuide {
 
     static func run(_ stops: [Stop], finish: ScreenGuideCopy.Finish, in host: UIViewController,
                     onNext: (() -> Void)? = nil, onBack: @escaping () -> Void) {
+        // A guide someone scanned a QR for has no tour to return to: its
+        // last button just ends it (Scan Actions, 2026-11-11)
+        let manager = OnboardingManager.shared
+        if manager.isScanGuide {
+            let done = ScreenGuideCopy.Finish(title: nil, message: nil, next: nil, back: finish.title == nil && finish.next == nil ? finish.back : "Done")
+            show(index: 0, stops: stops, finish: done, host: host, onNext: nil,
+                 onBack: { manager.endScanGuide() }, attempt: 0)
+            return
+        }
         show(index: 0, stops: stops, finish: finish, host: host, onNext: onNext, onBack: onBack, attempt: 0)
     }
 
@@ -107,7 +116,7 @@ enum ScreenGuide {
             }
             bubble.onSkip = {
                 manager.dismissCurrentBubble()
-                manager.completeOnboarding()
+                if manager.isScanGuide { manager.endScanGuide() } else { manager.completeOnboarding() }
             }
             host.view.addSubview(bubble)
             bubble.pointTo(stop?.target(), in: host.view)

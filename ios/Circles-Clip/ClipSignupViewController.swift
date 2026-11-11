@@ -10,7 +10,8 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
     private enum Step { case email, code }
 
     private let code: String?
-    private let preview: VenuePreview
+    /// The words on top of the email step
+    private let hook: NSAttributedString
     private let onSignedIn: (ClipAuthResponse) -> Void
     private var step: Step = .email
     private var email = ""
@@ -36,7 +37,19 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
 
     init(code: String?, preview: VenuePreview, knownEmail: String? = nil, onSignedIn: @escaping (ClipAuthResponse) -> Void) {
         self.code = code
-        self.preview = preview
+        self.hook = preview.isGeneric
+            ? ClipTheme.hookText("The Road less traveled", "is yours. Save it.", size: 40)
+            : ClipTheme.hookText("Welcome in.", "Save \(preview.venueName).", size: 40)
+        self.knownEmail = knownEmail
+        self.onSignedIn = onSignedIn
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    /// A Scan Action QR (a place a friend showed them, 2026-11-11): no store,
+    /// its own words on top
+    init(hook: NSAttributedString, knownEmail: String?, onSignedIn: @escaping (ClipAuthResponse) -> Void) {
+        self.code = nil
+        self.hook = hook
         self.knownEmail = knownEmail
         self.onSignedIn = onSignedIn
         super.init(nibName: nil, bundle: nil)
@@ -149,9 +162,7 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
 
     private func showEmailStep(animated: Bool) {
         step = .email
-        hookLabel.attributedText = preview.isGeneric
-            ? ClipTheme.hookText("The Road less traveled", "is yours. Save it.", size: 40)
-            : ClipTheme.hookText("Welcome in.", "Save \(preview.venueName).", size: 40)
+        hookLabel.attributedText = hook
         detailLabel.text = "Just your email. No password, nothing to confirm right now."
         emailField.isHidden = false
         nameField.isHidden = true

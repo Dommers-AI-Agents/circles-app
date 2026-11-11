@@ -71,6 +71,7 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         // with isHidden, so SwiftUI's onAppear/onDisappear never fire for it
         model?.setTabVisible(true)
         AnalyticsService.shared.logEvent("widgets_tab_viewed")
+        runScanGuideIfSent()
         maybeShowHint()
     }
 
@@ -312,5 +313,20 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         bubble.pointTo(target, in: view)
         bubble.show()
         hintBubble = bubble
+    }
+}
+
+// MARK: - "Try the widgets" walkthrough (a scanned guide QR, 2026-11-11)
+
+extension HomeWidgetsViewController: ScanGuideHost {
+    func runScanGuideIfSent() {
+        guard OnboardingManager.shared.takeGuide(.widgets) else { return }
+        // The guide says it all; the first-use hint would just repeat it
+        OnboardingManager.shared.markHomeWidgetsHintShown()
+        let copy = ScreenGuideCopy.stops(.widgets)
+        ScreenGuide.run([
+            ScreenGuide.Stop(copy: copy[0], target: { [weak self] in self?.hostingController?.view }),
+            ScreenGuide.Stop(copy: copy[1], target: { nil })
+        ], finish: ScreenGuideCopy.finish(.widgets), in: self, onBack: {})
     }
 }

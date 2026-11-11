@@ -161,6 +161,7 @@ class KeychainService {
         var accountEmail: String?
         var emailUnverified: Bool?
         var isNewSignIn: Bool?
+        var pendingScanCode: String?
     }
 
     struct ClipAdoptionResult {
@@ -170,6 +171,7 @@ class KeychainService {
         var welcome: ClipWelcome? = nil  // the store's page + welcome to show first
         var unconfirmedEmail: String? = nil  // signed up in the clip with just this email
         var isNewSignIn: Bool? = nil        // the clip made the account just now: run the first run (2026-11-09)
+        var pendingScanCode: String? = nil  // a Scan Action QR the clip opened: the app opens it too (2026-11-11)
     }
 
     /// Set once this install has launched (UserDefaults is wiped with the app)
@@ -202,7 +204,8 @@ class KeychainService {
             Logger.debug("🔐 KeychainService: clip mailbox found but a session exists — discarding mailbox")
             return ClipAdoptionResult(adopted: false,
                                       handledStickerCode: nil,
-                                      pendingStickerCode: payload.pendingStickerCode)
+                                      pendingStickerCode: payload.pendingStickerCode,
+                                      pendingScanCode: payload.pendingScanCode)
         }
 
         save(payload.authToken, account: authTokenAccount)
@@ -221,7 +224,8 @@ class KeychainService {
                                   pendingStickerCode: payload.pendingStickerCode,
                                   welcome: payload.welcome,
                                   unconfirmedEmail: payload.emailUnverified == true ? payload.accountEmail : nil,
-                                  isNewSignIn: payload.isNewSignIn)
+                                  isNewSignIn: payload.isNewSignIn,
+                                  pendingScanCode: payload.pendingScanCode)
     }
 
     // MARK: - Private Helper Methods

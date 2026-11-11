@@ -13,6 +13,14 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
         let window = UIWindow(windowScene: windowScene)
         self.window = window
 
+        // A Scan Action QR (/q/<code>): a place or list a friend is showing
+        // them, a guide, a store's setup (2026-11-11)
+        if let scanCode = connectionOptions.userActivities.lazy.compactMap(Self.scanCode(from:)).first {
+            window.rootViewController = Self.scanRoot(code: scanCode)
+            window.makeKeyAndVisible()
+            return
+        }
+
         // The invocation URL rides in on an NSUserActivity — from the camera /
         // App Clip code at launch (connectionOptions) or later via continueUserActivity.
         let activity = connectionOptions.userActivities.first { Self.stickerCode(from: $0) != nil }
@@ -28,6 +36,11 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
         if code == nil,
            let testURLString = ProcessInfo.processInfo.environment["_XCAppClipURL"],
            let testURL = URL(string: testURLString) {
+            if let scanCode = Self.scanCode(fromPath: testURL.path) {
+                window.rootViewController = Self.scanRoot(code: scanCode)
+                window.makeKeyAndVisible()
+                return
+            }
             code = Self.stickerCode(fromPath: testURL.path)
         }
         #endif
@@ -40,6 +53,10 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        if let scanCode = Self.scanCode(from: userActivity) {
+            window?.rootViewController = Self.scanRoot(code: scanCode)
+            return
+        }
         guard let code = Self.stickerCode(from: userActivity)
                 ?? (userActivity.webpageURL?.host == "appclip.apple.com" ? Self.genericJoinCode : nil) else { return }
         window?.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, tag: Self.stickerTag(from: userActivity), ref: Self.stickerRef(from: userActivity), payload: userActivity.appClipActivationPayload))
@@ -52,6 +69,28 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
         let nav = UINavigationController(rootViewController: ClipOfferViewController(invocation: invocation))
         nav.navigationBar.prefersLargeTitles = false
         return nav
+    }
+
+    private static func scanRoot(code: String) -> UIViewController {
+        let nav = UINavigationController(rootViewController: ClipScanViewController(code: code))
+        nav.navigationBar.prefersLargeTitles = false
+        return nav
+    }
+
+    /// `/q/<code>`: 8 easy-to-read characters, or a guide's name (the app's
+    /// Logic/ScanActionLink.swift has the same rules)
+    static func scanCode(from activity: NSUserActivity) -> String? {
+        guard activity.activityType == NSUserActivityTypeBrowsingWeb, let url = activity.webpageURL else { return nil }
+        return scanCode(fromPath: url.path)
+    }
+
+    static func scanCode(fromPath path: String) -> String? {
+        let parts = path.split(separator: "/").map(String.init)
+        guard parts.count >= 2, parts[0] == "q" else { return nil }
+        let upper = parts[1].uppercased()
+        if upper.range(of: "^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}$", options: .regularExpression) != nil { return upper }
+        let lower = parts[1].lowercased()
+        return lower.range(of: "^[a-z][a-z-]{2,39}$", options: .regularExpression) != nil && !lower.hasSuffix("-") ? lower : nil
     }
 
     /// The generic "Join FavCircles" code (backend rewardConfig.GENERIC_JOIN_CODE)

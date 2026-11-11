@@ -201,6 +201,7 @@ class VenueManageViewController: BaseViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         refreshNewOrders()
+        runStoreManageGuideIfSent()
         if let action = pendingQuickAction {
             pendingQuickAction = nil
             switch action {
@@ -1162,5 +1163,43 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
         case .addBusiness:
             navigationController?.pushViewController(ClaimBusinessViewController(), animated: true)
         }
+    }
+}
+
+// MARK: - Store setup walkthrough (a store setup QR, 2026-11-11)
+
+extension VenueManageViewController: ScanGuideHost {
+    func runScanGuideIfSent() { runStoreManageGuideIfSent() }
+
+    /// After a store setup QR made the store theirs: the page, points, a
+    /// first reward, the QR to put up. Each bubble scrolls its row into view.
+    func runStoreManageGuideIfSent() {
+        guard OnboardingManager.shared.takeGuide(.storeManage) else { return }
+        let copy = ScreenGuideCopy.stops(.storeManage, placeName: venueName)
+        let indexPath = { [weak self] (wanted: Row) -> IndexPath? in
+            guard let self else { return nil }
+            for (section, entry) in self.layout.enumerated() {
+                if let row = entry.rows.firstIndex(of: wanted) { return IndexPath(row: row, section: section) }
+            }
+            return nil
+        }
+        let reveal = { [weak self] (wanted: Row) in
+            guard let self, let path = indexPath(wanted) else { return }
+            self.tableView.scrollToRow(at: path, at: .middle, animated: false)
+        }
+        let cell = { [weak self] (wanted: Row) -> UIView? in
+            guard let self, let path = indexPath(wanted) else { return nil }
+            return self.tableView.cellForRow(at: path)
+        }
+        let top = { [weak self] in
+            guard let self else { return }
+            self.tableView.setContentOffset(CGPoint(x: 0, y: -self.tableView.adjustedContentInset.top), animated: false)
+        }
+        ScreenGuide.run([
+            ScreenGuide.Stop(copy: copy[0], target: { nil }, prepare: top),
+            ScreenGuide.Stop(copy: copy[1], target: { cell(.earnRate) }, prepare: { reveal(.earnRate) }),
+            ScreenGuide.Stop(copy: copy[2], target: { cell(.addOffer) }, prepare: { reveal(.addOffer) }),
+            ScreenGuide.Stop(copy: copy[3], target: { cell(.showRegisterCard) }, prepare: { reveal(.showRegisterCard) })
+        ], finish: ScreenGuideCopy.finish(.storeManage), in: self, onBack: {})
     }
 }

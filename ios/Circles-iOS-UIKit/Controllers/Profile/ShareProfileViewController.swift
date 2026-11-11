@@ -318,92 +318,14 @@ class ShareProfileViewController: BaseViewController {
     }
 
     private func generateQRCode() {
-        guard let data = deepLink.data(using: .utf8) else { return }
-        
-        let context = CIContext()
-        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return }
-        filter.setValue(data, forKey: "inputMessage")
-        filter.setValue("M", forKey: "inputCorrectionLevel")
-        
-        guard let outputImage = filter.outputImage else { return }
-        
-        // Scale the QR code
-        let transform = CGAffineTransform(scaleX: 10, y: 10)
-        let scaledImage = outputImage.transformed(by: transform)
-        
-        if let cgImage = context.createCGImage(scaledImage, from: scaledImage.extent) {
-            qrCodeImage = UIImage(cgImage: cgImage)
-            
-            // Add logo to center of QR code
-            if let qrWithLogo = addLogoToQRCode(qrImage: UIImage(cgImage: cgImage)) {
-                qrCodeImage = qrWithLogo
-                qrCodeImageView.image = qrWithLogo
-            } else {
-                qrCodeImageView.image = UIImage(cgImage: cgImage)
-            }
-        }
+        // "M" as before: the mark covers the middle, and the profile QR has
+        // always scanned at this level
+        guard let code = QRCodeRenderer.image(for: deepLink, correction: "M", scale: 10) else { return }
+        let qrWithLogo = QRCodeRenderer.withLogo(code)
+        qrCodeImage = qrWithLogo
+        qrCodeImageView.image = qrWithLogo
     }
-    
-    private func addLogoToQRCode(qrImage: UIImage) -> UIImage? {
-        let size = qrImage.size
-        UIGraphicsBeginImageContextWithOptions(size, false, 0)
-        
-        qrImage.draw(in: CGRect(origin: .zero, size: size))
-        
-        // Create a white background circle for the logo
-        let logoSize: CGFloat = size.width * 0.25
-        let logoRect = CGRect(
-            x: (size.width - logoSize) / 2,
-            y: (size.height - logoSize) / 2,
-            width: logoSize,
-            height: logoSize
-        )
-        
-        // Draw white circle background
-        UIColor.white.setFill()
-        UIBezierPath(ovalIn: logoRect.insetBy(dx: -5, dy: -5)).fill()
-        
-        // Draw circles logo (simplified version)
-        let circleColor = Constants.Colors.primary
-        circleColor.setFill()
-        
-        // Draw three overlapping circles to represent the Circles app logo
-        let circleSize = logoSize * 0.3
-        let offset = circleSize * 0.3
-        
-        // Top circle
-        let topCircle = UIBezierPath(ovalIn: CGRect(
-            x: logoRect.midX - circleSize/2,
-            y: logoRect.minY + offset,
-            width: circleSize,
-            height: circleSize
-        ))
-        topCircle.fill()
-        
-        // Bottom left circle
-        let leftCircle = UIBezierPath(ovalIn: CGRect(
-            x: logoRect.midX - circleSize - offset/2,
-            y: logoRect.midY,
-            width: circleSize,
-            height: circleSize
-        ))
-        leftCircle.fill()
-        
-        // Bottom right circle
-        let rightCircle = UIBezierPath(ovalIn: CGRect(
-            x: logoRect.midX + offset/2,
-            y: logoRect.midY,
-            width: circleSize,
-            height: circleSize
-        ))
-        rightCircle.fill()
-        
-        let result = UIGraphicsGetImageFromCurrentImageContext()
-        UIGraphicsEndImageContext()
-        
-        return result
-    }
-    
+
     private func addCircleDecorations() {
         // Add decorative circles around the edges
         let positions: [(x: CGFloat, y: CGFloat, size: CGFloat)] = [

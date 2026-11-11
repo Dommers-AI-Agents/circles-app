@@ -129,6 +129,82 @@ ${address ? `<p style="margin:0 0 16px;opacity:.85">${esc(address)}</p>` : ''}
 </script>
 </body></html>`);
 });
+// Scan Actions (Wes, 2026-11-11): the page behind a /q/<code> QR. With the
+// app installed iOS opens it as a Universal Link (AASA /q/*); an iPhone
+// without the app gets the App Clip card (Smart App Banner + the /q App Clip
+// experience). Anyone else sees what the code holds and the way to the app;
+// "Get FavCircles" leaves the code on the clipboard so the app finishes the
+// save after installing (public/scan-landing.js).
+router.get('/q/:code', async (req, res) => {
+  const scanActions = require('../services/scanActionService');
+  const appStoreUrl = APP_STORE_URL;
+  const esc = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  let action = null;
+  try {
+    action = await scanActions.resolve(req.params.code, null);
+  } catch (error) {
+    if (!error.status) console.warn('Scan page: could not read code:', error.message);
+  }
+
+  const places = action ? (action.places || []) : [];
+  const from = action && action.creator ? action.creator.displayName : null;
+  let heading = 'This code isn’t one of ours';
+  let blurb = 'Ask for a new one, or get FavCircles to save places you love.';
+  let cta = 'Get FavCircles';
+  if (action && action.expired) {
+    heading = 'This QR has expired';
+    blurb = from ? `Ask ${from} to show you a new one.` : 'Ask for a new one.';
+  } else if (action && action.kind === 'place' && places[0]) {
+    heading = places[0].name;
+    blurb = from ? `${from} wants you to have this place. Save it to your map on FavCircles.` : 'Save it to your map on FavCircles.';
+    cta = 'Save it on FavCircles';
+  } else if (action && action.kind === 'placeSet') {
+    heading = action.title || `${places.length} places`;
+    blurb = `${from ? `${from} shared` : 'Here are'} ${places.length} place${places.length === 1 ? '' : 's'}. Save the ones you want on FavCircles.`;
+    cta = 'Save them on FavCircles';
+  } else if (action && action.kind === 'storeSetup') {
+    heading = action.store && action.store.name ? `Set up ${action.store.name}` : 'Set up your store';
+    blurb = 'Claim your business on FavCircles, set your points and post your first reward. It takes a few minutes.';
+    cta = 'Get started';
+  } else if (action && action.guide) {
+    heading = action.guide.title;
+    blurb = `${action.guide.blurb || ''} Open FavCircles and it walks you through it.`.trim();
+  }
+  const code = action ? action.code : '';
+  const photo = places.find((p) => p.photoUrl);
+  const list = places.length > 1 ? `<ul style="list-style:none;padding:0;margin:0 0 20px;text-align:left;max-width:360px">${places.slice(0, 8).map((p) =>
+    `<li style="background:rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;margin-bottom:6px"><strong>${esc(p.name)}</strong>${p.address ? `<br><span style="opacity:.8;font-size:14px">${esc(p.address)}</span>` : ''}</li>`).join('')}${places.length > 8 ? `<li style="opacity:.85;padding:6px 12px">and ${places.length - 8} more</li>` : ''}</ul>` : '';
+  const single = places.length === 1 && places[0].address ? `<p style="margin:0 0 16px;opacity:.85">${esc(places[0].address)}</p>` : '';
+
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Robots-Tag', 'noindex');
+  res.send(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(heading)} · FavCircles</title>
+<meta name="apple-itunes-app" content="app-id=6746807095, app-clip-bundle-id=com.favcircles.circles.Clip, app-clip-display=card">
+<meta property="og:title" content="${esc(heading)}">
+<meta property="og:description" content="${esc(blurb)}">
+<meta property="og:site_name" content="FavCircles">
+<meta property="og:type" content="website">
+${photo ? `<meta property="og:image" content="${esc(photo.photoUrl)}">` : ''}
+${code ? `<meta property="og:url" content="${esc(scanActions.urlFor(code))}">` : ''}
+</head>
+<body style="font-family:-apple-system,Helvetica,Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#3182CE;color:#fff;text-align:center;padding:24px;box-sizing:border-box">
+<div style="max-width:420px;width:100%;display:flex;flex-direction:column;align-items:center">
+${photo && places.length === 1 ? `<img src="${esc(photo.photoUrl)}" alt="" style="width:120px;height:120px;border-radius:18px;object-fit:cover;margin-bottom:16px">` : '<div style="font-size:56px;line-height:1;margin-bottom:12px">&#128205;</div>'}
+<h1 style="margin:0 0 6px">${esc(heading)}</h1>
+${single}
+<p style="margin:0 0 20px;opacity:.92">${esc(blurb)}</p>
+${list}
+<a id="get-app" href="${appStoreUrl}"${code && !(action && action.expired) ? ` data-clipboard="favcircles-scan:${esc(code)}"` : ''} style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">${esc(cta)}</a>
+${code && !(action && action.expired) ? '<p style="margin:18px 0 0;font-size:14px;opacity:.85">Already have FavCircles? Scan the code with your Camera and it opens right in the app.</p>' : ''}
+</div>
+<script src="/public/scan-landing.js"></script>
+</body></html>`);
+});
+
 // Public postcard pages (image proxy, QR, share page) — routes/postcardPublicRoutes.js
 router.use(require('./postcardPublicRoutes'));
 // Store ordering pages, order.favcircles.com/<slug> — routes/orderWebRoutes.js

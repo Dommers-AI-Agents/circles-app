@@ -227,17 +227,28 @@ app.get('/', (req, res) => {
   });
 });
 
-// Apple App Site Association file for Universal Links
-app.get('/.well-known/apple-app-site-association', (req, res) => {
+// Apple App Site Association file for Universal Links. Scan Action QRs
+// (/q/*) join the app's paths only once the app build that opens them is out
+// (SCAN_ACTION_APP_LINKS=1): an older app would open on its home screen with
+// nothing saved, which is worse than the page and its App Clip.
+const sendAASA = (req, res) => {
   res.setHeader('Content-Type', 'application/json');
-  res.sendFile(path.join(__dirname, 'public', 'apple-app-site-association'));
-});
-
+  try {
+    const aasa = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'public', 'apple-app-site-association'), 'utf8'));
+    if (process.env.SCAN_ACTION_APP_LINKS === '1') {
+      aasa.applinks.details.forEach((detail) => {
+        if (!detail.paths.includes('/q/*')) detail.paths.push('/q/*');
+      });
+    }
+    res.send(JSON.stringify(aasa, null, 2));
+  } catch (error) {
+    console.error('AASA read failed:', error.message);
+    res.sendFile(path.join(__dirname, 'public', 'apple-app-site-association'));
+  }
+};
+app.get('/.well-known/apple-app-site-association', sendAASA);
 // Also serve at root for compatibility
-app.get('/apple-app-site-association', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.sendFile(path.join(__dirname, 'public', 'apple-app-site-association'));
-});
+app.get('/apple-app-site-association', sendAASA);
 
 // Shared-link pages (connect, circle, place, user, widget, tab, quote, event,
 // club, run, workout, postcard, store ordering) — routes/sharePageRoutes.js
@@ -317,6 +328,7 @@ app.use('/api/home', require('./routes/dashboardRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
 app.use('/api/waitlist', require('./routes/waitlistRoutes')); // a store's waitlist, customer side (2026-11-09)
 app.use('/api/widgets', require('./routes/widgetRoutes')); // Home Widgets tab: per-widget JSON docs + postcard send
+app.use('/api/scan-actions', require('./routes/scanActionRoutes')); // Scan Actions: /q/<code> QR codes (save a place / a set, guides, store setup)
 
 // Notification test routes (development only)
 if (process.env.NODE_ENV !== 'production') {

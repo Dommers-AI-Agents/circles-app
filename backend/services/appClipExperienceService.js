@@ -86,6 +86,16 @@ function copyFor(venue, kind, { live = true } = {}) {
   // serif lines, `lead` an optional line under them.
   const subtitle = 'Stay connected. Catch every moment.';
   const saveUs = ['Love it here?', 'Save us.'];
+  // Scan Action QRs (/q/<code>, 2026-11-11): a friend holds up their phone
+  // and the scanner saves the place (or the list) they're showing
+  if (venue.scanActions) {
+    return {
+      title: 'Save this place',
+      subtitle: 'A friend is sharing it with you. Keep it on your map.',
+      hook: ['Saw it on', 'their phone?', 'Save it.'],
+      lead: null
+    };
+  }
   // The generic "Join FavCircles" code (coasters, anything not one store's)
   // Not one store's, so not "Save us": the App Clip's default card words
   // (Wes, 2026-11-07: NFC stickers on any collateral, coasters, flyers)
@@ -473,4 +483,28 @@ function publishNewVenueQuiet(venueId) {
   })().catch((error) => console.error('⚠️ App Clip card publish failed for new store', venueId, error.message));
 }
 
-module.exports = { KINDS, HEADER_VERSION, copyFor, cardPreviewJPEG, businessCategoryFor, wrapName, headerImagePNG, fingerprintFor, syncVenue, syncVenueQuiet, publishNewVenueQuiet, removeExperience, TITLE_MAX, SUBTITLE_MAX };
+/// The one App Clip card for every Scan Action QR: Apple matches the
+/// longest registered prefix, so https://api.favcircles.com/q covers each
+/// /q/<code>. Run once per change (scripts/publish-scan-action-clip-card.js),
+/// AFTER the clip build that opens /q links is live.
+const SCAN_ACTION_LINK = 'https://api.favcircles.com/q';
+async function publishScanActionExperience({ dryRun = false } = {}) {
+  if (!asc.configured()) return { skipped: 'not configured' };
+  const card = { genericJoin: true, scanActions: true, venueName: 'FavCircles', venueId: 'scan-actions' };
+  const { title, subtitle } = copyFor(card, 'window');
+  const existing = await findExperienceByLink(SCAN_ACTION_LINK);
+  if (dryRun) return { dryRun: true, link: SCAN_ACTION_LINK, title, subtitle, existing: existing ? existing.id : null };
+  const image = await headerImagePNG(card, 'window', null);
+  const imageId = await uploadHeaderImage(image, `scan-actions-v${HEADER_VERSION}-1800x1200.jpg`);
+  if (existing) {
+    if (existing.title !== title || existing.subtitle !== subtitle || existing.status === 'REMOVED') {
+      await updateExperienceWords({ id: existing.id, title, subtitle });
+    }
+    const data = await updateExperienceImage({ id: existing.id, imageId, status: existing.status });
+    return { updated: data.id, status: data.attributes.status };
+  }
+  const data = await createExperience({ link: SCAN_ACTION_LINK, title, subtitle, imageId, businessCategory: 'FOOD_AND_DRINK' });
+  return { created: data.id, status: data.attributes.status };
+}
+
+module.exports = { publishScanActionExperience, SCAN_ACTION_LINK, KINDS, HEADER_VERSION, copyFor, cardPreviewJPEG, businessCategoryFor, wrapName, headerImagePNG, fingerprintFor, syncVenue, syncVenueQuiet, publishNewVenueQuiet, removeExperience, TITLE_MAX, SUBTITLE_MAX };

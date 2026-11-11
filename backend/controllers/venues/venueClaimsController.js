@@ -5,8 +5,8 @@ const { getFirestore } = require('../../config/firebase');
 const { COLLECTIONS } = require('../../models/FirestoreModels');
 const { createVenueClaimRequest, sanitizeKeyPart, STICKER_COLLECTIONS } = require('../../models/StickerModels');
 const rewardService = require('../../services/rewardService');
-const emailService = require('../../services/emailService');
-const { placeVenueFields } = require('../../services/venueEnrollmentService');
+const { approveClaimById } = require('../../services/venueClaimApproval');
+const { ServiceError } = require('../../utils/serviceError');
 const { escapeHtml: esc } = require('../../utils/text');
 const db = getFirestore();
 
@@ -335,206 +335,16 @@ exports.listClaims = async (req, res) => {
 /// store's App Clip cards are published now, not at the overnight job, and
 /// its QR codes go to the approving admin, who sells the register code
 /// (the window code is free). Best-effort; returns whether the email went.
-async function readyStoreCodes(venue, adminEmail) {
-  require('../../services/appClipExperienceService').publishNewVenueQuiet(venue.venueId);
-  if (!adminEmail) return false;
-  try {
-    const { windowQR, registerQR } = await rewardService.generateQRBuffers(venue);
-    await emailService.sendStickerQREmail(adminEmail, venue, windowQR, registerQR);
-    return true;
-  } catch (emailError) {
-    console.error('⚠️ QR email failed (claim still approved):', emailError.message);
-    return false;
-  }
-}
-
 // @route   POST /api/rewards/claims/:claimId/approve
 // @access  Super user
 exports.approveClaim = async (req, res) => {
   try {
-    const claimRef = db.collection(STICKER_COLLECTIONS.VENUE_CLAIM_REQUESTS)
-      .doc(req.params.claimId);
-    const claimDoc = await claimRef.get();
-    if (!claimDoc.exists) {
-      return res.status(404).json({ success: false, error: 'Claim not found' });
-    }
-    const claim = claimDoc.data();
-    if (claim.status !== 'pending') {
-      return res.status(409).json({ success: false, error: `Claim is already ${claim.status}` });
-    }
-
-    // Claims on businesses not yet in the sticker program: approving
-    // auto-enrolls the venue from the claim's place data, assigns the
-    // claimant as owner, and emails the QR codes to the approving admin.
-    if (!claim.venueId) {
-      // Location/category come from the canonical place (or legacy save)
-      const placeFields = (claim.globalPlaceId && await placeVenueFields(claim.globalPlaceId))
-        || (claim.placeId && await placeVenueFields(claim.placeId))
-        || null;
-      if (!placeFields) {
-        return res.status(404).json({ success: false, error: 'The claimed place no longer exists' });
-      }
-      const { location, category } = placeFields;
-      // Name and address from the place as it is NOW (the claim holds a copy
-      // from the day it was filed); the copy only fills what the place lacks
-      const storeName = placeFields.venueName || claim.placeName || claim.venueName;
-
-      const ownerEmail = claim.contactEmail || claim.userEmail || null;
-      const venue = await rewardService.createVenue({
-        venueName: storeName,
-        placeName: storeName,
-        placeAddress: placeFields.placeAddress || claim.placeAddress || null,
-        googlePlaceId: claim.googlePlaceId || placeFields.googlePlaceId || null,
-        globalPlaceId: claim.globalPlaceId || placeFields.globalPlaceId || null,
-        location,
-        category: category || 'restaurant',
-        contactName: claim.contactName || claim.userDisplayName || null,
-        contactEmail: ownerEmail
-      });
-
-      // The claimant becomes the owner regardless of which email they gave
-      // as business contact (it may differ from their account email)
-      await rewardService.assignVenueOwner(venue.venueId, {
-        ownerUserId: claim.userId,
-        ownerEmail
-      });
-      const emailSent = await readyStoreCodes(venue, req.user.email);
-
-      const now = new Date().toISOString();
-      await claimRef.update({
-        status: 'approved',
-        venueId: venue.venueId,
-        resolvedBy: req.user.uid,
-        resolvedAt: now,
-        updatedAt: now
-      });
-
-      // Tell the new owner (in-app + push) — approval otherwise happens silently.
-      try {
-        const notificationService = require('../../services/notificationService');
-        await notificationService.notifyStoreClaimApproved({ ...claim, venueName: storeName, placeName: storeName }, claimRef.id, venue.venueId);
-      } catch (notifyError) {
-        console.error('⚠️ Claim-approved notification failed:', notifyError.message);
-      }
-
-      // And by email — the durable record, plus the Business-tier walkthrough
-      if (ownerEmail) {
-        emailService.sendClaimApprovedEmail(
-          ownerEmail,
-          claim.contactName || claim.userDisplayName || null,
-          storeName || null
-        ).catch((e) => console.error('⚠️ Claim-approved email failed:', e.message));
-      }
-
-      // Best-effort: close out competing pending claims for the same place
-      try {
-        const placeKey = claim.globalPlaceId || claim.googlePlaceId;
-        if (placeKey) {
-          const field = claim.globalPlaceId ? 'globalPlaceId' : 'googlePlaceId';
-          const others = await db.collection(STICKER_COLLECTIONS.VENUE_CLAIM_REQUESTS)
-            .where(field, '==', placeKey)
-            .get();
-          await Promise.all(others.docs
-            .filter((doc) => doc.id !== claimRef.id && doc.data().status === 'pending')
-            .map((doc) => doc.ref.update({
-              status: 'denied',
-              resolvedBy: req.user.uid,
-              resolvedAt: now,
-              updatedAt: now,
-              denialReason: 'Another claim was approved'
-            })));
-        }
-      } catch (cleanupError) {
-        console.error('⚠️ Failed to close competing claims:', cleanupError.message);
-      }
-
-      return res.json({
-        success: true,
-        data: {
-          claim: { claimId: claimRef.id, ...claim, status: 'approved', venueId: venue.venueId, resolvedBy: req.user.uid, resolvedAt: now },
-          venueId: venue.venueId,
-          ownerEmail,
-          enrolled: true,
-          emailSent
-        }
-      });
-    }
-
-    const venueDoc = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
-      .doc(claim.venueId).get();
-    if (!venueDoc.exists) {
-      return res.status(404).json({ success: false, error: 'Venue no longer exists' });
-    }
-    const now = new Date().toISOString();
-
-    // The venue may have been assigned an owner (or another claim approved)
-    // since this claim was filed — deny rather than silently reassign.
-    if (venueDoc.data().ownerUserId) {
-      await claimRef.update({
-        status: 'denied',
-        resolvedBy: req.user.uid,
-        resolvedAt: now,
-        updatedAt: now,
-        denialReason: 'Venue already has an owner'
-      });
-      return res.status(409).json({ success: false, error: 'Venue already has an owner — claim denied' });
-    }
-
-    await rewardService.assignVenueOwner(claim.venueId, {
-      ownerUserId: claim.userId,
-      ownerEmail: claim.userEmail || venueDoc.data().ownerEmail
-    });
-    await claimRef.update({ status: 'approved', resolvedBy: req.user.uid, resolvedAt: now, updatedAt: now });
-    const emailSent = await readyStoreCodes({ venueId: claim.venueId, ...venueDoc.data() }, req.user.email);
-    // The store as it is called now, not as it was when the claim was filed
-    const currentName = venueDoc.data().venueName || venueDoc.data().placeName || claim.venueName || claim.placeName || null;
-
-    // Tell the new owner (in-app + push) — approval otherwise happens silently.
-    try {
-      const notificationService = require('../../services/notificationService');
-      await notificationService.notifyStoreClaimApproved({ ...claim, venueName: currentName, placeName: currentName }, claimRef.id, claim.venueId);
-    } catch (notifyError) {
-      console.error('⚠️ Claim-approved notification failed:', notifyError.message);
-    }
-
-    // And by email — the durable record, plus the Business-tier walkthrough
-    const approvedEmail = claim.contactEmail || claim.userEmail;
-    if (approvedEmail) {
-      emailService.sendClaimApprovedEmail(
-        approvedEmail,
-        claim.contactName || claim.userDisplayName || null,
-        currentName
-      ).catch((e) => console.error('⚠️ Claim-approved email failed:', e.message));
-    }
-
-    // Best-effort: close out competing pending claims for the same venue
-    try {
-      const others = await db.collection(STICKER_COLLECTIONS.VENUE_CLAIM_REQUESTS)
-        .where('venueId', '==', claim.venueId)
-        .get();
-      await Promise.all(others.docs
-        .filter((doc) => doc.id !== claimRef.id && doc.data().status === 'pending')
-        .map((doc) => doc.ref.update({
-          status: 'denied',
-          resolvedBy: req.user.uid,
-          resolvedAt: now,
-          updatedAt: now,
-          denialReason: 'Another claim was approved'
-        })));
-    } catch (cleanupError) {
-      console.error('⚠️ Failed to close competing claims:', cleanupError.message);
-    }
-
-    res.json({
-      success: true,
-      data: {
-        claim: { claimId: claimRef.id, ...claim, status: 'approved', resolvedBy: req.user.uid, resolvedAt: now },
-        venueId: claim.venueId,
-        ownerEmail: claim.userEmail || null,
-        emailSent
-      }
-    });
+    const result = await approveClaimById(req.params.claimId, { approverId: req.user.uid, approverEmail: req.user.email || null });
+    res.json({ success: true, data: result.data });
   } catch (error) {
+    if (error instanceof ServiceError) {
+      return res.status(error.status).json({ success: false, error: error.message });
+    }
     console.error('❌ approveClaim failed:', error);
     res.status(500).json({ success: false, error: 'Failed to approve claim' });
   }

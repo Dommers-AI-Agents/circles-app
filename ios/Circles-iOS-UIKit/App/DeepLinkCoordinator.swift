@@ -230,6 +230,10 @@ final class DeepLinkCoordinator: SceneCoordinator {
             // the web page count their own taps)
             if let tag { RewardsService.shared.recordStickerTap(code: code, tag: tag) }
             host?.rewardCodes.handleStickerCode(code)
+        case .scanAction(let code):
+            // A Scan Action QR: ScanActionCoordinator asks the server what it
+            // does (and stashes it while the app isn't ready)
+            ScanActionCoordinator.shared.start(code: code)
         case .upgradePaywall:
             // The share extension's "Upgrade in FavCircles" path (IAP can't
             // run in extensions). Consume the mailbox flag so the next cold
@@ -296,8 +300,9 @@ final class DeepLinkCoordinator: SceneCoordinator {
     func navigateToPlace(placeId: String, refUserId: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               let tabBarController = window?.rootViewController as? CirclesTabBarController else {
-            // Store the deep link target to navigate after login
-            UserDefaults.standard.set("place:\(placeId)", forKey: "pendingDeepLink")
+            // Store the deep link target to navigate after login; the sharer
+            // rides along so they still earn the points
+            UserDefaults.standard.set("place:\(placeId)" + (refUserId.map { ":\($0)" } ?? ""), forKey: "pendingDeepLink")
             return
         }
 
@@ -475,7 +480,8 @@ final class DeepLinkCoordinator: SceneCoordinator {
             case .shareToken(let circleId, let shareToken):
                 self.host?.inviteLinks.handleSharedCircleWithToken(circleId: circleId, shareToken: shareToken)
             case .circle(let id): self.navigateToCircle(circleId: id)
-            case .place(let id): self.navigateToPlace(placeId: id)
+            case .place(let id, let refUserId): self.navigateToPlace(placeId: id, refUserId: refUserId)
+            case .scanAction(let code): ScanActionCoordinator.shared.start(code: code)
             case .storeRewards(let id): self.navigateToStoreRewards(placeId: id)
             case .user(let id): self.navigateToUserProfile(userId: id)
             case .share(let id): self.host?.inviteLinks.handleSharedCircle(shareId: id)

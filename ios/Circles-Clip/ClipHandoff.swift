@@ -29,6 +29,9 @@ enum ClipHandoff {
         /// The clip made this account just now: the app runs its first run
         /// (name → favorite spot → people → tour) even with no store (2026-11-09)
         var isNewSignIn: Bool? = nil
+        /// A Scan Action QR (2026-11-11) the app opens on first launch: the
+        /// places the clip saved, or the guide / store setup it couldn't run
+        var pendingScanCode: String? = nil
     }
 
     /// What the full app's first launch shows: the store's page with a
@@ -83,6 +86,13 @@ enum ClipHandoff {
         guard var payload = read() else { return }
         payload.pendingStickerCode = code
         payload.handledStickerCode = nil
+        write(payload)
+    }
+
+    /// The app opens this Scan Action QR when it first launches
+    static func markScanPending(_ code: String) {
+        guard var payload = read() else { return }
+        payload.pendingScanCode = code
         write(payload)
     }
 

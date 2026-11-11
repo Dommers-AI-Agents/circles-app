@@ -16,6 +16,8 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     private var userLocation: CLLocation?
     var selectedCategory: PlaceCategory?
     var selectedTag: String? // Raw tag value from place.tags; nil = All
+    /// The nav bar's share item (a menu now, so it has no action to find it by)
+    private weak var shareButtonItem: UIBarButtonItem?
     private var isSharedViaLink: Bool = false
     private lazy var shareController = CircleShareController(presenter: self)
     private lazy var placesLoader: CirclePlacesLoader = {
@@ -753,8 +755,30 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         // Navigation bar buttons
         var rightBarButtons: [UIBarButtonItem] = []
         
-        // Always show share button
-        let shareButton = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareButtonTapped))
+        // Always show share button: the circle's link, or a QR of the places
+        // showing (its filter applied) to hold up (Scan Actions, 2026-11-11)
+        let shareButton = UIBarButtonItem(image: UIImage(systemName: "square.and.arrow.up"), menu: UIMenu(children: [
+            UIDeferredMenuElement.uncached { [weak self] provide in
+                guard let self else { return provide([]) }
+                let count = self.filteredPlaces.count
+                var items: [UIMenuElement] = [
+                    UIAction(title: "Share the Circle", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+                        self?.shareButtonTapped()
+                    }
+                ]
+                if count > 0 {
+                    let filtered = self.selectedCategory != nil || self.selectedTag != nil
+                    items.append(UIAction(title: count == 1 ? "Show QR for This Place" : "Show QR for These \(count) Places",
+                                          subtitle: filtered ? "Just what the filter shows" : nil,
+                                          image: UIImage(systemName: "qrcode")) { [weak self] _ in
+                        self?.showPlacesQR()
+                    })
+                }
+                provide(items)
+            }
+        ]))
+        shareButton.accessibilityLabel = "Share"
+        shareButtonItem = shareButton
         rightBarButtons.append(shareButton)
 
         // Check in at one of this circle's places (picker restricted to the
@@ -1279,8 +1303,23 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
 
     @objc private func shareButtonTapped() {
         shareController.shareCircle(circle, placeCount: places.count) { [weak self] in
-            self?.navigationItem.rightBarButtonItems?.first { $0.action == #selector(self?.shareButtonTapped) }
+            self?.shareButtonItem
         }
+    }
+
+    /// One QR for the places showing, so the person across the table saves
+    /// the ones they want (Scan Actions, 2026-11-11)
+    private func showPlacesQR() {
+        let shown = filteredPlaces
+        if shown.count == 1, let place = shown.first {
+            ScanCodeSheetViewController.presentPlace(place, from: self)
+            return
+        }
+        let title = ScanActionCopy.setTitle(circleName: circle.name, category: selectedCategory?.displayName, tag: selectedTag)
+        var source = ["circleId": circle.id]
+        if let category = selectedCategory { source["category"] = category.rawValue }
+        if let tag = selectedTag { source["tag"] = tag }
+        ScanCodeSheetViewController.presentSet(title: title, places: shown, source: source, from: self)
     }
 
     @objc private func editButtonTapped() {
@@ -2179,6 +2218,10 @@ extension CircleDetailViewController {
             actions.append(("Get Directions", .default, { [weak self] in self?.openPlaceInMaps(place) }))
         }
         actions.append(("Share", .default, { [weak self] in self?.sharePlace(place) }))
+        actions.append(("Show QR to Save", .default, { [weak self] in
+            guard let self else { return }
+            ScanCodeSheetViewController.presentPlace(place, from: self)
+        }))
         // No source view: centered on iPad, no arrow (as before)
         AlertPresenter.showActionSheet(title: place.name, message: place.address, actions: actions, from: self)
     }

@@ -115,6 +115,11 @@ class ClaimBusinessViewController: BaseViewController {
 
     // MARK: - Lifecycle
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        runScanGuideIfSent()
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Claim Your Business"
@@ -338,5 +343,18 @@ extension ClaimBusinessViewController: UITableViewDataSource, UITableViewDelegat
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         select(searchResults[indexPath.row])
+    }
+}
+
+// MARK: - Store setup walkthrough (a store owner's QR, 2026-11-11)
+
+extension ClaimBusinessViewController: ScanGuideHost {
+    func runScanGuideIfSent() {
+        guard OnboardingManager.shared.takeGuide(.storeSetup) else { return }
+        let copy = ScreenGuideCopy.stops(.storeSetup)
+        ScreenGuide.run([
+            ScreenGuide.Stop(copy: copy[0], target: { [weak self] in self?.searchBar }),
+            ScreenGuide.Stop(copy: copy[1], target: { nil })
+        ], finish: ScreenGuideCopy.finish(.storeSetup), in: self, onBack: {})
     }
 }

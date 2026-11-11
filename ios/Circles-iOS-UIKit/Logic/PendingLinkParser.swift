@@ -64,7 +64,11 @@ enum PendingLink: Equatable {
     // "type:payload" links
     case shareToken(circleId: String, shareToken: String)
     case circle(id: String)
-    case place(id: String)
+    /// "place:<id>" or "place:<id>:<refUserId>": the sharer rides along so
+    /// they still earn the points after a sign-in (it used to be dropped)
+    case place(id: String, refUserId: String? = nil)
+    /// "scan:<code>": a Scan Action QR opened before the app was ready
+    case scanAction(code: String)
     /// "rewards:<placeId>": a store's Get Rewards, from its Wallet card, before the app was ready
     case storeRewards(placeId: String)
     case user(id: String)
@@ -113,7 +117,8 @@ enum PendingLinkParser {
             guard components.count >= 3 else { return nil }
             return .shareToken(circleId: payload, shareToken: String(components[2]))
         case "circle": return .circle(id: payload)
-        case "place": return .place(id: payload)
+        case "place": return .place(id: payload, refUserId: components.count >= 3 ? String(components[2]) : nil)
+        case "scan": return ScanActionLink.code(payload).map(PendingLink.scanAction)
         case "rewards": return .storeRewards(placeId: payload)
         case "user": return .user(id: payload)
         case "share": return .share(id: payload)

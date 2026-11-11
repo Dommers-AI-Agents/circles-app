@@ -77,6 +77,10 @@ enum DeepLinkDestination: Equatable {
     /// A shared home tab — `/app/tab/<local|widgets>` or `circles://tab/<slug>`
     /// (the header's Share button). Lands on that tab of the home screen.
     case homeTab(HomeContentSegment)
+    /// A Scan Action QR — `/q/<code>` or `circles://q/<code>` (2026-11-11):
+    /// save a place or a set of places, a "show me how" guide, or a store
+    /// owner's setup. ScanActionCoordinator asks the server what the code does.
+    case scanAction(code: String)
 }
 
 /// Interprets universal links (https://api.favcircles.com/…) and the custom
@@ -163,6 +167,8 @@ struct DeepLinkRouter {
             return parts.count >= 2 ? .userProfile(id: parts[1]) : nil
         case "connect":
             return parts.count >= 2 ? .connectionInvite(userId: parts[1], referralCode: query(url, "code"), inviteToken: query(url, "t")) : nil
+        case "q":
+            return parts.count >= 2 ? ScanActionLink.code(parts[1]).map(DeepLinkDestination.scanAction) : nil
         case "s":
             // Physical sticker QR code: https://<backend>/s/<code>, or an
             // NFC sticker's tagged link /s/<code>?t=<tag>
@@ -224,6 +230,8 @@ struct DeepLinkRouter {
             return .clubJoin(token: hostPathId)
         case "tab" where !hostPathId.isEmpty:
             return HomeContentSegment(shareSlug: hostPathId).map(DeepLinkDestination.homeTab)
+        case "q" where !hostPathId.isEmpty:
+            return ScanActionLink.code(hostPathId).map(DeepLinkDestination.scanAction)
         case "network":
             return .network
         case "settings" where url.path == "/notifications":
@@ -264,6 +272,8 @@ struct DeepLinkRouter {
             return HomeContentSegment(shareSlug: parts[2]).map(DeepLinkDestination.homeTab)
         case "connect" where parts.count >= 3:
             return .connectionInvite(userId: parts[2], referralCode: query(url, "code"), inviteToken: query(url, "t"))
+        case "q" where parts.count >= 3:
+            return ScanActionLink.code(parts[2]).map(DeepLinkDestination.scanAction)
         default:
             return nil
         }
