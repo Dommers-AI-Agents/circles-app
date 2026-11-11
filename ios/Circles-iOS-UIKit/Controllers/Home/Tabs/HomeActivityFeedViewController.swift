@@ -133,12 +133,15 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         // Sal checked in twice at Pete & Elda's because the first never showed).
         // The server writes the feed row before it answers, so merging the
         // newest rows now finds it; the live SSE echo is only a backup.
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleOwnActivityPosted),
-            name: .checkInCreated,
-            object: nil
-        )
+        // Same for a moment you post (the server writes its row before answering)
+        for name in [Notification.Name.checkInCreated, .momentUploaded] {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleOwnActivityPosted),
+                name: name,
+                object: nil
+            )
+        }
     }
 
     @objc private func handleOwnActivityPosted() {

@@ -446,6 +446,7 @@ class VideoLinkInputViewController: UIViewController {
                     switch result {
                     case .success(let response):
                         if response.success, let video = response.data {
+                            NotificationCenter.default.post(name: .momentUploaded, object: nil, userInfo: ["moment": video])
                             self?.delegate?.videoLinkInputDidFinish(with: video)
                             self?.dismiss(animated: true)
                         } else {

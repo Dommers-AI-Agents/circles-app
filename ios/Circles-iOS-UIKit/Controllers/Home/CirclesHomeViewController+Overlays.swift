@@ -128,8 +128,13 @@ extension CirclesHomeViewController {
     }
     
     func sseServiceDidConnect(_ service: SSEService) {
-        // Connection established
         Logger.info("SSE connection established")
+        // Live events only flow while connected; anything posted while the
+        // stream was down (app in the background, a dropped connection) is
+        // fetched now, so the feed never waits for a pull-to-refresh.
+        DispatchQueue.main.async { [weak self] in
+            self?.refreshActivityFeedWithNewItem()
+        }
     }
     
     func sseServiceDidDisconnect(_ service: SSEService, error: Error?) {

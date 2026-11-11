@@ -135,6 +135,8 @@ extension Notification.Name {
     static let conversationUpdated = Notification.Name("ConversationUpdated")
     static let conversationsUpdated = Notification.Name("ConversationsUpdated")
     static let momentDeleted = Notification.Name("MomentDeleted")
+    /// You posted a moment (userInfo "moment"). Posted once by the upload or
+    /// link screen; the home Activity tab merges the new row on it.
     static let momentUploaded = Notification.Name("MomentUploaded")
     static let navigateToHome = Notification.Name("NavigateToHome")
     static let navigateToPiggyBank = Notification.Name("NavigateToPiggyBank")

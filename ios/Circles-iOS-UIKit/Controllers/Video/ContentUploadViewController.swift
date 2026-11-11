@@ -120,9 +120,15 @@ class ContentUploadViewController: UIViewController {
 
     /// Every successful share ends here: remember its audience, then hand the
     /// moment on.
-    private func finishUpload(with moment: PlaceVideo) {
+    /// `announce: false` when the link screen already announced this moment.
+    private func finishUpload(with moment: PlaceVideo, announce: Bool = true) {
         AudienceMemory.save(AudienceMemory.Choice(tier: selectedVisibility.rawValue, listId: selectedAudienceListId),
                             for: .moment, userId: AuthService.shared.getUserId())
+        // Every moment posted from this screen (home or profile) says so once;
+        // the home feed merges its row right away instead of waiting for SSE.
+        if announce {
+            NotificationCenter.default.post(name: .momentUploaded, object: nil, userInfo: ["moment": moment])
+        }
         delegate?.contentUploadDidFinish(with: moment)
     }
     
@@ -629,7 +635,7 @@ extension ContentUploadViewController: VideoRecordingDelegate {
 // MARK: - VideoLinkInputDelegate
 extension ContentUploadViewController: VideoLinkInputDelegate {
     func videoLinkInputDidFinish(with video: PlaceVideo) {
-        finishUpload(with: video)
+        finishUpload(with: video, announce: false)
         dismiss(animated: true)
     }
     

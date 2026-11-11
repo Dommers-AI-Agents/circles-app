@@ -79,13 +79,6 @@ extension ProfileViewController: ContentUploadDelegate {
             fetchUserVideos() // This will reload the moments collection
         }
         
-        // Track activity
-        NotificationCenter.default.post(
-            name: .momentUploaded,
-            object: nil,
-            userInfo: ["moment": moment]
-        )
-        
         // Navigate to home tab to show the new moment in the feed
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             // Find the tab bar controller and switch to home tab
