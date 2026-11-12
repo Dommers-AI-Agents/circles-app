@@ -12,7 +12,8 @@ struct TourTelemetryTests {
 
     @Test func everyTourStepIdIsOneTheServerAccepts() {
         let serverSteps: Set<String> = ["tour_add_places", "tour_follow_users", "tour_view_activity", "tour_see_widgets",
-                                        "tour_moments", "tour_locals", "tour_check_in", "tour_rewards", "tour_profile", "tour_keep_going"]
+                                        "tour_moments", "tour_locals", "tour_check_in", "tour_rewards", "tour_notifications", "tour_invite",
+                                        "tour_help", "tour_my_network", "tour_messages", "tour_profile", "tour_keep_going"]
         for step in TutorialStep.allCases { #expect(serverSteps.contains(step.rawValue), "\(step)") }
         #expect(serverSteps.contains(TourTelemetry.keepGoingStep))
     }

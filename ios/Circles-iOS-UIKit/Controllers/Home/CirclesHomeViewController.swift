@@ -1254,9 +1254,14 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         case .seeWidgets: target = contentSegmentedControl; arrow = .bottom
         case .moments: target = contentSegmentedControl; arrow = .bottom; segment = .moments
         case .locals: target = contentSegmentedControl; arrow = .bottom; segment = .specials
-        case .checkIn: target = nil; arrow = .top
-        case .rewards: target = rewardsBarButton?.customView; arrow = .top
-        case .profile: target = tabBarController?.tabBar; arrow = .bottom
+        case .checkIn: target = Self.barButtonView(navigationItem.rightBarButtonItems?.first); arrow = .top
+        case .rewards: target = Self.barButtonView(rewardsBarButton); arrow = .top
+        case .notifications: target = Self.barButtonView(notificationBarButton); arrow = .top
+        case .invite: target = Self.barButtonView(navigationItem.leftBarButtonItems?.last); arrow = .top
+        case .help: target = Self.barButtonView(navigationItem.leftBarButtonItems?.first); arrow = .top
+        case .myNetwork: target = tabBarButtonView(index: 1); arrow = .bottom
+        case .messages: target = tabBarButtonView(index: 2); arrow = .bottom
+        case .profile: target = tabBarButtonView(index: 3) ?? tabBarController?.tabBar; arrow = .bottom
         }
 
         if target === contentSegmentedControl {
@@ -1283,6 +1288,24 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
                 onLearnMore: self.tourShowMe(for: step),
                 onVideo: step == .addPlaces ? { [weak self] in self?.playTourVideo() } : nil)
         }
+    }
+
+    /// The on-screen view of a bar button: its custom view (the bell and
+    /// rewards carry badges) or the bar's own button for a plain item
+    private static func barButtonView(_ item: UIBarButtonItem?) -> UIView? {
+        guard let item else { return nil }
+        if let custom = item.customView { return custom }
+        return item.value(forKey: "view") as? UIView
+    }
+
+    /// One tab's button on the tab bar, left to right, so a bubble can point
+    /// at My Network, Messages or Me rather than the whole bar
+    private func tabBarButtonView(index: Int) -> UIView? {
+        guard let bar = tabBarController?.tabBar else { return nil }
+        let buttons = bar.subviews
+            .filter { String(describing: type(of: $0)).contains("TabBarButton") }
+            .sorted { $0.frame.minX < $1.frame.minX }
+        return index < buttons.count ? buttons[index] : nil
     }
 
     /// Small beat between bubbles so the dismiss/present don't overlap
@@ -1313,6 +1336,11 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
             OnboardingManager.shared.pendingGuide = .rewards
             self?.rewardsButtonTapped()
         }
+        case .notifications: return { [weak self] in self?.notificationButtonTapped() }
+        case .invite: return { [weak self] in self?.inviteButtonTapped() }
+        case .help: return { [weak self] in self?.helpButtonTapped() }
+        case .myNetwork: return { [weak self] in self?.tabBarController?.selectedIndex = 1 }
+        case .messages: return { [weak self] in self?.tabBarController?.selectedIndex = 2 }
         case .profile: return { [weak self] in
             OnboardingManager.shared.pendingGuide = .profile
             guard let tabs = self?.tabBarController, let count = tabs.viewControllers?.count else { return }

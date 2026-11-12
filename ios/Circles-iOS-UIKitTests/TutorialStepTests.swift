@@ -7,9 +7,18 @@ struct TutorialStepTests {
         #expect(Array(TutorialStep.allCases.prefix(4)) == TutorialStep.basics)
         #expect(TutorialStep.addPlaces.progressText == "1 of 4")
         #expect(TutorialStep.seeWidgets.progressText == "4 of 4")
-        #expect(TutorialStep.moments.progressText == "1 of 5")
-        #expect(TutorialStep.profile.progressText == "5 of 5")
+        #expect(TutorialStep.moments.progressText == "1 of 10")
+        #expect(TutorialStep.profile.progressText == "10 of 10")
         #expect(!TutorialStep.checkIn.isBasic)
+    }
+
+    /// Every button along the top and the bottom has a bubble (Wes, 2026-11-12)
+    @Test func theTopAndBottomButtonsEachGetABubble() {
+        let extras = TutorialStep.allCases.filter { !$0.isBasic }
+        #expect(extras.contains(.checkIn) && extras.contains(.rewards) && extras.contains(.notifications)
+                && extras.contains(.invite) && extras.contains(.help))
+        #expect(extras.contains(.myNetwork) && extras.contains(.messages) && extras.contains(.profile))
+        #expect(extras.last == .profile)
     }
 
     @Test func everyStepSaysSomething() {

@@ -27,6 +27,13 @@ enum TutorialStep: String, CaseIterable {
     case locals = "tour_locals"
     case checkIn = "tour_check_in"
     case rewards = "tour_rewards"
+    // Every button along the top and the bottom gets its own bubble (Wes,
+    // 2026-11-12); Skip ends the tour at any point
+    case notifications = "tour_notifications"
+    case invite = "tour_invite"
+    case help = "tour_help"
+    case myNetwork = "tour_my_network"
+    case messages = "tour_messages"
     case profile = "tour_profile"
 
     /// The four everyone sees; the rest follow "Keep going"
@@ -58,6 +65,16 @@ enum TutorialStep: String, CaseIterable {
             return "Check In"
         case .rewards:
             return "FavCoins and Rewards"
+        case .notifications:
+            return "Your Notifications"
+        case .invite:
+            return "Invite Friends"
+        case .help:
+            return "Help, Any Time"
+        case .myNetwork:
+            return "My Network"
+        case .messages:
+            return "Messages"
         case .profile:
             return "Your Profile"
         }
@@ -82,6 +99,16 @@ enum TutorialStep: String, CaseIterable {
             return "Tap the walking person when you're somewhere you love. Your check-ins build your history and earn rewards."
         case .rewards:
             return "Your FavCoins and the points you've earned at stores live here. Scan a store's code at the register to earn more."
+        case .notifications:
+            return "The bell: new followers, comments on your places, rewards ready to use, and what your people are up to."
+        case .invite:
+            return "Tap to invite a friend. Their favorites show up on your map, and yours on theirs."
+        case .help:
+            return "Stuck? The question mark has the guides, the tutorial video and a way to reach us."
+        case .myNetwork:
+            return "The people you follow, who follows you, and people worth exploring — plus requests waiting for you."
+        case .messages:
+            return "Send a place to a friend, or chat about where to go next. Suggestions land here too."
         case .profile:
             return "Your map, circles and moments in one place. Share it so friends can follow you."
         }
@@ -315,7 +342,7 @@ class OnboardingManager {
         bubble.configureTour(title: step.title, description: step.description, arrowDirection: arrowDirection,
                              stepText: step.progressText, canGoBack: onBack != nil,
                              learnMore: onLearnMore != nil, video: onVideo != nil,
-                             skipTitle: step.isBasic ? "Skip" : "Done", nextTitle: isLast ? "Done" : "Next")
+                             skipTitle: "Skip", nextTitle: isLast ? "Done" : "Next")
         // Every bubble and button reaches the server (TourTelemetry), so a
         // new person's tour leaves a trace of where they stopped
         let report = { (action: TourTelemetry.Action) in NextStepService.shared.recordTour(step: step.rawValue, action: action) }
@@ -348,7 +375,7 @@ class OnboardingManager {
         }
 
         bubble.onSkip = { [weak self] in
-            report(step.isBasic ? .skip : .done)
+            report(.skip)
             self?.completeOnboarding()
         }
 
