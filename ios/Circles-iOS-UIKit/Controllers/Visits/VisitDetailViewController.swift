@@ -620,24 +620,14 @@ extension VisitDetailViewController: MKMapViewDelegate {
             preferredStyle: .actionSheet
         )
         
-        alertController.addAction(UIAlertAction(title: "Add to a Circle", style: .default) { [weak self] _ in
-            // Navigate to circle picker to add this POI
-            let circlePickerVC = VisitCirclePickerViewController()
-            circlePickerVC.onCirclesSelected = { circleIds in
-                guard let firstCircleId = circleIds.first else { return }
-                
-                // Navigate to AddPlaceViewController with the selected circle
-                let addPlaceVC = AddPlaceViewController(circleId: firstCircleId)
-                self?.navigationController?.pushViewController(addPlaceVC, animated: true)
-                
-                // Prefill the search with the POI name and coordinate
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    addPlaceVC.prefillSearchWithPlace(name: poiName, coordinate: coordinate)
-                }
+        alertController.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
+            // Add Place with this place filled in; the circle is chosen on its
+            // Circle card (Wes, 2026-11-11), not in a picker first
+            let addPlaceVC = AddPlaceViewController(circles: [])
+            self?.navigationController?.pushViewController(addPlaceVC, animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                addPlaceVC.prefillSearchWithPlace(name: poiName, coordinate: coordinate)
             }
-            
-            let nav = UINavigationController(rootViewController: circlePickerVC)
-            self?.present(nav, animated: true)
         })
         
         alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))

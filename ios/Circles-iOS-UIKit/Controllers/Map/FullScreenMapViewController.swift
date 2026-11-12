@@ -1684,23 +1684,18 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     // MARK: - Add Place from Map
 
-    /// Same circle-selection rules as the home quick-add button: one circle or
-    /// a remembered last-used circle goes straight to the add screen,
-    /// otherwise the circle picker.
+    /// Same rule as Home's Add Place button: one circle goes straight in,
+    /// otherwise Add Place opens with none chosen and the person picks on its
+    /// Circle card after finding the place (Wes, 2026-11-09/11).
     @objc private func addPlaceChipTapped() {
         CircleService.shared.fetchUserCircles { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 switch result {
+                case .success(let circles) where circles.count == 1:
+                    self.presentAddPlace(circleId: circles[0].id, circles: circles)
                 case .success(let circles) where !circles.isEmpty:
-                    if circles.count == 1 {
-                        self.presentAddPlace(circleId: circles[0].id, circles: circles)
-                    } else if let lastUsedId = UserDefaults.standard.string(forKey: AddPlaceViewController.lastUsedCircleKey),
-                              circles.contains(where: { $0.id == lastUsedId }) {
-                        self.presentAddPlace(circleId: lastUsedId, circles: circles) { $0.circleWasRemembered = true }
-                    } else {
-                        self.presentCirclePickerForAddPlace(circles: circles)
-                    }
+                    self.presentAddPlace(circles: circles)
                 case .success:
                     self.presentCreateCircleThenAddPlace()
                 case .failure(let error):
@@ -1714,37 +1709,21 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// the add screen goes up modally in its own nav controller — on save it
     /// dismisses itself and the user lands back on the map.
     private func presentAddPlace(circleId: String, circles: [Circle]? = nil, configure: ((AddPlaceViewController) -> Void)? = nil) {
-        let addPlaceVC = AddPlaceViewController(circleId: circleId, circles: circles)
+        present(addPlace: AddPlaceViewController(circleId: circleId, circles: circles), configure: configure)
+    }
+
+    /// Add Place with no circle chosen yet: the Circle card asks before Save.
+    private func presentAddPlace(circles: [Circle], configure: ((AddPlaceViewController) -> Void)? = nil) {
+        present(addPlace: AddPlaceViewController(circles: circles), configure: configure)
+    }
+
+    private func present(addPlace addPlaceVC: AddPlaceViewController, configure: ((AddPlaceViewController) -> Void)?) {
         let navController = UINavigationController(rootViewController: addPlaceVC)
         navController.modalPresentationStyle = .fullScreen
         awaitingPlaceAddedFromMap = true
         present(navController, animated: true) {
             configure?(addPlaceVC)
         }
-    }
-
-    private func presentCirclePickerForAddPlace(circles: [Circle]) {
-        // Circles arrive in the user's own order (same as the profile grid).
-        let circlePickerVC = CirclePickerViewController(circles: circles)
-        circlePickerVC.onCircleSelected = { [weak self] circle in
-            self?.presentAddPlace(circleId: circle.id, circles: circles)
-        }
-        circlePickerVC.onCreateNewCircle = { [weak self] in
-            self?.presentCreateCircleThenAddPlace()
-        }
-
-        let navController = UINavigationController(rootViewController: circlePickerVC)
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            navController.modalPresentationStyle = .formSheet
-            navController.preferredContentSize = CGSize(width: 400, height: 600)
-        } else {
-            navController.modalPresentationStyle = .pageSheet
-            if let sheet = navController.sheetPresentationController {
-                sheet.detents = [.medium(), .large()]
-                sheet.prefersGrabberVisible = true
-            }
-        }
-        present(navController, animated: true)
     }
 
     private func presentCreateCircleThenAddPlace() {
@@ -2141,8 +2120,8 @@ extension FullScreenMapViewController: MapPOIAddCoordinatorDelegate {
         findExistingPlace(name: name, coordinate: coordinate)
     }
 
-    func poiCoordinator(_ coordinator: MapPOIAddCoordinator, openAddPlaceIn circleId: String, circles: [Circle]?, configure: @escaping (AddPlaceViewController) -> Void) {
-        presentAddPlace(circleId: circleId, circles: circles, configure: configure)
+    func poiCoordinator(_ coordinator: MapPOIAddCoordinator, openAddPlaceWith circles: [Circle], configure: @escaping (AddPlaceViewController) -> Void) {
+        presentAddPlace(circles: circles, configure: configure)
     }
 
     func poiCoordinator(_ coordinator: MapPOIAddCoordinator, didChooseExistingPlace place: Place) {

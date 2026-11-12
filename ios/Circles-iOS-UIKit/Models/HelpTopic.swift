@@ -279,7 +279,7 @@ class HelpContentProvider {
                 1. Tap to open full-screen map
                 2. Browse or search locations
                 3. Tap a place marker
-                4. Select "Add to Circle"
+                4. Select "Add Place", then choose its circle and Save
                 
                 **Add a lot at once:** tap Add Place → **Add from photos** to save the places in your photos. See "Adding Places from Your Photos."
 
@@ -690,9 +690,9 @@ class HelpContentProvider {
                 
                 **Adding from map:**
                 1. Tap any location
-                2. Select "Add to Circle"
-                3. Choose circles
-                4. Confirm
+                2. Select "Add Place"
+                3. Choose the circle it lives in
+                4. Save
                 
                 **Filter options:**
                 • By category
