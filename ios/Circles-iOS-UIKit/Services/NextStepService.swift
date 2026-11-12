@@ -45,6 +45,13 @@ final class NextStepService {
         APIService.shared.request(endpoint: "next-steps/events", method: .post, body: ["events": events]) { (_: Result<SimpleResponse, APIError>) in }
     }
 
+    /// Fire and forget: one home-tour bubble shown, or one of its buttons
+    func recordTour(step: String, action: TourTelemetry.Action) {
+        guard AuthService.shared.isLoggedIn else { return }
+        let body: [String: Any] = ["events": [TourTelemetry.event(step: step, action: action)]]
+        APIService.shared.request(endpoint: "next-steps/events", method: .post, body: body) { (_: Result<SimpleResponse, APIError>) in }
+    }
+
     /// Clear on sign-out: the next person's order is their own
     func reset() {
         order = []; boost = []; avoid = []; fetchedAt = nil

@@ -316,11 +316,16 @@ class OnboardingManager {
                              stepText: step.progressText, canGoBack: onBack != nil,
                              learnMore: onLearnMore != nil, video: onVideo != nil,
                              skipTitle: step.isBasic ? "Skip" : "Done", nextTitle: isLast ? "Done" : "Next")
+        // Every bubble and button reaches the server (TourTelemetry), so a
+        // new person's tour leaves a trace of where they stopped
+        let report = { (action: TourTelemetry.Action) in NextStepService.shared.recordTour(step: step.rawValue, action: action) }
         bubble.onBack = { [weak self] in
+            report(.back)
             self?.dismissCurrentBubble()
             onBack?()
         }
         bubble.onLearnMore = { [weak self] in
+            report(.learnMore)
             // Done with this step; the tour resumes when Home is back
             self?.completeStep(step)
             self?.isTourPaused = true
@@ -328,6 +333,7 @@ class OnboardingManager {
             onLearnMore?()
         }
         bubble.onVideo = { [weak self] in
+            report(.video)
             self?.isTourPaused = true
             self?.dismissCurrentBubble()
             onVideo?()
@@ -335,12 +341,14 @@ class OnboardingManager {
 
         // Set up actions
         bubble.onNext = { [weak self] in
+            report(isLast ? .done : .next)
             self?.completeStep(step)
             self?.dismissCurrentBubble()
             onAdvance?()
         }
 
         bubble.onSkip = { [weak self] in
+            report(step.isBasic ? .skip : .done)
             self?.completeOnboarding()
         }
 
@@ -350,6 +358,7 @@ class OnboardingManager {
 
         // Animate in
         bubble.show()
+        report(.shown)
 
         // Store reference
         currentBubbleView = bubble
@@ -364,13 +373,19 @@ class OnboardingManager {
                              description: "Want a quick look at Moments, Locals, check-ins, FavCoins and your profile?",
                              arrowDirection: .bottom, stepText: nil, canGoBack: false, learnMore: false, video: true,
                              skipTitle: "Done", nextTitle: "Keep going")
+        let report = { (action: TourTelemetry.Action) in NextStepService.shared.recordTour(step: TourTelemetry.keepGoingStep, action: action) }
         bubble.onNext = { [weak self] in
+            report(.keepGoing)
             self?.tourKeepGoing = true
             self?.dismissCurrentBubble()
             onKeepGoing()
         }
-        bubble.onSkip = { [weak self] in self?.completeOnboarding() }
+        bubble.onSkip = { [weak self] in
+            report(.done)
+            self?.completeOnboarding()
+        }
         bubble.onVideo = { [weak self] in
+            report(.video)
             self?.isTourPaused = true
             self?.dismissCurrentBubble()
             onVideo()
@@ -378,6 +393,7 @@ class OnboardingManager {
         viewController.view.addSubview(bubble)
         bubble.pointTo(nil, in: viewController.view)
         bubble.show()
+        report(.shown)
         currentBubbleView = bubble
     }
 
