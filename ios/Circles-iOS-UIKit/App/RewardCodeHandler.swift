@@ -22,6 +22,15 @@ final class RewardCodeHandler: SceneCoordinator {
         let adoption = KeychainService.shared.adoptClipCredentialsIfPresent()
         KeychainService.shared.markInstallLaunched()
         guard let result = adoption else { return }
+        if result.adopted, let token = KeychainService.shared.getAuthToken() {
+            // The API client read the keychain when it was first touched
+            // (AppDelegate, before this runs) — on a reinstall over an old
+            // session that was the OLD account's token, so every call went
+            // out as that person while the app believed it was the clip's
+            // account (2026-11-12: the first people sheet came back empty)
+            APIService.shared.setAuthToken(token)
+            if let refresh = KeychainService.shared.getRefreshToken() { APIService.shared.setRefreshToken(refresh) }
+        }
 
         // Clip users never saw the Safari landing page, so the one-shot
         // pasteboard check would just be a pointless paste-permission prompt

@@ -16,6 +16,9 @@ final class WelcomeConnectionsViewController: BaseViewController {
     override var loadsDataOnViewDidLoad: Bool { false }
 
     private let requests: [Connection]
+    /// The store or favorite they just saved, across the top of the wash
+    private let photoUrl: String?
+    private let backdrop = FirstRunBackdropView()
     private var recommendations: [User] = []
     private var followedIds = Set<String>()
     private var acceptedRequestIds = Set<String>()
@@ -25,8 +28,9 @@ final class WelcomeConnectionsViewController: BaseViewController {
     var onDismiss: (() -> Void)?
     private var didFireDismiss = false
 
-    init(requests: [Connection]) {
+    init(requests: [Connection], photoUrl: String? = nil) {
         self.requests = requests
+        self.photoUrl = photoUrl
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .formSheet
         if let sheet = sheetPresentationController {
@@ -50,7 +54,7 @@ final class WelcomeConnectionsViewController: BaseViewController {
     /// Presents over `presenter` when the account is young (<48h) and this
     /// account hasn't seen it. Requests waiting (if any) lead the sheet.
     @discardableResult
-    static func presentIfNeeded(from presenter: UIViewController, onDismiss: (() -> Void)? = nil) -> Bool {
+    static func presentIfNeeded(from presenter: UIViewController, photoUrl: String? = nil, onDismiss: (() -> Void)? = nil) -> Bool {
         guard let me = AuthService.shared.currentUser,
               let created = me.createdAt,
               Date().timeIntervalSince(created) < 48 * 3600,
@@ -62,7 +66,7 @@ final class WelcomeConnectionsViewController: BaseViewController {
         }
 
         UserDefaults.standard.set(true, forKey: seenKey(for: me.id))
-        let sheet = WelcomeConnectionsViewController(requests: incoming)
+        let sheet = WelcomeConnectionsViewController(requests: incoming, photoUrl: photoUrl)
         sheet.onDismiss = onDismiss
         presenter.present(sheet, animated: true)
         return true
@@ -119,6 +123,20 @@ final class WelcomeConnectionsViewController: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = Constants.Colors.background
+        // The brand wash, with their store's photo melting into it, not a
+        // flat dark page (Wes, 2026-11-12: "ugly blank boring")
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backdrop)
+        backdrop.showPhoto(from: photoUrl)
+        scrollView.backgroundColor = .clear
+        scrollView.delegate = self
+        if photoUrl != nil {
+            titleLabel.textColor = .white
+            titleLabel.layer.shadowColor = UIColor.black.cgColor
+            titleLabel.layer.shadowOpacity = 0.35
+            titleLabel.layer.shadowRadius = 6
+            titleLabel.layer.shadowOffset = .zero
+        }
 
         view.addSubview(scrollView)
         scrollView.addSubview(titleLabel)
@@ -137,6 +155,10 @@ final class WelcomeConnectionsViewController: BaseViewController {
 
         let guide = scrollView.contentLayoutGuide
         NSLayoutConstraint.activate([
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -193,7 +215,7 @@ final class WelcomeConnectionsViewController: BaseViewController {
 
     private func personRow(user: User?, title: String, detail: String, accessory: UIView?) -> UIView {
         let container = UIView()
-        container.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.08)
+        container.backgroundColor = UIColor.secondarySystemGroupedBackground.withAlphaComponent(0.94)
         container.layer.cornerRadius = 14
 
         let avatar = avatarView(for: user)
@@ -239,6 +261,28 @@ final class WelcomeConnectionsViewController: BaseViewController {
         return container
     }
 
+    /// A sentence in the list's own card style, for the states with no rows
+    private func noteRow(_ text: String) -> UIView {
+        let container = UIView()
+        container.backgroundColor = UIColor.secondarySystemGroupedBackground.withAlphaComponent(0.94)
+        container.layer.cornerRadius = 14
+        let label = UILabel()
+        label.text = text
+        label.font = .systemFont(ofSize: 15)
+        label.textColor = Constants.Colors.secondaryLabel
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 18),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -18),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16)
+        ])
+        return container
+    }
+
     private func requestRow(for request: Connection) -> UIView {
         personRow(
             user: request.connectedUser,
@@ -279,7 +323,12 @@ final class WelcomeConnectionsViewController: BaseViewController {
             method: .get
         ) { [weak self] (result: Result<DiscoveryUsersResponse, APIError>) in
             DispatchQueue.main.async {
-                guard let self = self, case .success(let response) = result else { return }
+                guard let self = self else { return }
+                guard case .success(let response) = result else {
+                    // Never a blank middle (Wes, 2026-11-12)
+                    self.contentStack.addArrangedSubview(self.noteRow(WelcomePeopleCopy.loadFailed))
+                    return
+                }
                 // People already in section 1 don't repeat below it — and the
                 // popular endpoint includes the caller, so never suggest
                 // following yourself
@@ -288,15 +337,38 @@ final class WelcomeConnectionsViewController: BaseViewController {
                 // Already followed (Wes and Brittany are followed for you at
                 // signup) don't need a Follow button
                 let following = Set(AuthService.shared.currentUser?.following ?? [])
+                let isFollowed = { (user: User) -> Bool in
+                    user.isFollowing == true || following.contains { IDNormalizer.isSameUser($0, user.id) }
+                }
+                let notMe = { (user: User) -> Bool in
+                    guard let me = myId else { return true }
+                    return !IDNormalizer.isSameUser(me, user.id)
+                }
                 self.recommendations = response.users
                     .filter { !requestSenderIds.contains($0.id) }
-                    .filter { user in !following.contains { IDNormalizer.isSameUser($0, user.id) } }
-                    .filter { user in
-                        guard let me = myId else { return true }
-                        return !IDNormalizer.isSameUser(me, user.id)
-                    }
+                    .filter { !isFollowed($0) }
+                    .filter(notMe)
                     .prefix(12).map { $0 }
-                guard !self.recommendations.isEmpty else { return }
+                guard !self.recommendations.isEmpty else {
+                    // Nobody new to suggest here yet: the people followed for
+                    // them at signup, so the page says who's on their map
+                    let followed = response.users.filter { isFollowed($0) && notMe($0) }.prefix(6)
+                    if followed.isEmpty {
+                        self.contentStack.addArrangedSubview(self.noteRow(WelcomePeopleCopy.nobodyYet))
+                    } else {
+                        self.contentStack.addArrangedSubview(Self.sectionHeader("You're already following"))
+                        for user in followed {
+                            let done = UIButton.smallActionButton(title: "Following ✓", style: .secondary)
+                            done.isEnabled = false
+                            self.contentStack.addArrangedSubview(self.personRow(
+                                user: user, title: user.displayName,
+                                detail: WelcomePeopleCopy.detail(reason: nil, places: user.placesCount ?? 0),
+                                accessory: done))
+                        }
+                        self.contentStack.addArrangedSubview(self.noteRow(WelcomePeopleCopy.moreLater))
+                    }
+                    return
+                }
 
                 self.contentStack.addArrangedSubview(Self.sectionHeader("Maps worth exploring"))
                 for user in self.recommendations {
@@ -366,8 +438,21 @@ final class WelcomeConnectionsViewController: BaseViewController {
     }
 }
 
+extension WelcomeConnectionsViewController: UIScrollViewDelegate {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        backdrop.follow(scrollOffset: scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
+    }
+}
+
 /// The line under a person on the first people list. Pure.
 enum WelcomePeopleCopy {
+    /// The lookup failed: say so instead of an empty page (2026-11-12)
+    static let loadFailed = "Couldn\u{2019}t load people right now. Find them any time on My Network."
+    /// Nobody new to suggest and nobody followed yet
+    static let nobodyYet = "You\u{2019}re the first map around here. Yours is the one others will explore."
+    /// Under the people followed for them at signup
+    static let moreLater = "As people near you build their maps, they\u{2019}ll show up on My Network."
+
     /// "Also loves Fresh Monkee · 45 places", "Near you · 12 places", "70 places on their map"
     static func detail(reason: String?, places: Int) -> String {
         let count = places == 1 ? "1 place" : "\(places) places"

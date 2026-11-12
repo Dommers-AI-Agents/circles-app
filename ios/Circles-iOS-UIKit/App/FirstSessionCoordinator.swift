@@ -201,7 +201,7 @@ final class FirstSessionCoordinator: SceneCoordinator {
             guard let self = self else { return }
             var presenter: UIViewController = tabBarController
             while let presented = presenter.presentedViewController { presenter = presented }
-            let presented = WelcomeConnectionsViewController.presentIfNeeded(from: presenter) { [weak self] in
+            let presented = WelcomeConnectionsViewController.presentIfNeeded(from: presenter, photoUrl: self.firstFavoritePlace?.photos?.first) { [weak self] in
                 self?.continueOnboardingAfterContacts()
             }
             if !presented {

@@ -127,6 +127,13 @@ struct WelcomePeopleCopyTests {
         #expect(WelcomePeopleCopy.detail(reason: nil, places: 0) == "Just getting started")
         #expect(FirstFavoriteCopy.seeOnMapTitle(placeName: "Fresh Monkee") == "See Fresh Monkee on your map")
     }
+
+    /// The states that used to leave the sheet blank (2026-11-12)
+    @Test func everyEmptyStateHasWords() {
+        #expect(WelcomePeopleCopy.loadFailed.hasSuffix("My Network."))
+        #expect(WelcomePeopleCopy.nobodyYet.hasPrefix("You\u{2019}re the first map"))
+        #expect(WelcomePeopleCopy.moreLater.hasSuffix("My Network."))
+    }
 }
 
 struct SubscriptionMoveTests {
