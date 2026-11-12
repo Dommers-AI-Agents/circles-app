@@ -275,6 +275,7 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         let fallback: () -> Void = { [weak self] in
             self?.pushPlace(name: market.name, address: market.address, lat: market.lat, lng: market.lng,
                             globalPlaceId: nil, googlePlaceId: market.googlePlaceId, category: .retail,
+                            subcategory: "Farmers market",
                             photos: market.photoUrl.map { [$0] }, website: market.website, openingHours: market.openingHours)
         }
         // The real place page (days, hours, photos) when Google knows the market
@@ -299,12 +300,15 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
     }
 
-    /// One bubble: the event's link.
+    /// One bubble: the event's card (what, when, where, price) opening its
+    /// venue's place page in FavCircles, not the ticket site (Wes, 2026-11-12)
     func shareEvent(_ event: NearbyEvent) {
-        guard let url = URL(string: event.url) else { return }
-        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        activityVC.popoverPresentationController?.sourceView = tableView
-        present(activityVC, animated: true)
+        PlaceShareController.share(event: event, from: self, sourceView: tableView)
+    }
+
+    /// One bubble: the market's card (days, hours, where) opening its place page
+    func shareMarket(_ market: FarmersMarket) {
+        PlaceShareController.share(market: market, from: self, sourceView: tableView)
     }
 
     // MARK: - Actions
@@ -400,28 +404,17 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
         }
     }
 
-    /// Long-press share on a row: the deal's text plus the venue's place link
-    /// (or the App Store link when the venue has no linked place)
+    /// Long-press share on a row: one bubble, the deal's card opening the
+    /// store's place page (2026-11-12)
     func shareSpecial(_ item: SpecialItem) {
-        var shareText: String
-        switch item.kind {
-        case .offer(let offer):
-            shareText = "🎁 \(offer.title) at \(item.venue.venueName) — redeem it with points on FavCircles!"
-        case .announcement(let announcement):
-            shareText = "📣 \(announcement.title) at \(item.venue.venueName)"
-            if !announcement.message.isEmpty {
-                shareText += "\n\(announcement.message)"
-            }
-            shareText += "\nSeen on FavCircles:"
-        }
-
-        // The /place page resolves both save-doc and globalPlaces ids — a
-        // googlePlaceId won't resolve, so fall back to the App Store link
-        let url: URL = item.venue.globalPlaceId.map { ShareLinks.place(id: $0) } ?? ShareLinks.appStoreURL
-
-        let activityVC = UIActivityViewController(activityItems: [shareText, url], applicationActivities: nil)
-        activityVC.popoverPresentationController?.sourceView = tableView
-        present(activityVC, animated: true)
+        let venue = item.venue
+        let content = PlaceShareCopy.content(for: item)
+        let target = PlaceShareCopy.target(id: "", globalPlaceId: venue.globalPlaceId,
+                                           googlePlaceId: venue.googlePlaceId, addedBy: "")
+        let mint = PlaceShareController.MintDetails(name: venue.placeName ?? venue.venueName, address: venue.placeAddress,
+                                                    lat: venue.location?.lat, lng: venue.location?.lng,
+                                                    category: PlaceCategory(rawValue: venue.category ?? "") ?? .restaurant)
+        PlaceShareController.share(content: content, target: target, mint: mint, from: self, sourceView: tableView)
     }
 
     private func pushSpecialPlaceFallback(_ venue: OfferVenue) {
@@ -440,17 +433,17 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
     /// A place page built from what the row knows (no saved record behind it).
     private func pushPlace(name: String, address: String?, lat: Double?, lng: Double?,
                            globalPlaceId: String?, googlePlaceId: String?,
-                           id: String? = nil, category: PlaceCategory = .restaurant,
+                           id: String? = nil, category: PlaceCategory = .restaurant, subcategory: String? = nil,
                            photos: [String]? = nil, website: String? = nil, openingHours: [OpeningHour]? = nil) {
         let place = makePlace(name: name, address: address, lat: lat, lng: lng, globalPlaceId: globalPlaceId,
-                              googlePlaceId: googlePlaceId, id: id, category: category, photos: photos,
+                              googlePlaceId: googlePlaceId, id: id, category: category, subcategory: subcategory, photos: photos,
                               website: website, openingHours: openingHours)
         navigationController?.pushViewController(PlaceDetailViewController(place: place), animated: true)
     }
 
     private func makePlace(name: String, address: String?, lat: Double?, lng: Double?,
                            globalPlaceId: String?, googlePlaceId: String?,
-                           id: String? = nil, category: PlaceCategory = .restaurant,
+                           id: String? = nil, category: PlaceCategory = .restaurant, subcategory: String? = nil,
                            photos: [String]? = nil, website: String? = nil, openingHours: [OpeningHour]? = nil) -> Place {
         var location: GeoLocation?
         if let lat, let lng {
@@ -472,7 +465,7 @@ final class HomeSpecialsViewController: BaseViewController, HomeContentTab {
             videos: nil,
             category: category,
             customCategoryId: nil,
-            subcategory: nil,
+            subcategory: subcategory,
             rating: nil,
             userRatingsTotal: nil,
             notes: nil,
@@ -674,6 +667,9 @@ extension HomeSpecialsViewController: UITableViewDelegate, UITableViewDataSource
             let market = shownMarkets[indexPath.row]
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
                 UIMenu(children: [
+                    UIAction(title: "Share", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+                        self?.shareMarket(market)
+                    },
                     UIAction(title: "Directions", image: UIImage(systemName: "car.fill")) { [weak self] _ in
                         self?.openMarketDirections(market)
                     }

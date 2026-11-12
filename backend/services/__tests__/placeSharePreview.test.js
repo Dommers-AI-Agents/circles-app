@@ -50,3 +50,19 @@ test('a venue id is described only through a public save of it', async () => {
     .toEqual({ name: 'Venue', address: '2 Main St', photoUrl: 'v.jpg' });
   expect(await publicPlacePreview(db, 'venuePrivate')).toBeNull();
 });
+
+test('a Google-listed venue nobody has saved yet is described (a shared market, 2026-11-12)', async () => {
+  const db = await setup();
+  const put = (id, data) => db.collection('globalPlaces').doc(id).set(data);
+  await put('market', { name: 'San Tan Valley Farmers Market', address: 'San Tan Valley AZ 85140', googlePlaceId: 'g1', photos: ['m.jpg'] });
+  await put('noListing', { name: 'Backyard Market', address: '4 Oak St' });
+  await put('waiting', { name: 'Pop-up', address: '5 Oak St', googlePlaceId: 'g2', approvalStatus: 'pending' });
+  await put('street', { name: '116 W Catherine St', address: '116 W Catherine St, Charlotte, NC 28203, USA', googlePlaceId: 'g3' });
+  await put('privatelySaved', { name: 'Clinic', address: '6 Oak St', googlePlaceId: 'g4' });
+  await db.collection('places').doc('v9').set({ addedBy: 'o', circleId: 'priv', globalPlaceId: 'privatelySaved' });
+  expect(await publicPlacePreview(db, 'market'))
+    .toEqual({ name: 'San Tan Valley Farmers Market', address: 'San Tan Valley AZ 85140', photoUrl: 'm.jpg' });
+  for (const id of ['noListing', 'waiting', 'street', 'privatelySaved']) {
+    expect(await publicPlacePreview(db, id)).toBeNull();
+  }
+});

@@ -1712,58 +1712,9 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
         present(navController, animated: true)
     }
     
+    /// The place page's share: one bubble with the place's card (2026-11-12)
     func sharePlace(_ place: Place) {
-        // Create a formatted string with place name prominently displayed
-        var shareText = "Check out \(place.name)!"
-        
-        if let description = place.description, !description.isEmpty {
-            shareText += "\n\n\(description)"
-        }
-        
-        // Category
-        shareText += "\n\n🏷️ \(place.category.displayName)"
-        
-        // Address
-        shareText += "\n📍 \(place.address)"
-        
-        // Rating if available
-        if let rating = place.rating {
-            let stars = String(repeating: "⭐", count: Int(rating.rounded()))
-            shareText += "\n\(stars) \(rating)/5.0"
-        }
-        
-        // Contact info if available
-        if let phone = place.phone, !phone.isEmpty {
-            shareText += "\n📞 \(phone)"
-        }
-        
-        if let website = place.website, !website.isEmpty {
-            shareText += "\n🌐 \(website)"
-        }
-        
-        // Add to your places message
-        shareText += "\n\n➕ Add this place to your Circles!"
-        
-        shareText += "\n\nSaved on FavCircles — see it (and who recommends it) here:"
-
-        // The Circles place link is THE link of the share: opens in-app when
-        // installed (carrying share attribution so the sharer earns points),
-        // renders a preview page with App Store fallback otherwise
-        let activityItems: [Any] = [shareText, ShareLinks.place(id: place.id)]
-        
-        let activityViewController = UIActivityViewController(
-            activityItems: activityItems,
-            applicationActivities: nil
-        )
-        
-        // For iPad
-        if let popover = activityViewController.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-            popover.permittedArrowDirections = []
-        }
-        
-        present(activityViewController, animated: true)
+        PlaceShareController.share(place: place, from: self)
     }
     
     func openPlaceInMaps(_ place: Place) {

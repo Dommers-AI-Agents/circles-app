@@ -8,6 +8,8 @@
 // place id, private ones included (security audit 2026-10-01).
 
 const { canViewCircle, isPlaceVisibleToViewer, canSeePlace } = require('./visibility');
+const { isHiddenVenue } = require('./placeApproval');
+const { isStreetLineName } = require('./googleAddressGuard');
 
 const isLive = (data) => !!data && (data.deletedAt === null || data.deletedAt === undefined);
 
@@ -45,6 +47,15 @@ async function publicPlacePreview(db, placeId) {
           shown = { ...venueDoc.data(), photos: d.data().photos };
           break;
         }
+      }
+      // A business with a Google listing that nobody has saved yet (a shared
+      // farmers market or event venue, 2026-11-12) is public already. Once
+      // anyone saves it, their privacy decides, as above. Never a venue
+      // waiting for approval, and never one that is just a street address.
+      const venue = venueDoc.data();
+      if (!shown && saves.empty && isLive(venue) && venue.googlePlaceId
+          && !isHiddenVenue(venue) && !isStreetLineName(venue.name, venue.address)) {
+        shown = venue;
       }
     }
   }

@@ -29,6 +29,34 @@ enum OpeningHoursFormatter {
         return "Hours not available"
     }
 
+    /// The whole week on one line, days with the same hours grouped:
+    /// "Sat 8 AM–1 PM", "Mon, Tue 9 AM–5 PM · Sat 10 AM–2 PM" (the server's
+    /// market line, marketDetails.hoursFrom). nil when nothing is known.
+    static func weekSummary(_ hours: [OpeningHour]) -> String? {
+        let dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        var order: [String] = []
+        var days: [String: Set<Int>] = [:]
+        for row in hours where row.isClosed != true && (0...6).contains(row.day) {
+            let label: String
+            if let open = row.open, let close = row.close {
+                if open == "00:00" && close == "23:59" { label = "open 24 hours" } else { label = "\(time(open))–\(time(close))" }
+            } else if let open = row.open {
+                label = "from \(time(open))"
+            } else if let legacy = row.hours, !legacy.isEmpty {
+                label = legacy
+            } else {
+                continue
+            }
+            if days[label] == nil { order.append(label) }
+            days[label, default: []].insert(row.day)
+        }
+        guard !order.isEmpty else { return nil }
+        if order.count == 1, order[0] == "open 24 hours", days[order[0]]?.count == 7 { return "Open 24 hours" }
+        return order.map { label in
+            (days[label] ?? []).sorted().map { dayNames[$0] }.joined(separator: ", ") + " " + label
+        }.joined(separator: " · ")
+    }
+
     static func todayIndex(calendar: Calendar = .current, now: Date = Date()) -> Int {
         calendar.component(.weekday, from: now) - 1 // 0 for Sunday, 1 for Monday, etc.
     }

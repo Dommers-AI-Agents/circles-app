@@ -290,8 +290,10 @@ final class DeepLinkCoordinator: SceneCoordinator {
                         navController.pushViewController(detailVC, animated: true)
                     }
                 case .failure:
-                    // Show error alert
-                    break
+                    AlertPresenter.showError(
+                        title: "Circle Unavailable",
+                        message: "This circle couldn't be opened. It may be private or no longer on FavCircles.",
+                        from: tabBarController.selectedViewController ?? tabBarController)
                 }
             }
         }
@@ -323,8 +325,11 @@ final class DeepLinkCoordinator: SceneCoordinator {
                         navController.pushViewController(detailVC, animated: true)
                     }
                 case .failure:
-                    // Show error alert
-                    break
+                    // A dead link used to do nothing at all (2026-11-12)
+                    AlertPresenter.showError(
+                        title: "Place Unavailable",
+                        message: "This place couldn't be opened. It may be private or no longer on FavCircles.",
+                        from: tabBarController.selectedViewController ?? tabBarController)
                 }
             }
         }
@@ -352,8 +357,10 @@ final class DeepLinkCoordinator: SceneCoordinator {
                             navController.pushViewController(profileVC, animated: true)
                         }
                     case .failure:
-                        // Show error alert
-                        break
+                        AlertPresenter.showError(
+                            title: "Profile Unavailable",
+                            message: "This profile couldn't be opened right now.",
+                            from: tabBarController.selectedViewController ?? tabBarController)
                     }
                 }
             }

@@ -1824,48 +1824,10 @@ class PlaceDetailViewController: BaseViewController {
         ScanCodeSheetViewController.presentPlace(place, from: self)
     }
 
+    /// One bubble: a card with the place's key facts whose tap opens this
+    /// page in FavCircles (Wes, 2026-11-12), not a block of text and a website
     @objc private func shareButtonTapped() {
-        // Create a formatted string with place details
-        var shareText = "📍 \(place.name)"
-
-        if let description = place.description, !description.isEmpty {
-            shareText += "\n\(description)"
-        }
-
-        shareText += "\n\(place.address)"
-
-        if let phone = place.phone {
-            shareText += "\n📞 \(phone)"
-        }
-
-        if let website = place.website {
-            shareText += "\n🌐 \(website)"
-        }
-
-        if let rating = place.rating {
-            let stars = String(repeating: "⭐", count: Int(rating.rounded()))
-            shareText += "\n\(stars) \(rating)/5.0"
-        }
-
-        shareText += "\n\nSaved on FavCircles — see it (and who recommends it) here:"
-
-        // The Circles place link is THE link of the share: with the app
-        // installed it opens the place directly (carrying share attribution
-        // so the sharer earns points when the recipient adds it); without
-        // the app it renders a preview page with an App Store fallback
-        let activityItems: [Any] = [shareText, ShareLinks.place(id: place.id)]
-
-        let activityViewController = UIActivityViewController(
-            activityItems: activityItems,
-            applicationActivities: nil
-        )
-        
-        // For iPad
-        if let popover = activityViewController.popoverPresentationController {
-            popover.barButtonItem = navigationItem.rightBarButtonItem
-        }
-        
-        present(activityViewController, animated: true)
+        PlaceShareController.share(place: place, from: self, barButtonItem: navigationItem.rightBarButtonItem)
     }
     
     @objc private func getRewardsTapped() {
