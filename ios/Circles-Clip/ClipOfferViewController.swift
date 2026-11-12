@@ -18,6 +18,7 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
     private let brandMark = ClipTheme.brandMarkView(side: 40)
     private lazy var brandHeader = ClipTheme.brandHeader(mark: brandMark)
     private let spinner = UIActivityIndicatorView(style: .large)
+    private let loadingLabel = UILabel()
     private let contentStack = UIStackView()
     private let hookLabel = ClipTheme.label(ClipTheme.serif(46))
     private let nameLabel = ClipTheme.label(.systemFont(ofSize: 22, weight: .semibold))
@@ -105,6 +106,16 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
         spinner.translatesAutoresizingMaskIntoConstraints = false
         spinner.startAnimating()
         view.addSubview(spinner)
+        // What this scan is for, under the spinner, before the store loads
+        // (Wes, 2026-11-12: not "checking rewards" — a window card saves the
+        // store, the join card joins). The store's name replaces it once known.
+        loadingLabel.text = code == ClipSceneDelegate.genericJoinCode ? "Setting you up to join\u{2026}" : "Setting you up to save this store\u{2026}"
+        loadingLabel.textColor = UIColor.white.withAlphaComponent(0.85)
+        loadingLabel.font = .systemFont(ofSize: 15, weight: .medium)
+        loadingLabel.textAlignment = .center
+        loadingLabel.numberOfLines = 2
+        loadingLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(loadingLabel)
 
         let bottom = contentStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18)
         contentBottom = bottom
@@ -122,7 +133,10 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
             contentStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -26),
             contentStack.topAnchor.constraint(greaterThanOrEqualTo: brandHeader.bottomAnchor, constant: 16),
             spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+            spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            loadingLabel.topAnchor.constraint(equalTo: spinner.bottomAnchor, constant: 14),
+            loadingLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            loadingLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32)
         ])
     }
 
@@ -163,7 +177,7 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
     }
 
     private func showOffer(_ preview: VenuePreview) {
-        spinner.stopAnimating()
+        spinner.stopAnimating(); loadingLabel.isHidden = true
         contentStack.isHidden = false
         brandHeader.isHidden = false
         // The card's hook, then the store's name (said once each)
@@ -208,7 +222,7 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
     }
 
     private func showNoCodeState() {
-        spinner.stopAnimating()
+        spinner.stopAnimating(); loadingLabel.isHidden = true
         contentStack.isHidden = false
         brandHeader.isHidden = false
         hookLabel.attributedText = ClipTheme.hookText("Love it here?", "Save it.", size: 46)
@@ -225,12 +239,12 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
     }
 
     private func showLoadError(_ error: Error, code: String) {
-        spinner.stopAnimating()
+        spinner.stopAnimating(); loadingLabel.isHidden = true
         let alert = UIAlertController(title: "Couldn't load this store",
                                       message: error.localizedDescription,
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Try Again", style: .default) { [weak self] _ in
-            self?.spinner.startAnimating()
+            self?.spinner.startAnimating(); self?.loadingLabel.isHidden = false
             self?.loadPreview(code: code)
         })
         alert.addAction(UIAlertAction(title: "Get the App", style: .cancel) { [weak self] _ in

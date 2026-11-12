@@ -43,19 +43,28 @@ class RewardsService {
 
     // MARK: - Scan (window sticker or register card)
 
-    /// The store a code belongs to, for the scan bubble ("Checking rewards at
-    /// Pasta & Provisions…"). Remembered per code, so a repeat scan names the
-    /// store at once; nil when unknown.
-    func storeName(forCode code: String, completion: @escaping (String?) -> Void) {
-        let key = "storeNameForCode." + code.uppercased()
-        if let cached = UserDefaults.standard.string(forKey: key) { completion(cached); return }
-        struct NameData: Codable { let venueName: String? }
+    /// The store a code belongs to and what kind of code it is ("window" |
+    /// "register" | "generic"), for the scan bubble (ScanLoadingCopy).
+    /// Remembered per code, so a repeat scan names the store at once; nils
+    /// when unknown.
+    func codeInfo(forCode code: String, completion: @escaping (_ name: String?, _ kind: String?) -> Void) {
+        let nameKey = "storeNameForCode." + code.uppercased()
+        let kindKey = "storeKindForCode." + code.uppercased()
+        let cachedKind = UserDefaults.standard.string(forKey: kindKey)
+        if let cached = UserDefaults.standard.string(forKey: nameKey), cachedKind != nil { completion(cached, cachedKind); return }
+        struct NameData: Codable { let venueName: String?; let kind: String? }
         apiService.request(endpoint: "rewards/code-name/\(code.uppercased())", method: .get, requiresAuth: true) {
             (result: Result<RewardsEnvelope<NameData>, APIError>) in
-            let name = (try? result.get())?.data.venueName
-            if let name { UserDefaults.standard.set(name, forKey: key) }
-            completion(name)
+            let data = (try? result.get())?.data
+            Self.rememberCode(code, name: data?.venueName, kind: data?.kind)
+            completion(data?.venueName, data?.kind ?? cachedKind)
         }
+    }
+
+    /// What a code turned out to be, so the next scan's bubble is right at once
+    static func rememberCode(_ code: String, name: String?, kind: String?) {
+        if let name { UserDefaults.standard.set(name, forKey: "storeNameForCode." + code.uppercased()) }
+        if let kind { UserDefaults.standard.set(kind, forKey: "storeKindForCode." + code.uppercased()) }
     }
 
     /// `location`: where the phone is (register scans away from the store

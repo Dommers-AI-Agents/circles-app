@@ -58,18 +58,21 @@ final class StickerRewardCoordinator: NSObject {
 
     private func scan(_ code: String, place: ScanLocationProvider.Result) {
         guard let presenter = presenter else { return }
-        // "Checking rewards…", then the store's name as soon as it's known
-        // (a quick lookup alongside the scan; remembered for repeat scans)
-        let loading = AlertPresenter.showLoading(message: "Checking rewards\u{2026}", from: presenter)
-        RewardsService.shared.storeName(forCode: code) { name in
-            guard let name else { return }
-            DispatchQueue.main.async { loading.message = "Checking rewards at \(name)\u{2026}" }
+        // "Setting you up…", then what the code is for as soon as it's known
+        // — save the store (window), rewards (register), join (JOINUS) — with
+        // the store's name (a quick lookup alongside the scan; remembered
+        // for repeat scans). ScanLoadingCopy has the words.
+        let loading = AlertPresenter.showLoading(message: ScanLoadingCopy.initial, from: presenter)
+        RewardsService.shared.codeInfo(forCode: code) { name, kind in
+            guard name != nil || kind != nil else { return }
+            DispatchQueue.main.async { loading.message = ScanLoadingCopy.message(kind: kind, name: name) }
         }
 
         scanWithRetry(code: code, place: place) { [weak self] result in
             DispatchQueue.main.async {
-                if case .success(let scan) = result, scan.kind != "generic", scan.venue.genericJoin != true {
-                    UserDefaults.standard.set(scan.venue.venueName, forKey: "storeNameForCode." + code.uppercased())
+                if case .success(let scan) = result {
+                    let generic = scan.kind == "generic" || scan.venue.genericJoin == true
+                    RewardsService.rememberCode(code, name: generic ? nil : scan.venue.venueName, kind: generic ? "generic" : scan.kind)
                 }
                 loading.dismiss(animated: true) {
                     switch result {
