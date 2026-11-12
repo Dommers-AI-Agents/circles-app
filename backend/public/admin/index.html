@@ -218,6 +218,16 @@
         <div class="card"><h2>Product update campaigns</h2><div id="campaigns"></div><h2 style="margin-top:18px">Unsubscribes</h2><div id="unsubs"></div></div>
       </section>
       <section class="card"><h2>Bounced addresses (not emailed)</h2><div class="scroll"><table id="suppressions"></table></div></section>
+      <!-- Email engagement: what people did with the emails (signed click links + open pixel, 2026-11-12) -->
+      <section class="card"><h2>Email engagement <span class="muted" id="eeRange"></span></h2>
+        <p class="muted" style="margin:0 0 10px;font-size:12px">Clicks are the real signal. Opens are counted but Apple Mail and Gmail fetch the pixel on delivery, so treat them as "maybe". Your own BCC copies count as the recipient's clicks: read them, don't tap them.</p>
+        <div class="grid kpis" id="eeKpis"></div>
+      </section>
+      <section class="grid two">
+        <div class="card"><h2>By email kind</h2><div class="scroll"><table id="eeKinds"></table></div></div>
+        <div class="card"><h2>Clicks &amp; opens per day</h2><div class="chartbox"><canvas id="chartEngagement"></canvas></div></div>
+      </section>
+      <section class="card"><h2>Recent clicks</h2><div class="scroll"><table id="eeClicks"></table></div></section>
     </div>
     <div id="tab-instagram" class="hidden">
       <div class="grid kpis" id="igKpis"></div>

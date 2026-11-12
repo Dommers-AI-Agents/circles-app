@@ -25,6 +25,7 @@ exports.money = handle((req) => analytics.money(req.query));
 exports.messaging = handle((req) => analytics.messaging(req.query));
 // Email delivery: live login check of both routes + per-day outcomes
 exports.emailHealth = handle(() => require('../services/emailHealth').dashboard({ days: 14 }));
+exports.emailEngagement = handle((req) => require('../services/emailEngagementReport').dashboard({ days: Math.min(90, Math.max(7, parseInt(req.query.days, 10) || 30)) }));
 // Instagram queue (services/instagramPublisher.js): see it, pause/approve a
 // post, or post the next one now
 const instagram = () => require('../services/instagramPublisher').createPublisher();

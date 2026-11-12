@@ -198,9 +198,10 @@
       if (tab === 'people') { const d = await api(`/admin/dashboard/people?${f.slice(1)}`); peopleRows = d.rows; renderPeople(); }
       if (tab === 'money') renderMoney(await api(`/admin/dashboard/money?${q()}${f}`));
       if (tab === 'messaging') {
-        const [msg, eh] = await Promise.all([api(`/admin/dashboard/messaging?${q()}${f}`), api('/admin/dashboard/email-health')]);
+        const [msg, eh, ee] = await Promise.all([api(`/admin/dashboard/messaging?${q()}${f}`), api('/admin/dashboard/email-health'), api('/admin/dashboard/email-engagement?days=30')]);
         renderMessaging(msg);
         renderEmailHealth(eh);
+        renderEmailEngagement(ee);
       }
       if (tab === 'kit') renderKit(await api('/admin/dashboard/sales-kit'));
       if (tab === 'approvals') renderApprovals(await api('/admin/dashboard/place-approvals'));
@@ -288,9 +289,19 @@
     sortKey = k;
     renderPeople();
   }));
-  $('#people tbody').addEventListener('click', async (e) => {
+  $('#people tbody').addEventListener('click', (e) => {
     const tr = e.target.closest('tr');
-    if (!tr) return;
+    if (tr) openPerson(tr.dataset.id);
+  });
+  // A person's name anywhere else (the recent email clicks) opens the same drawer
+  document.addEventListener('click', (e) => {
+    const link = e.target.closest('a.person-link');
+    if (!link) return;
+    e.preventDefault();
+    openPerson(link.dataset.id);
+  });
+  async function openPerson(id) {
+    const tr = { dataset: { id } };
     const drawer = $('#drawer');
     drawer.innerHTML = '<p class="muted">Loading…</p>';
     drawer.classList.remove('hidden');
@@ -308,6 +319,13 @@
         <p><span class="pill ${p.push}">Push: ${{ on: 'On', off: 'Off', unknown: 'Unknown', no_token: 'No token' }[p.push]}</span>
           <span class="pill plan-${p.plan}">${p.plan}</span> ${p.onboarded ? '<span class="pill on">Onboarded</span>' : '<span class="pill no_token">Not onboarded</span>'}
           ${p.emailStatus !== 'ok' ? `<span class="pill off">${esc(p.emailStatus)}</span>` : ''}</p>
+        <h2 style="margin-top:18px">Home tour ${p.tour.completed ? '<span class="pill on">Finished</span>' : '<span class="pill no_token">Not finished</span>'}</h2>
+        ${p.tour.last ? `<p class="muted" style="margin:4px 0 8px">Stopped at <b>${esc(p.tour.last.title)}</b> · tapped ${esc(p.tour.last.action)} · ${ago(p.tour.last.at)}</p>` : ''}
+        ${p.tour.steps.length ? `<table>${p.tour.steps.map((s) => `<tr><td>${esc(s.title)}</td><td class="num">shown ${fmt(s.shown)}</td><td>${esc(s.taps.join(', ') || '—')}</td></tr>`).join('')}</table>`
+    : '<p class="muted">No bubble reported yet (app builds before 1.5.3 don\'t report).</p>'}
+        <h2 style="margin-top:18px">Email</h2>
+        ${p.email.length ? `<table>${p.email.map((e) => `<tr><td>${esc(e.kind.replace(/_/g, ' '))}</td><td class="num">${e.clicks ? `<b>${fmt(e.clicks)} click${e.clicks === 1 ? '' : 's'}</b> · ${ago(e.lastClickAt)}` : 'no clicks'}</td><td class="num muted">${e.opens ? `${fmt(e.opens)} open${e.opens === 1 ? '' : 's'}` : ''}</td></tr>`).join('')}</table>`
+    : '<p class="muted">No clicks or opens recorded (tracking started 2026-11-12).</p>'}
         <h2 style="margin-top:18px">Recent activity</h2>
         <ul class="feed">${p.recent.length ? p.recent.map((a) => `<li><b>${esc(a.type.replace(/_/g, ' '))}</b>${a.target ? ` · ${esc(a.target)}` : ''}<div class="muted">${ago(a.at)}</div></li>`).join('') : '<li class="muted">No public activity yet.</li>'}</ul>
         <p class="muted" style="margin-top:14px;font-size:12px">Message text, comments and private check-ins are never shown here. Views are logged.</p>`;
@@ -316,7 +334,7 @@
       drawer.innerHTML = `<button class="close" id="closeDrawer">Close</button><p class="err">${esc(err.message)}</p>`;
       $('#closeDrawer').addEventListener('click', () => drawer.classList.add('hidden'));
     }
-  });
+  }
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#drawer').classList.add('hidden'); });
 
   const statusList = (obj) => {
@@ -344,6 +362,29 @@
       <tr><td>Being claimed</td><td class="num">${fmt(c.claimed)}</td></tr>
       <tr><td>Paid out on-chain</td><td class="num">${fmt(c.settled)}</td></tr>
       <tr><td>Reversed</td><td class="num">${fmt(c.reversed)}</td></tr></table>`;
+  }
+
+  // Email engagement: what people did with the emails we sent (clicks are the signal)
+  function renderEmailEngagement(d) {
+    const rate = (r) => (r.clickRate == null ? '–' : `${Math.round(r.clickRate * 100)}%`);
+    const label = (k) => k.replace(/_/g, ' ');
+    $('#eeRange').textContent = `(last ${d.days} days, since ${short(d.from)})`;
+    $('#eeKpis').innerHTML = [
+      kpi('Emails sent', fmt(d.totals.sent), 'delivered, all kinds'),
+      kpi('People who clicked', fmt(d.totals.clickers), d.totals.sent ? `${Math.round((d.totals.clickers / d.totals.sent) * 100)}% of emails sent` : ''),
+      kpi('Clicks', fmt(d.totals.clicks), 'taps on a link or button'),
+      kpi('Opens', fmt(d.totals.opens), 'may be automatic')
+    ].join('');
+    $('#eeKinds').innerHTML = '<thead><tr><th>Kind</th><th class="num">Sent</th><th class="num">People clicked</th><th class="num">Click rate</th><th class="num">Clicks</th><th class="num">Opens</th></tr></thead><tbody>' +
+      (d.kinds.length ? d.kinds.map((r) => `<tr><td>${esc(label(r.kind))}</td><td class="num">${fmt(r.sent)}</td><td class="num">${fmt(r.clickers)}</td><td class="num">${rate(r)}</td><td class="num">${fmt(r.clicks)}</td><td class="num muted">${fmt(r.opens)}</td></tr>`).join('')
+        : '<tr><td colspan="6" class="muted">Nothing yet. Tracking started 2026-11-12.</td></tr>') + '</tbody>';
+    lineChart('chartEngagement', d.byDay.map((r) => short(r.day)), [
+      { label: 'Clicks', data: d.byDay.map((r) => r.clicks), borderColor: '#3478F6', backgroundColor: '#3478F6' },
+      { label: 'Opens (maybe automatic)', data: d.byDay.map((r) => r.opens), borderColor: '#A0AEC0', backgroundColor: '#A0AEC0' }
+    ], 'bar');
+    $('#eeClicks').innerHTML = '<thead><tr><th>When</th><th>Who</th><th>Email</th><th>Went to</th></tr></thead><tbody>' +
+      (d.recentClicks.length ? d.recentClicks.map((c) => `<tr><td>${ago(c.at)}</td><td>${c.uid ? `<a href="#" class="person-link" data-id="${esc(c.uid)}">${esc(c.name || c.email)}</a>` : esc(c.email)}</td><td>${esc(label(c.kind))}</td><td style="white-space:normal;word-break:break-all"><a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.url.replace(/^https?:\/\//, '').slice(0, 90))}</a></td></tr>`).join('')
+        : '<tr><td colspan="4" class="muted">No clicks yet.</td></tr>') + '</tbody>';
   }
 
   // Email delivery: are both mail routes up right now, and what happened today

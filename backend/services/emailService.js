@@ -1138,7 +1138,7 @@ Customers who came back: ${summary.repeatRatePct}%` : ''}`;
     if (sendId) console.log(`📧 tracking ${kind} to ${mailOptions.to}: send ${sendId}, ${links} link${links === 1 ? '' : 's'}`);
     try {
       const info = await this.sendWithRetryInner(mailOptions, attempts);
-      health.record(info && info.viaFallback ? 'fallback' : 'primary', { to: mailOptions.to, subject: mailOptions.subject, primaryError: info && info.primaryError });
+      health.record(info && info.viaFallback ? 'fallback' : 'primary', { to: mailOptions.to, subject: mailOptions.subject, kind, primaryError: info && info.primaryError });
       return info;
     } catch (error) {
       health.record(error && error.code === 'SUPPRESSED' ? 'suppressed' : 'failed', { to: mailOptions.to, subject: mailOptions.subject, error });

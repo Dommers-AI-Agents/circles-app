@@ -26,7 +26,7 @@ const load = async ({ fresh = false } = {}) => {
     all('users', ['email', 'displayName', 'profilePicture', 'createdAt', 'lastActive', 'lastAppOpenAt', 'lastLogin',
       'onboardingCompleted', 'isPremium', 'subscriptionStatus', 'subscriptionTier', 'ownerSubscriptionStatus',
       'deviceTokens', 'pushStatus', 'emailPreferences', 'productUpdateEmails', 'followers', 'following', 'isSuperUser',
-      'isDeleted', 'deletedAt']),
+      'isDeleted', 'deletedAt', 'hasCompletedTutorial']),
     all('places', ['addedBy', 'createdAt', 'deletedAt']),
     all('circles', ['owner', 'createdAt']),
     all('checkIns', ['userId', 'createdAt', 'startTime']),
@@ -166,8 +166,13 @@ const person = async (id, adminId) => {
   const counts = perUserCounts(d);
   const suppressed = new Set(d.suppressions.map((s) => s.id));
   // Recent activity, without anything only the owner should see
-  const snap = await db().collection('activities').where('actorId', '==', id).orderBy('timestamp', 'desc').limit(60).get()
-    .catch(() => ({ docs: [] }));
+  const priv = (name) => db().collection('users').doc(id).collection('private').doc(name).get()
+    .then((doc) => (doc.exists ? doc.data() : null)).catch(() => null);
+  const [snap, engagement, nextSteps] = await Promise.all([
+    db().collection('activities').where('actorId', '==', id).orderBy('timestamp', 'desc').limit(60).get().catch(() => ({ docs: [] })),
+    priv('emailEngagement'),
+    priv('nextSteps')
+  ]);
   const recent = snap.docs.map((doc) => doc.data())
     .filter((a) => !(a.metadata && a.metadata.ownerOnly))
     .slice(0, 40)
@@ -178,7 +183,10 @@ const person = async (id, adminId) => {
     ...userRow(user, counts, suppressed),
     messagesSent: d.messages.filter((x) => x.senderId === id).length,
     checkIns: d.checkIns.filter((c) => c.userId === id).length,
-    recent
+    recent,
+    // What they did with our email and with the home tour (2026-11-12)
+    email: m.emailSummary(engagement),
+    tour: { ...m.tourSummary(nextSteps), completed: user.hasCompletedTutorial === true }
   };
 };
 

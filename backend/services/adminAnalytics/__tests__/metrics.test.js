@@ -76,3 +76,31 @@ describe('admin metrics', () => {
       .toMatchObject({ pending: 0.5, confirmed: 1, settled: 90, reversed: 0.5 });
   });
 });
+
+describe('person detail: home tour and email engagement (2026-11-12)', () => {
+  test('tourSummary lists the bubbles seen, in tour order, with taps and where they stopped', () => {
+    const doc = {
+      tour: {
+        tour_follow_users: { shown: 1, skip: 1 },
+        tour_add_places: { shown: 2, next: 1, learn_more: 1 }
+      },
+      tourLast: { step: 'tour_follow_users', action: 'skip', at: '2026-11-12T02:00:00.000Z' }
+    };
+    const t = m.tourSummary(doc);
+    expect(t.steps.map((s) => s.id)).toEqual(['tour_add_places', 'tour_follow_users']);
+    expect(t.steps[0]).toEqual({ id: 'tour_add_places', title: 'Build Your Map', shown: 2, taps: ['Next', 'Learn more'] });
+    expect(t.last).toEqual({ step: 'tour_follow_users', title: "Explore Other People's Maps", action: 'Skip', at: '2026-11-12T02:00:00.000Z' });
+    expect(m.tourSummary(null)).toEqual({ steps: [], last: null });
+  });
+
+  test('emailSummary turns the rollup into rows, latest activity first', () => {
+    const rows = m.emailSummary({
+      welcome: { clicks: 1, opens: 2, lastClickAt: '2026-11-10T00:00:00Z', lastOpenAt: '2026-11-11T00:00:00Z', lastUrl: 'https://f/x' },
+      new_follower: { opens: 1, lastOpenAt: '2026-11-12T00:00:00Z' },
+      updatedAt: '2026-11-12T00:00:00Z'
+    });
+    expect(rows.map((r) => r.kind)).toEqual(['new_follower', 'welcome']);
+    expect(rows[1]).toEqual({ kind: 'welcome', clicks: 1, opens: 2, lastClickAt: '2026-11-10T00:00:00Z', lastOpenAt: '2026-11-11T00:00:00Z', lastUrl: 'https://f/x' });
+    expect(m.emailSummary(null)).toEqual([]);
+  });
+});

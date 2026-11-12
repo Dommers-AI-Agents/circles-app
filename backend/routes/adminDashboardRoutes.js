@@ -65,6 +65,7 @@ router.get('/people/:id', c.person);
 router.get('/money', c.money);
 router.get('/messaging', c.messaging);
 router.get('/email-health', c.emailHealth);
+router.get('/email-engagement', c.emailEngagement);
 router.get('/instagram', c.instagram);
 router.post('/instagram/post-now', express.json(), c.instagramPostNow);
 router.post('/instagram/:id/status', express.json(), c.instagramStatus);

@@ -27,7 +27,7 @@ const BACKUP_FAILS_BEFORE_ALERT = 3;
 const firstAddress = (to) => (Array.isArray(to) ? to[0] : String(to || '').split(',')[0]).trim();
 
 /** outcome: 'primary' | 'fallback' | 'failed' | 'suppressed' */
-async function record(outcome, { to, subject, error, primaryError } = {}, deps = {}) {
+async function record(outcome, { to, subject, error, primaryError, kind = null } = {}, deps = {}) {
   // Unit tests exercise sends with fake transports; never write real counters
   if (process.env.JEST_WORKER_ID && !deps.db) return;
   try {
@@ -37,6 +37,10 @@ async function record(outcome, { to, subject, error, primaryError } = {}, deps =
     if (!field) return;
     const ref = db.collection(COLLECTION).doc(dayKey());
     const now = new Date().toISOString();
+    // Delivered emails are also counted by kind (welcome, new_follower, …) so
+    // the engagement report can put clicks against sends
+    const delivered = outcome === 'primary' || outcome === 'fallback';
+    const kindKey = delivered && kind ? String(kind).replace(/[.~/[\]*]/g, '_').slice(0, 60) : null;
     if (outcome === 'failed' || outcome === 'fallback') {
       // Rare: keep the detail for the dashboard (read-modify-write, capped)
       await db.runTransaction(async (tx) => {
@@ -47,11 +51,15 @@ async function record(outcome, { to, subject, error, primaryError } = {}, deps =
         const key = outcome === 'failed' ? 'recentFailures' : 'recentFallbacks';
         tx.set(ref, {
           day: dayKey(), [field]: (prev[field] || 0) + 1, [key]: [entry, ...(prev[key] || [])].slice(0, RECENT_FAILURES),
+          ...(kindKey ? { kinds: { [kindKey]: { sent: ((((prev.kinds || {})[kindKey]) || {}).sent || 0) + 1 } } } : {}),
           updatedAt: now
         }, { merge: true });
       });
     } else {
-      await ref.set({ day: dayKey(), [field]: FieldValue.increment(1), updatedAt: now }, { merge: true });
+      await ref.set({
+        day: dayKey(), [field]: FieldValue.increment(1), updatedAt: now,
+        ...(kindKey ? { kinds: { [kindKey]: { sent: FieldValue.increment(1) } } } : {})
+      }, { merge: true });
     }
 
     const { alertAdmin } = deps.adminAlerts || require('./adminAlerts');

@@ -154,7 +154,39 @@ const pushState = (user) => {
   return ['authorized', 'provisional', 'ephemeral'].includes(status) ? 'on' : 'off';
 };
 
+// The home tour, as the person detail shows it (2026-11-12): every bubble in
+// order with how often it was shown and what was tapped, plus where they
+// stopped. Titles match OnboardingManager.TutorialStep.
+const TOUR_STEPS = [
+  ['tour_add_places', 'Build Your Map'], ['tour_follow_users', "Explore Other People's Maps"],
+  ['tour_view_activity', "See What's New"], ['tour_see_widgets', 'Your Widgets'], ['tour_keep_going', "That's the basics"],
+  ['tour_moments', 'Moments'], ['tour_locals', 'Locals'], ['tour_check_in', 'Check In'],
+  ['tour_rewards', 'FavCoins and Rewards'], ['tour_profile', 'Profile']
+];
+const TOUR_ACTION_LABELS = { shown: 'shown', next: 'Next', back: 'Back', skip: 'Skip', learn_more: 'Learn more', video: 'Video', keep_going: 'Keep going', done: 'Done' };
+
+/** @param nextSteps  users/{uid}/private/nextSteps data (or null) */
+const tourSummary = (nextSteps) => {
+  const tour = (nextSteps && nextSteps.tour) || {};
+  const steps = TOUR_STEPS.filter(([id]) => tour[id]).map(([id, title]) => {
+    const counts = tour[id] || {};
+    const taps = Object.entries(counts).filter(([k, v]) => k !== 'shown' && v > 0).map(([k, v]) => `${TOUR_ACTION_LABELS[k] || k}${v > 1 ? ` ×${v}` : ''}`);
+    return { id, title, shown: counts.shown || 0, taps };
+  });
+  const last = nextSteps && nextSteps.tourLast
+    ? { step: nextSteps.tourLast.step, title: (TOUR_STEPS.find(([id]) => id === nextSteps.tourLast.step) || [null, nextSteps.tourLast.step])[1],
+      action: TOUR_ACTION_LABELS[nextSteps.tourLast.action] || nextSteps.tourLast.action, at: nextSteps.tourLast.at || null }
+    : null;
+  return { steps, last };
+};
+
+/** @param engagement  users/{uid}/private/emailEngagement data (or null) → rows per kind, latest first */
+const emailSummary = (engagement) => Object.entries(engagement || {})
+  .filter(([k, v]) => k !== 'updatedAt' && v && typeof v === 'object')
+  .map(([kind, v]) => ({ kind, clicks: v.clicks || 0, opens: v.opens || 0, lastClickAt: v.lastClickAt || null, lastOpenAt: v.lastOpenAt || null, lastUrl: v.lastUrl || null }))
+  .sort((a, b) => String(b.lastClickAt || b.lastOpenAt || '').localeCompare(String(a.lastClickAt || a.lastOpenAt || '')));
+
 module.exports = {
   DAY, toDate, dayKey, daysBetween, perDay, lastSeen, activeCounts, funnel, weekKey, retention,
-  postcardMoney, coinSummary, pushState
+  postcardMoney, coinSummary, pushState, tourSummary, emailSummary, TOUR_STEPS
 };
