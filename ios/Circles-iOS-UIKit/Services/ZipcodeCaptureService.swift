@@ -42,6 +42,11 @@ final class ZipcodeCaptureService: NSObject {
     /// a zipcode is already known, which is the common case.
     func captureIfNeeded(from viewController: UIViewController) {
         guard !hasRunThisSession else { return }
+        // Never during the first run (2026-11-12, watched on a new account):
+        // the alert landed between "Add a few places" and the tour, and the
+        // tour waits for an empty screen. The first run asks for location
+        // itself; this asks again on a later launch if that was declined.
+        guard !OnboardingManager.shared.isFirstSessionFlowActive else { return }
 
         // Only latch the flag once there's actually a user to inspect. Setting
         // it earlier means a call that lands before the profile has loaded

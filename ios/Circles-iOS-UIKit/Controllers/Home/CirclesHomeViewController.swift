@@ -1207,7 +1207,9 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
         guard OnboardingManager.shared.shouldShowTutorial,
               TutorialStep.allCases.contains(where: { !OnboardingManager.shared.hasCompletedStep($0) }) else { return }
         let blockedByModal = presentedViewController != nil || tabBarController?.presentedViewController != nil
-        if blockedByModal && attempt < 120 {
+        // Keep waiting as long as something is up (a sheet left open for a
+        // few minutes used to cost the whole tour: 120 tries, 2026-11-12)
+        if blockedByModal && attempt < 1800 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 self?.runHomeTourWhenSettled(attempt: attempt + 1)
             }
@@ -1302,10 +1304,7 @@ class CirclesHomeViewController: BaseViewController, SSEServiceDelegate {
     /// at My Network, Messages or Me rather than the whole bar
     private func tabBarButtonView(index: Int) -> UIView? {
         guard let bar = tabBarController?.tabBar else { return nil }
-        let buttons = bar.subviews
-            .filter { String(describing: type(of: $0)).contains("TabBarButton") }
-            .sorted { $0.frame.minX < $1.frame.minX }
-        return index < buttons.count ? buttons[index] : nil
+        return TabBarButtonFinder.button(in: bar, at: index)
     }
 
     /// Small beat between bubbles so the dismiss/present don't overlap
