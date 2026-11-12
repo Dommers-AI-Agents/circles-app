@@ -322,7 +322,7 @@
         <h2 style="margin-top:18px">Home tour ${p.tour.completed ? '<span class="pill on">Finished</span>' : '<span class="pill no_token">Not finished</span>'}</h2>
         ${p.tour.last ? `<p class="muted" style="margin:4px 0 8px">Stopped at <b>${esc(p.tour.last.title)}</b> · tapped ${esc(p.tour.last.action)} · ${ago(p.tour.last.at)}</p>` : ''}
         ${p.tour.steps.length ? `<table>${p.tour.steps.map((s) => `<tr><td>${esc(s.title)}</td><td class="num">shown ${fmt(s.shown)}</td><td>${esc(s.taps.join(', ') || '—')}</td></tr>`).join('')}</table>`
-    : '<p class="muted">No bubble reported yet (app builds before 1.5.3 don\'t report).</p>'}
+    : '<p class="muted">No bubble reported yet (older app builds don\'t report).</p>'}
         <h2 style="margin-top:18px">Email</h2>
         ${p.email.length ? `<table>${p.email.map((e) => `<tr><td>${esc(e.kind.replace(/_/g, ' '))}</td><td class="num">${e.clicks ? `<b>${fmt(e.clicks)} click${e.clicks === 1 ? '' : 's'}</b> · ${ago(e.lastClickAt)}` : 'no clicks'}</td><td class="num muted">${e.opens ? `${fmt(e.opens)} open${e.opens === 1 ? '' : 's'}` : ''}</td></tr>`).join('')}</table>`
     : '<p class="muted">No clicks or opens recorded (tracking started 2026-11-12).</p>'}
