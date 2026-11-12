@@ -163,7 +163,15 @@ const getDiscoverUsers = async (req, res) => {
         .map(({ doc, group, placeName }) => shape(doc, 'welcome', {
           suggestionReason: group === 0 ? `Also loves ${placeName}` : group === 1 ? 'Near you' : null
         }));
-      console.log(`👋 Welcome people for ${userId}: pool ${poolIds.length}, shared ${shared.size}, located ${origin ? 'yes' : 'default'}`);
+      // Nobody left to suggest (a tiny town, or everyone with a map is
+      // already followed): the sheet must not be blank, so answer with the
+      // people followed for them at signup, marked isFollowing, which the
+      // app shows as "You're already following" (2026-11-12)
+      if (users.length === 0 && following.size > 0) {
+        const followedDocs = await fetchDocsByIds([...following].slice(0, 12));
+        users = followedDocs.map((doc) => shape(doc, 'welcome', { suggestionReason: 'Followed for you' }));
+      }
+      console.log(`👋 Welcome people for ${userId}: pool ${poolIds.length}, shared ${shared.size}, located ${origin ? 'yes' : 'default'}, answered ${users.length}`);
     } else if (type === 'nearby') {
       // Real geographic proximity — but with an ASSUMED location fallback.
       //
