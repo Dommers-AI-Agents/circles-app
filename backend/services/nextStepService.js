@@ -72,7 +72,8 @@ async function signals(uid, { db = getFirestore() } = {}) {
 // no trace beyond "tutorial not completed"). They live under `tour`, apart
 // from the next-step `steps` that rank() reads.
 const TOUR_STEP_IDS = ['tour_add_places', 'tour_follow_users', 'tour_view_activity', 'tour_see_widgets',
-  'tour_moments', 'tour_locals', 'tour_check_in', 'tour_rewards', 'tour_profile', 'tour_keep_going'];
+  'tour_moments', 'tour_locals', 'tour_check_in', 'tour_rewards', 'tour_notifications', 'tour_invite', 'tour_help',
+  'tour_my_network', 'tour_messages', 'tour_profile', 'tour_keep_going'];
 const TOUR_ACTIONS = ['shown', 'next', 'back', 'skip', 'learn_more', 'video', 'keep_going', 'done'];
 
 /**

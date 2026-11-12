@@ -161,7 +161,8 @@ const TOUR_STEPS = [
   ['tour_add_places', 'Build Your Map'], ['tour_follow_users', "Explore Other People's Maps"],
   ['tour_view_activity', "See What's New"], ['tour_see_widgets', 'Your Widgets'], ['tour_keep_going', "That's the basics"],
   ['tour_moments', 'Moments'], ['tour_locals', 'Locals'], ['tour_check_in', 'Check In'],
-  ['tour_rewards', 'FavCoins and Rewards'], ['tour_profile', 'Profile']
+  ['tour_rewards', 'FavCoins and Rewards'], ['tour_notifications', 'Notifications'], ['tour_invite', 'Invite Friends'],
+  ['tour_help', 'Help'], ['tour_my_network', 'My Network'], ['tour_messages', 'Messages'], ['tour_profile', 'Profile']
 ];
 const TOUR_ACTION_LABELS = { shown: 'shown', next: 'Next', back: 'Back', skip: 'Skip', learn_more: 'Learn more', video: 'Video', keep_going: 'Keep going', done: 'Done' };
 
