@@ -62,6 +62,8 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     private let locationManager = CLLocationManager()
     private var pendingAddPlaceAfterCircleCreation = false // "+" chip flow paused on circle creation
     private var awaitingPlaceAddedFromMap = false // An add-place flow launched from this map is in flight
+    /// "Tap a place to add it" until they add from a map once (+TapHint)
+    var mapTapHintPill: UILabel?
     /// Tap-a-POI → add to circle flow (action sheet, picker, AddPlace hand-off).
     private lazy var poiCoordinator: MapPOIAddCoordinator = {
         let coordinator = MapPOIAddCoordinator(presenter: self, mapView: mapView)
@@ -841,6 +843,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         let seededQuery = initialSearchQuery?.trimmingCharacters(in: .whitespacesAndNewlines)
         searchQuery = (seededQuery?.isEmpty ?? true) ? nil : seededQuery
         setupUI()
+        setupMapTapHint()
         setupMap()
         setupTableView()
         updateAvailableCategories()
@@ -877,6 +880,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
                 }
             }
         }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshMapTapHint()
     }
 
     /// Rebuilds both chip bars from the full place set (chip-bar mode only), so
@@ -1477,10 +1485,18 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         }
     }
     
+    /// A tapped place was let go (its sheet cancelled): the hint comes back
+    func mapView(_ mapView: MKMapView, didDeselect annotation: MKAnnotation) {
+        if #available(iOS 16.0, *), annotation is MKMapFeatureAnnotation {
+            refreshMapTapHint()
+        }
+    }
+
     func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
         // Handle POI selection for iOS 16+
         if #available(iOS 16.0, *) {
             if let featureAnnotation = annotation as? MKMapFeatureAnnotation {
+                hideMapTapHint()
                 poiCoordinator.handlePOISelection(featureAnnotation)
                 return
             }
@@ -2121,6 +2137,7 @@ extension FullScreenMapViewController: MapPOIAddCoordinatorDelegate {
     }
 
     func poiCoordinator(_ coordinator: MapPOIAddCoordinator, openAddPlaceWith circles: [Circle], configure: @escaping (AddPlaceViewController) -> Void) {
+        MapTapHint.retire()
         presentAddPlace(circles: circles, configure: configure)
     }
 
