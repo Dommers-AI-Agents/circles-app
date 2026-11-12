@@ -8,6 +8,8 @@
 //   DRY_RUN=true node scripts/publish-scan-action-clip-card.js
 //   node scripts/publish-scan-action-clip-card.js
 require('dotenv').config();
+// The service pulls in modules that open Firestore when they load
+require('../config/firebase').initializeFirebase();
 const { publishScanActionExperience } = require('../services/appClipExperienceService');
 
 publishScanActionExperience({ dryRun: process.env.DRY_RUN === 'true' })
