@@ -66,22 +66,52 @@ async function signals(uid, { db = getFirestore() } = {}) {
   };
 }
 
-/** Shown and tapped counts per step (one doc per person) */
-async function record(uid, events, { db = getFirestore() } = {}) {
-  const { FieldValue } = require('firebase-admin/firestore');
+// The home tour's bubbles (OnboardingManager.TutorialStep raw values plus the
+// "Keep going" card) report every showing and every button, so we can see
+// where a new person bails (Wes, 2026-11-12: a new user's first night left
+// no trace beyond "tutorial not completed"). They live under `tour`, apart
+// from the next-step `steps` that rank() reads.
+const TOUR_STEP_IDS = ['tour_add_places', 'tour_follow_users', 'tour_view_activity', 'tour_see_widgets',
+  'tour_moments', 'tour_locals', 'tour_check_in', 'tour_rewards', 'tour_profile', 'tour_keep_going'];
+const TOUR_ACTIONS = ['shown', 'next', 'back', 'skip', 'learn_more', 'video', 'keep_going', 'done'];
+
+/**
+ * Pure: the Firestore update for a batch of step events — next-step chips
+ * (`steps.<id>.shown|tapped`) and tour bubbles (`tour.<id>.<action>` plus
+ * `tourLast`, the one field that says where someone stopped).
+ * @returns {{ update: object, count: number }}
+ */
+function eventUpdate(events, { now = new Date().toISOString(), increment = (n) => n } = {}) {
   const update = {};
+  let count = 0;
+  let tourLast = null;
   for (const e of (events || []).slice(0, 50)) {
     const step = String(e.step || '');
-    const kind = e.kind === 'tapped' ? 'tapped' : 'shown';
-    if (!STEP_IDS.includes(step)) continue;
-    update[`steps.${step}.${kind}`] = FieldValue.increment(1);
+    const kind = String(e.kind || '');
+    if (TOUR_STEP_IDS.includes(step)) {
+      if (!TOUR_ACTIONS.includes(kind)) continue;
+      update[`tour.${step}.${kind}`] = increment(1);
+      tourLast = { step, action: kind, at: now };
+      count += 1;
+    } else if (STEP_IDS.includes(step)) {
+      update[`steps.${step}.${kind === 'tapped' ? 'tapped' : 'shown'}`] = increment(1);
+      count += 1;
+    }
   }
-  if (Object.keys(update).length === 0) return 0;
+  if (tourLast) update.tourLast = tourLast;
+  return { update, count };
+}
+
+/** Shown and tapped counts per step, tour bubble events (one doc per person) */
+async function record(uid, events, { db = getFirestore() } = {}) {
+  const { FieldValue } = require('firebase-admin/firestore');
+  const { update, count } = eventUpdate(events, { increment: (n) => FieldValue.increment(n) });
+  if (count === 0) return 0;
   update.updatedAt = new Date().toISOString();
   const ref = db.collection(COLLECTIONS.USERS).doc(uid).collection('private').doc('nextSteps');
   await ref.set({}, { merge: true });
   await ref.update(update);
-  return Object.keys(update).length - 1;
+  return count;
 }
 
-module.exports = { rank, signals, record, STEP_IDS, SKIPPED_AFTER };
+module.exports = { rank, signals, record, eventUpdate, STEP_IDS, TOUR_STEP_IDS, TOUR_ACTIONS, SKIPPED_AFTER };

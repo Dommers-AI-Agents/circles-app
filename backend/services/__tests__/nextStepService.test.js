@@ -26,3 +26,35 @@ test('a step they tap stays up even after many showings', () => {
   expect(r.avoid).not.toContain('find_people');
   expect(r.order[0]).toBe('find_people');
 });
+
+describe('eventUpdate (tour bubbles + next-step chips)', () => {
+  const { eventUpdate } = require('../nextStepService');
+
+  test('tour events land under tour.* with the last one remembered', () => {
+    const { update, count } = eventUpdate([
+      { step: 'tour_add_places', kind: 'shown' },
+      { step: 'tour_add_places', kind: 'next' },
+      { step: 'tour_follow_users', kind: 'shown' },
+      { step: 'tour_follow_users', kind: 'skip' }
+    ], { now: '2026-11-12T10:00:00.000Z' });
+    expect(count).toBe(4);
+    expect(update['tour.tour_add_places.shown']).toBe(1);
+    expect(update['tour.tour_follow_users.skip']).toBe(1);
+    expect(update.tourLast).toEqual({ step: 'tour_follow_users', action: 'skip', at: '2026-11-12T10:00:00.000Z' });
+    expect(Object.keys(update).some((k) => k.startsWith('steps.'))).toBe(false);
+  });
+
+  test('next-step chips keep their shown/tapped shape and set no tourLast', () => {
+    const { update, count } = eventUpdate([{ step: 'add_place', kind: 'tapped' }, { step: 'add_place', kind: 'whatever' }]);
+    expect(count).toBe(2);
+    expect(update['steps.add_place.tapped']).toBe(1);
+    expect(update['steps.add_place.shown']).toBe(1);
+    expect(update.tourLast).toBeUndefined();
+  });
+
+  test('unknown steps and unknown tour actions are dropped', () => {
+    const { update, count } = eventUpdate([{ step: 'tour_nope', kind: 'shown' }, { step: 'tour_moments', kind: 'tapped' }, { step: 'bogus', kind: 'shown' }]);
+    expect(count).toBe(0);
+    expect(update).toEqual({});
+  });
+});

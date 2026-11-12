@@ -519,7 +519,7 @@ Add your first place: https://api.favcircles.com/app/open?path=add-place
 
 — Wesley & the FavCircles team`;
 
-      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent });
+      await this.sendEmail({ to: toEmail, subject, html: htmlContent, text: textContent, kind: 'welcome' });
       console.log(`✅ Welcome email sent to ${toEmail}`);
       return { success: true };
     } catch (error) {
@@ -1130,8 +1130,12 @@ Customers who came back: ${summary.repeatRatePct}%` : ''}`;
 
   // Every send goes through here; the outcome is counted for the admin
   // dashboard's Email delivery section and alerts (services/emailHealth).
-  async sendWithRetry(mailOptions, attempts = 3) {
+  async sendWithRetry(rawMailOptions, attempts = 3) {
     const health = require('./emailHealth');
+    // Links become signed click redirects and a pixel is added, so we can see
+    // what each person does with the email (services/emailTracking.js)
+    const { mailOptions, sendId, kind, links } = require('./emailTracking').instrumentMail(rawMailOptions);
+    if (sendId) console.log(`📧 tracking ${kind} to ${mailOptions.to}: send ${sendId}, ${links} link${links === 1 ? '' : 's'}`);
     try {
       const info = await this.sendWithRetryInner(mailOptions, attempts);
       health.record(info && info.viaFallback ? 'fallback' : 'primary', { to: mailOptions.to, subject: mailOptions.subject, primaryError: info && info.primaryError });
@@ -1197,7 +1201,7 @@ FavCircles · Save the places you love`;
   // via FavCircles"); the address is always ours.
   // `bcc`: a copy for the person it's sent on behalf of (Wes's store and
   // personal emails land in his Gmail Sent, 2026-11-07)
-  async sendEmail({ to, subject: rawSubject, html, text, attachments, headers, userTriggered = false, fromName = null, bcc = null }) {
+  async sendEmail({ to, subject: rawSubject, html, text, attachments, headers, userTriggered = false, fromName = null, bcc = null, kind = null }) {
     const subject = oneLine(rawSubject);
     if (userTriggered && userMailDisabled()) {
       if (!killSwitchLogged) {
@@ -1221,7 +1225,8 @@ FavCircles · Save the places you love`;
         text: text || subject, // Fallback text if not provided
         ...(attachments && attachments.length ? { attachments } : {}),
         ...(headers ? { headers } : {}),
-        ...(bcc ? { bcc } : {})
+        ...(bcc ? { bcc } : {}),
+        ...(kind ? { kind } : {}) // the tracking name; stripped before nodemailer sees it
       };
 
       console.log(`📧 Attempting to send email to ${to} with subject: ${subject}`);

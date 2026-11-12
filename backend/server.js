@@ -343,6 +343,8 @@ app.use('/', linkedinCallback);
 // App redirect routes for deep linking from emails
 const appRedirectRoutes = require('./routes/appRedirectRoutes');
 app.use('/app', appRedirectRoutes);
+// Email clicks and opens (signed links rewritten into every email we send)
+app.use('/e', require('./routes/emailTrackingRoutes'));
 
 // Partner link-outs: the Reserve chip lands on the restaurant's OpenTable page
 app.get('/go/opentable', require('./controllers/opentableLinkController').redirect);
