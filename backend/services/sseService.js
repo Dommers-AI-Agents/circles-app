@@ -303,14 +303,16 @@ class SSEService {
       }).length === 1;
     };
 
-    const { getConnectedUserIds } = require('../utils/networkAccess');
+    const { getConnectedUserIds, getFollowedOnlyUserIds } = require('../utils/networkAccess');
+    const { liveActivityActorIds } = require('./sseActivityActors');
     Promise.all([buildViewerContext(userId), getConnectedUserIds(userId)])
-      .then(([ctx, rawConnectionIds]) => {
+      .then(async ([ctx, rawConnectionIds]) => {
         ctxCache = { ctx, builtAt: Date.now() };
         // The listener matches the stored actorId, which is the RAW id; the
-        // context's sets are normalised and serve the gate only.
-        const connectedUserIds = new Set((rawConnectionIds || []).map(String));
-        connectedUserIds.add(userId); // Include self
+        // context's sets are normalised and serve the gate only. Followed
+        // people count too: the home feed shows them, so the live stream must.
+        const followingIds = await getFollowedOnlyUserIds(userId, new Set(Array.from(rawConnectionIds || [])));
+        const connectedUserIds = new Set(liveActivityActorIds(userId, rawConnectionIds, followingIds));
 
         if (connectedUserIds.size > 0) {
           // Firestore caps 'in' at 30 values and a listener can't be
