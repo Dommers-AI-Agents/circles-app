@@ -12,7 +12,7 @@ enum PlacePhotoActions {
         case delete
         /// Owner/admin, someone else's photo: removed for everyone, stays gone
         case remove
-        /// Someone else's photo: report it
+        /// Anyone else's photo (a person's or Google's): report it
         case report
     }
 
@@ -23,7 +23,9 @@ enum PlacePhotoActions {
         if photo.photoId != nil {
             if own { out.append(.delete) } else if canManage { out.append(.remove) }
         }
-        if !own && photo.photoId != nil && photo.uploadedBy != nil { out.append(.report) }
+        // Google/imported photos too: "unrelated to this place" is a report
+        // worth having for a photo nobody in the app took (Wes, 2026-11-12)
+        if !own && photo.photoId != nil { out.append(.report) }
         return out
     }
 

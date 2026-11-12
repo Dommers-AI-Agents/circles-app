@@ -4,7 +4,8 @@ import UIKit
 /// Photos section, the gallery, the owner's menu). Deliberately small: swipe
 /// between pages, pinch or double-tap to zoom one, tap to close. A page whose
 /// photo is in the place's library carries a heart, so a photo can be liked
-/// from any view (Wes, 2026-11-05).
+/// from any view (Wes, 2026-11-05), and a "•••" menu to report it
+/// (Wes, 2026-11-12: there was no way to report a photo from here).
 final class StorefrontPhotoViewerViewController: BaseViewController {
     private let urls: [String]
     private let startIndex: Int
@@ -24,6 +25,16 @@ final class StorefrontPhotoViewerViewController: BaseViewController {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: #selector(likeTapped), for: .touchUpInside)
         button.accessibilityLabel = "Like photo"
+        return button
+    }()
+
+    /// "•••" → Report, on pages showing someone else's library photo
+    private lazy var moreButton: UIButton = {
+        let button = UIButton.iconButton(systemName: "ellipsis.circle.fill")
+        button.tintColor = .white
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.showsMenuAsPrimaryAction = true
+        button.accessibilityLabel = "More"
         return button
     }()
 
@@ -90,7 +101,12 @@ final class StorefrontPhotoViewerViewController: BaseViewController {
         counter.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(counter)
         view.addSubview(likeButton)
+        view.addSubview(moreButton)
         NSLayoutConstraint.activate([
+            moreButton.centerYAnchor.constraint(equalTo: close.centerYAnchor),
+            moreButton.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -8),
+            moreButton.widthAnchor.constraint(equalToConstant: 36),
+            moreButton.heightAnchor.constraint(equalToConstant: 36),
             likeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             likeButton.centerYAnchor.constraint(equalTo: counter.centerYAnchor),
             likeButton.heightAnchor.constraint(equalToConstant: 36),
@@ -149,6 +165,7 @@ final class StorefrontPhotoViewerViewController: BaseViewController {
     }
 
     private func updateLikeButton() {
+        updateMoreButton()
         guard let photoId = photo(at: currentPage)?.photoId, let state = likeState[photoId] else {
             likeButton.isHidden = true
             return
@@ -161,6 +178,31 @@ final class StorefrontPhotoViewerViewController: BaseViewController {
         likeButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
         likeButton.tintColor = state.liked ? .systemRed : .white
         likeButton.accessibilityLabel = state.liked ? "Unlike photo" : "Like photo"
+    }
+
+    // MARK: - Report
+
+    private func updateMoreButton() {
+        guard let placeId, let photo = photo(at: currentPage), let photoId = photo.photoId,
+              PlacePhotoActions.actions(photo: photo, isCover: false,
+                                        viewerId: AuthService.shared.getUserId(), canManage: false).contains(.report) else {
+            moreButton.isHidden = true
+            moreButton.menu = nil
+            return
+        }
+        moreButton.isHidden = false
+        moreButton.menu = UIMenu(children: [
+            UIAction(title: "Report or block…", image: UIImage(systemName: "flag"), attributes: .destructive) { [weak self] _ in
+                guard let self else { return }
+                self.presentContentModerationSheet(
+                    contentType: "place_photo",
+                    contentId: PlacePhotoActions.reportContentId(placeId: placeId, photoId: photoId),
+                    ownerId: photo.uploadedBy ?? "",
+                    ownerName: photo.uploadedByName,
+                    sourceView: self.moreButton
+                )
+            }
+        ])
     }
 
     @objc private func likeTapped() {

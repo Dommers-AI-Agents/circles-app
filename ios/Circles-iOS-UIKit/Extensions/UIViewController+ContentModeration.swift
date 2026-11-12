@@ -16,6 +16,13 @@ extension UIViewController {
         sourceView: UIView? = nil,
         onContentHidden: (() -> Void)? = nil
     ) {
+        // Nobody to follow or block (a Google photo, an imported one): straight
+        // to the reasons, never a "Block this user" for a person who isn't there
+        guard !ownerId.isEmpty else {
+            presentReportReasonSheet(contentType: contentType, contentId: contentId,
+                                     ownerId: ownerId, onContentHidden: onContentHidden)
+            return
+        }
         let name = (ownerName?.isEmpty == false) ? ownerName! : "this user"
         var actions: [(String, UIAlertAction.Style, () -> Void)] = []
 
@@ -130,13 +137,18 @@ extension UIViewController {
         ownerId: String,
         onContentHidden: (() -> Void)?
     ) {
-        let reasons: [(label: String, code: String)] = [
+        var reasons: [(label: String, code: String)] = [
             ("Sexual content", "sexual_content"),
             ("Violence or dangerous acts", "violence"),
             ("Hate or harassment", "hate_harassment"),
-            ("Spam or misleading", "spam"),
-            ("Something else", "other")
+            ("Spam or misleading", "spam")
         ]
+        // A place's photos and clips: the commonest problem is that it isn't
+        // this place at all (Wes, 2026-11-12: "innapropriate, unrelated, etc.")
+        if ["place_photo", "venue_image", "moment", "video"].contains(contentType) {
+            reasons.append(("Not of this place", "unrelated"))
+        }
+        reasons.append(("Something else", "other"))
         AlertPresenter.showActionSheet(
             title: "Why are you reporting this?",
             message: "Your report is anonymous. Content reported by multiple people is hidden automatically pending review.",

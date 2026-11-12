@@ -24,6 +24,10 @@ struct PlacePhotoActionsTests {
         #expect(PlacePhotoActions.actions(photo: photo(by: "other"), isCover: false, viewerId: "cust", canManage: false) == [.report])
     }
 
+    @Test func unattributedPhotosCanBeReported() {
+        #expect(PlacePhotoActions.actions(photo: photo(by: nil), isCover: false, viewerId: "cust", canManage: false) == [.report])
+    }
+
     @Test func aPrivatePhotoIsNeverOfferedAsCover() {
         #expect(!PlacePhotoActions.actions(photo: photo(by: "owner", isPrivate: true), isCover: false, viewerId: "owner", canManage: true).contains(.setCover))
     }
