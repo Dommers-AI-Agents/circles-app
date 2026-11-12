@@ -77,20 +77,24 @@ const fetchVenuePhotoUrls = async (venues) => {
 // @route   POST /api/rewards/scan
 // @access  Private
 // @route GET /api/rewards/code-name/:code
-// The store a code belongs to, for the app's "Checking rewards at <store>…"
-// bubble while the scan itself runs. One indexed lookup, cached briefly.
+// The store a code belongs to and what kind of code it is, for the app's
+// bubble while the scan itself runs: "Setting you up to save <store>…" for
+// a window sticker, "Checking rewards at <store>…" for a register card,
+// "Setting you up to join…" for JOINUS (Wes, 2026-11-12). One indexed
+// lookup, cached briefly.
 const codeNameCache = new Map();
 exports.codeName = async (req, res) => {
   try {
     const code = String(req.params.code || '').trim().toUpperCase();
     const hit = codeNameCache.get(code);
-    if (hit && hit.at > Date.now() - 10 * 60 * 1000) return res.json({ success: true, data: { venueName: hit.name } });
+    if (hit && hit.at > Date.now() - 10 * 60 * 1000) return res.json({ success: true, data: { venueName: hit.name, kind: hit.kind } });
     const venue = await rewardService.findVenueByCode(code);
     if (!venue || venue.active === false) return res.status(404).json({ success: false, error: 'Unknown code' });
     const name = venue.genericJoin ? null : (venue.venueName || venue.placeName || null);
+    const kind = venue.genericJoin ? 'generic' : (venue.kind === 'register' ? 'register' : 'window');
     if (codeNameCache.size > 2000) codeNameCache.clear();
-    codeNameCache.set(code, { name, at: Date.now() });
-    res.json({ success: true, data: { venueName: name } });
+    codeNameCache.set(code, { name, kind, at: Date.now() });
+    res.json({ success: true, data: { venueName: name, kind } });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Lookup failed' });
   }

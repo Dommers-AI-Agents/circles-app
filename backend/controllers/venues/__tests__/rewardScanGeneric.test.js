@@ -41,3 +41,11 @@ test('JOINUS from the app or the clip: kind generic, nothing saved, no store poi
   expect(mockSave).not.toHaveBeenCalled();
   expect(mockStickerSave).not.toHaveBeenCalled();
 });
+
+test('code-name answers the kind too: generic for JOINUS (no store name)', async () => {
+  const { codeName } = require('../rewardScanController');
+  let out;
+  const res = { status() { return this; }, json(b) { out = b; return this; } };
+  await codeName({ params: { code: 'joinus' } }, res);
+  expect(out).toEqual({ success: true, data: { venueName: null, kind: 'generic' } });
+});
