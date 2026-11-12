@@ -99,8 +99,10 @@ class PlaceDetailViewController: BaseViewController {
         PlacePhotoLibraryService.shared.moments(placeId: place.globalPlaceId ?? place.id) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self, case .success(let moments) = result else { return }
-                self.placeMoments = moments
-                self.photosMomentsView.setMoments(moments)
+                self.placeMoments = MomentExpiry.visible(moments)
+                self.photosMomentsView.setMoments(self.placeMoments)
+                // Short clips play in the top carousel too
+                self.updateMediaCarousel()
             }
         }
     }
@@ -135,6 +137,7 @@ class PlaceDetailViewController: BaseViewController {
         assembler.legacyPhotoUrls = place.photos
         assembler.localPhotos = placePhotos.map { PlaceMediaAssembler.LocalPhoto(image: $0.image, url: $0.url) }
         assembler.videoUrls = place.videos
+        assembler.moments = placeMoments
         let mediaItems = assembler.assemble()
         // The section below shows the same photos, in the same order
         let attributed = globalPlace?.photos ?? []
@@ -470,8 +473,15 @@ class PlaceDetailViewController: BaseViewController {
         venueLoader.loadVenueRewards()
     }
 
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // A clip never keeps playing behind another screen
+        mediaCarouselView.isPlaybackActive = false
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        mediaCarouselView.isPlaybackActive = true
         // Back from Manage Store, Orders or an order's status: the owner
         // bar's counts or the customer's order row may have moved
         if hasAppeared, placeVenueData?.isOwner == true || placeVenueData?.myOrder != nil || !(placeVenueData?.myOrders ?? []).isEmpty { venueLoader.loadVenueRewards() }
@@ -492,6 +502,8 @@ class PlaceDetailViewController: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         NotificationCenter.default.addObserver(self, selector: #selector(handleCheckInCreated(_:)), name: .checkInCreated, object: nil)
+        // A clip just posted (from this page or anywhere) shows in the carousel
+        NotificationCenter.default.addObserver(self, selector: #selector(handleMomentUploaded), name: .momentUploaded, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handlePlaceRatingChanged(_:)), name: .placeRatingChanged, object: nil)
         // The owner bar counts new orders: refresh it when they change
         NotificationCenter.default.addObserver(self, selector: #selector(handleStoreOrdersChanged), name: VenueOrdersViewController.ordersChanged, object: nil)
@@ -2533,6 +2545,19 @@ class PlaceDetailViewController: BaseViewController {
         return view.bounds.inset(by: view.safeAreaInsets).intersects(frame)
     }
 
+    @objc private func handleMomentUploaded() {
+        loadPlaceMoments()
+    }
+
+    /// Share a Moment, with this place typed into its place picker
+    private func presentAddClip() {
+        let upload = ContentUploadViewController()
+        upload.suggestedPlaceName = place.name
+        let nav = UINavigationController(rootViewController: upload)
+        nav.modalPresentationStyle = .fullScreen
+        present(nav, animated: true)
+    }
+
     private func presentAddMediaSheet(from source: UIView?) {
         let sender = source
         let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
@@ -2542,16 +2567,15 @@ class PlaceDetailViewController: BaseViewController {
             self?.mediaCaptureService.presentCamera(from: self!, for: .photo)
         })
         
-        actionSheet.addAction(UIAlertAction(title: "Record Video", style: .default) { [weak self] _ in
-            self?.mediaCaptureService.presentCamera(from: self!, for: .video)
-        })
-        
         actionSheet.addAction(UIAlertAction(title: "Choose Photos", style: .default) { [weak self] _ in
             self?.presentMultiPhotoPicker()
         })
 
-        actionSheet.addAction(UIAlertAction(title: "Choose Video", style: .default) { [weak self] _ in
-            self?.mediaCaptureService.presentPhotoLibrary(from: self!, for: .video)
+        // A clip is a Moment at this place (Wes, 2026-11-12): the Moment flow,
+        // so the person picks who sees it, can tag and make it disappear, and it
+        // plays in this page's carousel
+        actionSheet.addAction(UIAlertAction(title: "Add a Video Clip", style: .default) { [weak self] _ in
+            self?.presentAddClip()
         })
         
         // Owner-only entries: these mutate the place's own image via the
@@ -3015,8 +3039,9 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
         switch media.type {
         case .photo(let image):
             handleCapturedPhoto(image)
-        case .video(let videoURL):
-            handleCapturedVideo(url: videoURL)
+        case .video:
+            // Clips go through the Moment flow (presentAddClip), never here
+            break
         }
     }
     
@@ -3038,25 +3063,6 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
         uploadPhotos([image])
     }
 
-    private func handleCapturedVideo(url: URL) {
-        isLoadingPhoto = true
-        updateImageView()
-        
-        // Use MediaProcessingService for consistent compression (same as Moments)
-        mediaProcessingService.processVideo(at: url) { [weak self] result in
-            switch result {
-            case .success(let processedVideo):
-                self?.uploadProcessedVideo(processedVideo)
-            case .failure(let error):
-                DispatchQueue.main.async {
-                    self?.isLoadingPhoto = false
-                    self?.updateImageView()
-                    self?.showError(error)
-                }
-            }
-        }
-    }
-    
     /// Adds photos to the place one at a time, each attached to the place's
     /// library as soon as it uploads, so one failure costs one photo. One
     /// progress alert for the batch, one refresh and one summary at the end;
@@ -3118,31 +3124,6 @@ extension PlaceDetailViewController: MediaCaptureServiceDelegate {
         present(picker, animated: true)
     }
 
-    private func uploadProcessedVideo(_ processedVideo: ProcessedVideo) {
-        // Use MediaStorageService for consistent upload handling (same as Moments)
-        mediaStorageService.uploadVideo(
-            processedVideo,
-            for: place,
-            type: .placeVideo,
-            visibility: "public"
-        ) { [weak self] result in
-            DispatchQueue.main.async {
-                self?.isLoadingPhoto = false
-                self?.updateImageView()
-                
-                switch result {
-                case .success(let storageResult):
-                    self?.showSuccess("Video uploaded successfully")
-                    // A video from here is a moment at this place: show it
-                    self?.loadPlaceMoments()
-                    self?.updateMediaCarousel()
-                    
-                case .failure(let error):
-                    self?.showError(error)
-                }
-            }
-        }
-    }
 }
 
 // MARK: - MediaCarouselViewDelegate
@@ -3161,6 +3142,14 @@ extension PlaceDetailViewController: MediaCarouselViewDelegate {
             libraryPhotos: globalPlace?.photos ?? [],
             onLikeChanged: { [weak self] in self?.loadGlobalPlaceData() })
         present(viewer, animated: true)
+    }
+
+    /// A clip opens with every moment at the place, starting at that one
+    func mediaCarouselView(_ carouselView: MediaCarouselView, didTapMoment moment: PlaceVideo) {
+        let start = placeMoments.firstIndex { $0.id == moment.id } ?? 0
+        let reels = VideoReelsViewController(reels: placeMoments.isEmpty ? [moment] : placeMoments, startIndex: start)
+        reels.modalPresentationStyle = .fullScreen
+        present(reels, animated: true)
     }
 
     func mediaCarouselView(_ carouselView: MediaCarouselView, didTapVideoAt index: Int, url: String) {

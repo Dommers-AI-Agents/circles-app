@@ -8,10 +8,13 @@ protocol MediaCarouselViewDelegate: AnyObject {
     func mediaCarouselView(_ carouselView: MediaCarouselView, didSetPhotoLiked liked: Bool, photo: AttributedPhoto)
     /// A photo was tapped: the host opens it full screen.
     func mediaCarouselView(_ carouselView: MediaCarouselView, didTapPhotoAt index: Int, items: [MediaItem])
+    /// A clip (a Moment at the place) was tapped: the host opens it full screen.
+    func mediaCarouselView(_ carouselView: MediaCarouselView, didTapMoment moment: PlaceVideo)
 }
 
 extension MediaCarouselViewDelegate {
     func mediaCarouselView(_ carouselView: MediaCarouselView, didTapPhotoAt index: Int, items: [MediaItem]) {}
+    func mediaCarouselView(_ carouselView: MediaCarouselView, didTapMoment moment: PlaceVideo) {}
 }
 
 class MediaCarouselView: UIView {
@@ -22,6 +25,13 @@ class MediaCarouselView: UIView {
     
     private var mediaItems: [MediaItem] = []
     private var currentIndex = 0
+    /// Clip pages by carousel index; only the one on screen plays
+    private var clipViews: [Int: CarouselClipView] = [:]
+    /// The host turns this off while its screen isn't showing (pushed over,
+    /// dismissed), so no clip keeps playing behind another screen
+    var isPlaybackActive = true {
+        didSet { updateClipPlayback() }
+    }
     
     // MARK: - UI Elements
     
@@ -160,6 +170,8 @@ class MediaCarouselView: UIView {
                 Logger.debug("  Item \(index + 1): Video - thumb: \(thumbnailUrl ?? "nil"), video: \(videoUrl ?? "nil")")
             case .attributedPhoto(let photo):
                 Logger.debug("  Item \(index + 1): Attributed Photo - URL: \(photo.url), by: \(photo.uploadedByName ?? "Unknown"), likes: \(photo.likesCount ?? 0)")
+            case .moment(let moment):
+                Logger.debug("  Item \(index + 1): Clip - moment \(moment.id)")
             }
         }
         
@@ -170,7 +182,9 @@ class MediaCarouselView: UIView {
         likeButtons.removeAll()
         photoLikeState.removeAll()
 
-        // Clear existing views
+        // Clear existing views (and let go of any clip players)
+        clipViews.values.forEach { $0.tearDown() }
+        clipViews.removeAll()
         contentStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
         
         // Add media views
@@ -196,12 +210,21 @@ class MediaCarouselView: UIView {
         
         // Update navigation buttons
         updateNavigationButtons()
+        // Reconfiguring returns to page 1 — reset the scroll to match, then
+        // start the clip if that page is one
+        scrollView.setContentOffset(.zero, animated: false)
+        updateClipPlayback()
         Logger.debug("📸 MediaCarouselView: Configuration complete - \(contentStackView.arrangedSubviews.count) views in stack")
     }
     
     // MARK: - Private Methods
     
     private func createMediaView(for item: MediaItem, at index: Int) -> UIView {
+        if case .moment(let moment) = item {
+            let clip = CarouselClipView(moment: moment)
+            clipViews[index] = clip
+            return clip
+        }
         let containerView = UIView()
         containerView.translatesAutoresizingMaskIntoConstraints = false
         
@@ -286,6 +309,9 @@ class MediaCarouselView: UIView {
                 playButton.heightAnchor.constraint(equalToConstant: 80)
             ])
             
+        case .moment:
+            break // made above, as its own view
+
         case .attributedPhoto(let photo):
             let imageView = UIImageView()
             imageView.contentMode = .scaleAspectFill
@@ -413,6 +439,21 @@ class MediaCarouselView: UIView {
         delegate?.mediaCarouselView(self, didSetPhotoLiked: state.liked, photo: photo)
     }
     
+    // MARK: - Clips
+
+    /// Plays the clip on screen (if the page on screen is one), pauses the rest
+    private func updateClipPlayback() {
+        let visible = isPlaybackActive && window != nil
+        for (index, clip) in clipViews {
+            if visible && index == currentIndex { clip.play() } else { clip.pause() }
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updateClipPlayback()
+    }
+
     private func updateNavigationButtons() {
         let showButtons = mediaItems.count > 1
         previousButton.isHidden = !showButtons || currentIndex == 0
@@ -464,6 +505,9 @@ class MediaCarouselView: UIView {
             case .photo, .attributedPhoto, .photoImage:
                 delegate?.mediaCarouselView(self, didTapPhotoAt: currentIndex, items: mediaItems)
                 return
+            case .moment(let moment):
+                delegate?.mediaCarouselView(self, didTapMoment: moment)
+                return
             case .video:
                 break
             }
@@ -514,6 +558,7 @@ extension MediaCarouselView: UIScrollViewDelegate {
             currentIndex = page
             pageControl.currentPage = page
             updateNavigationButtons()
+            updateClipPlayback()
         }
     }
 }
@@ -542,4 +587,6 @@ enum MediaItem {
     case photoImage(image: UIImage)
     case video(thumbnailUrl: String?, videoUrl: String?)
     case attributedPhoto(photo: AttributedPhoto)
+    /// A short clip: a Moment at the place, played muted in the carousel
+    case moment(PlaceVideo)
 }

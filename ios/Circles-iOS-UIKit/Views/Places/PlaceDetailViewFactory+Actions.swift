@@ -91,6 +91,8 @@ extension PlaceDetailViewFactory {
         button.titleLabel?.adjustsFontSizeToFitWidth = true
         button.titleLabel?.minimumScaleFactor = 0.8
         button.titleLabel?.lineBreakMode = .byClipping
+        // When the row is full it gives up width (its title shrinks), never the counts
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         button.isHidden = true // Hidden until eligibility is known
         return button
     }
@@ -116,6 +118,10 @@ extension PlaceDetailViewFactory {
         label.textColor = Constants.Colors.gray
         label.text = ""
         label.translatesAutoresizingMaskIntoConstraints = false
+        // Never squeezed out by the buttons on the right of the row (Wes,
+        // 2026-11-12: a place with one comment showed no count next to the bubble)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.setContentHuggingPriority(.required, for: .horizontal)
         label.isUserInteractionEnabled = true
         return label
     }
@@ -134,6 +140,10 @@ extension PlaceDetailViewFactory {
         label.textColor = Constants.Colors.gray
         label.text = ""
         label.translatesAutoresizingMaskIntoConstraints = false
+        // Never squeezed out by the buttons on the right of the row (Wes,
+        // 2026-11-12: a place with one comment showed no count next to the bubble)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        label.setContentHuggingPriority(.required, for: .horizontal)
         return label
     }
 

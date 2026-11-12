@@ -12,8 +12,12 @@ import UIKit
 ///    shown from memory instead of being re-fetched.
 /// 3. Local photos not reflected in either server list (an upload whose
 ///    refresh hasn't landed) are appended.
-/// 4. Videos follow the photos.
-/// 5. With nothing at all, a single placeholder item.
+/// 4. Short clips — the place's Moments recorded or uploaded in the app —
+///    are woven in after the lead photo: photo, clip, photo, clip… so they
+///    are seen without burying the photos (Wes, 2026-11-12). Pasted links
+///    (TikTok, YouTube) and photo moments stay in the Moments row below.
+/// 5. Legacy save videos follow, minus any that are already a clip.
+/// 6. With nothing at all, a single placeholder item.
 ///
 /// Every photo URL appears at most once. The old exclusive-priority logic hid
 /// legacy photos whenever the GlobalPlace doc had any photos at all.
@@ -30,6 +34,13 @@ struct PlaceMediaAssembler {
     var legacyPhotoUrls: [String]? = nil
     var localPhotos: [LocalPhoto] = []
     var videoUrls: [String]? = nil
+    /// Every moment at the place the viewer may see, newest first
+    var moments: [PlaceVideo] = []
+
+    /// A moment that plays in the strip: an in-app video with a file
+    static func isClip(_ moment: PlaceVideo) -> Bool {
+        !moment.isEmbedded && moment.contentType != "photo" && (moment.videoUrl?.isEmpty == false)
+    }
 
     func assemble() -> [MediaItem] {
         var items: [MediaItem] = []
@@ -64,7 +75,21 @@ struct PlaceMediaAssembler {
             items.append(.photoImage(image: local.image))
         }
 
-        for url in videoUrls ?? [] {
+        let clips = moments.filter(Self.isClip)
+        if !clips.isEmpty {
+            // Photo, clip, photo, clip… — the lead photo (the cover) stays first
+            let photos = items
+            items = []
+            var pending = clips[...]
+            for photo in photos {
+                items.append(photo)
+                if let clip = pending.popFirst() { items.append(.moment(clip)) }
+            }
+            items.append(contentsOf: pending.map { .moment($0) })
+        }
+        let clipUrls = Set(clips.compactMap(\.videoUrl))
+
+        for url in videoUrls ?? [] where !clipUrls.contains(url) {
             // The video URL doubles as its thumbnail until the API carries
             // separate thumbnail URLs.
             items.append(.video(thumbnailUrl: url, videoUrl: url))

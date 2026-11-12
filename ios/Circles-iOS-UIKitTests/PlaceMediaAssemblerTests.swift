@@ -22,8 +22,55 @@ struct PlaceMediaAssemblerTests {
             case .photo(let url): return "url:\(url ?? "nil")"
             case .photoImage(let image): return image === imageA ? "img:A" : (image === imageB ? "img:B" : "img:?")
             case .video(_, let videoUrl): return "video:\(videoUrl ?? "nil")"
+            case .moment(let m): return "clip:\(m.id)"
             }
         }
+    }
+
+    /// A moment as the API sends it
+    private func moment(_ id: String, videoUrl: String? = nil, videoType: String? = nil, contentType: String? = nil) -> PlaceVideo {
+        var json: [String: Any] = ["_id": id, "userId": "u", "placeId": "p", "placeName": "Winery", "title": "", "description": "",
+                                   "visibility": "public", "viewCount": 0, "likeCount": 0, "commentCount": 0, "tags": [],
+                                   "uploadStatus": "ready", "createdAt": "2026-11-12T10:00:00Z", "updatedAt": "2026-11-12T10:00:00Z"]
+        if let videoUrl { json["videoUrl"] = videoUrl }
+        if let videoType { json["videoType"] = videoType }
+        if let contentType { json["contentType"] = contentType }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try! decoder.decode(PlaceVideo.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+
+    @Test func clipsWeaveInAfterTheLeadPhoto() {
+        var a = PlaceMediaAssembler()
+        a.attributedPhotos = [attributed("cover"), attributed("p2"), attributed("p3")]
+        a.moments = [moment("m1", videoUrl: "v1"), moment("m2", videoUrl: "v2")]
+        #expect(describe(a.assemble()) == ["attr:cover", "clip:m1", "attr:p2", "clip:m2", "attr:p3"])
+    }
+
+    @Test func extraClipsFollowThePhotosAndClipsAloneNeedNoPlaceholder() {
+        var a = PlaceMediaAssembler()
+        a.attributedPhotos = [attributed("cover")]
+        a.moments = [moment("m1", videoUrl: "v1"), moment("m2", videoUrl: "v2")]
+        #expect(describe(a.assemble()) == ["attr:cover", "clip:m1", "clip:m2"])
+        var b = PlaceMediaAssembler()
+        b.moments = [moment("m1", videoUrl: "v1")]
+        #expect(describe(b.assemble()) == ["clip:m1"])
+    }
+
+    @Test func linksPhotoMomentsAndUnfinishedUploadsAreNotClips() {
+        var a = PlaceMediaAssembler()
+        a.attributedPhotos = [attributed("cover")]
+        a.moments = [moment("tiktok", videoUrl: "x", videoType: "embedded"),
+                     moment("photo", videoUrl: "y", contentType: "photo"),
+                     moment("nofile")]
+        #expect(describe(a.assemble()) == ["attr:cover"])
+    }
+
+    @Test func aLegacyVideoThatIsAlreadyAClipShowsOnce() {
+        var a = PlaceMediaAssembler()
+        a.moments = [moment("m1", videoUrl: "v1")]
+        a.videoUrls = ["v1", "old"]
+        #expect(describe(a.assemble()) == ["clip:m1", "video:old"])
     }
 
     @Test func nothingYieldsOnePlaceholder() {

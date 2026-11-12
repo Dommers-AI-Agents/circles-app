@@ -31,7 +31,7 @@ enum CarouselPhotoViewerMap {
         switch item {
         case .photo(let url): return url.flatMap { $0.isEmpty ? nil : $0 }
         case .attributedPhoto(let photo): return photo.url.isEmpty ? nil : photo.url
-        case .photoImage, .video: return nil
+        case .photoImage, .video, .moment: return nil
         }
     }
 }
