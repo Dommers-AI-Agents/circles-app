@@ -143,6 +143,9 @@ final class GetRewardsViewController: BaseViewController {
         if navigationController?.viewControllers.first === self {
             navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .close, target: self, action: #selector(closeTapped))
         }
+        // One store here; every store's points and offers are one tap away
+        // (Wes, 2026-11-12). Small, in the bar, so the page stays the store's.
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "All my rewards", style: .plain, target: self, action: #selector(allRewardsTapped))
         // See-through bar over the photo; once the page scrolls, a solid
         // bar, so nothing slides under the clock (Wes, 2026-11-02)
         let clear = UINavigationBarAppearance()
@@ -612,6 +615,18 @@ final class GetRewardsViewController: BaseViewController {
             text.append(NSAttributedString(attachment: NSTextAttachment(image: chevron)))
         }
         return text
+    }
+
+    /// The Store Rewards hub: every store's points, offers and the piggy bank
+    @objc private func allRewardsTapped() {
+        let hub = RewardsHubViewController()
+        hub.initialTab = .rewards
+        hub.highlightVenueId = venueId
+        if let nav = navigationController {
+            nav.pushViewController(hub, animated: true)
+        } else {
+            present(UINavigationController(rootViewController: hub), animated: true)
+        }
     }
 
     @objc private func closeTapped() {

@@ -140,7 +140,7 @@ final class StickerRewardCoordinator: NSObject {
             guard let presenter = self?.presenter else { return }
             let sheet = ClipWelcomeViewController(welcome: welcome)
             sheet.onSave = { [weak self] in self?.startSaveFlow(venue: welcome.venue, code: welcome.code) }
-            sheet.onSeeRewards = { [weak self] in self?.openStoreRewards() }
+            sheet.onSeeRewards = { [weak self] in self?.openThisStoreRewards(venue: welcome.venue) }
             if let controller = sheet.sheetPresentationController {
                 controller.detents = [.medium(), .large()]
                 controller.prefersGrabberVisible = true
@@ -344,7 +344,7 @@ final class StickerRewardCoordinator: NSObject {
         var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = []
         if rewardsLive {
             actions.append((title: canRedeem ? "Use my reward" : "See my rewards", style: .default, handler: { [weak self] in
-                self?.openStoreRewards(highlight: scan.venue.venueId)
+                self?.openThisStoreRewards(venue: scan.venue)
             }))
         }
         if let saved = scan.savedPlace {
@@ -597,6 +597,40 @@ final class StickerRewardCoordinator: NSObject {
                 let detail = CircleDetailViewController(circle: circle)
                 detail.highlightPlaceId = placeId
                 self.push(detail)
+            }
+        }
+    }
+
+    /// This store's own rewards page — points here, the next reward, your
+    /// visits — not the hub for every store (Wes, 2026-11-12: "See my
+    /// rewards" after scanning a store should be that store's page; the
+    /// page's own "All my rewards" button leads to the rest). Falls back to
+    /// the hub, with this store outlined, when the page can't be built.
+    private func openThisStoreRewards(venue: RewardVenue) {
+        guard let placeId = venue.globalPlaceId, let presenter else {
+            openStoreRewards(highlight: venue.venueId)
+            return
+        }
+        let loading = AlertPresenter.showLoading(message: "Loading rewards\u{2026}", from: presenter)
+        var place: Place?
+        var data: PlaceVenueData?
+        let group = DispatchGroup()
+        group.enter()
+        PlaceService.shared.fetchPlaceById(id: placeId) { result in
+            DispatchQueue.main.async { place = try? result.get(); group.leave() }
+        }
+        group.enter()
+        RewardsService.shared.getVenueByPlace(placeId: placeId, googlePlaceId: venue.googlePlaceId) { result in
+            DispatchQueue.main.async { data = try? result.get(); group.leave() }
+        }
+        group.notify(queue: .main) { [weak self] in
+            loading.dismiss(animated: true) {
+                guard let self else { return }
+                if let place, let page = GetRewardsViewController(place: place, data: data) {
+                    self.push(page)
+                } else {
+                    self.openStoreRewards(highlight: venue.venueId)
+                }
             }
         }
     }
