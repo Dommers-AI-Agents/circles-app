@@ -118,20 +118,17 @@ final class ClipWelcomeViewController: BaseViewController {
         // Joined in the clip with just an email: keep the account
         if let email = AccountSafetyPrompt.stashedEmail {
             AccountSafetyPrompt.markAsked()
-            stack.addArrangedSubview(Self.heading("KEEP YOUR POINTS SAFE"))
+            stack.addArrangedSubview(Self.heading("SIGN IN WITH A GLANCE"))
             let why = Self.label(.systemFont(ofSize: 15), color: UIColor.white.withAlphaComponent(0.85))
-            why.text = "You joined with \(email). Set up Face ID so you can always sign back in, or confirm your email."
+            why.text = "You joined with \(email). Set up Face ID and signing in is a glance, with no codes to type."
             stack.addArrangedSubview(why)
             let faceID = UIButton.secondaryButton(title: "Use Face ID to sign in")
             faceID.setTitleColor(.white, for: .normal)
             faceID.layer.borderColor = UIColor.white.withAlphaComponent(0.4).cgColor
             faceID.layer.cornerRadius = 14
             faceID.addTarget(self, action: #selector(faceIDTapped), for: .touchUpInside)
-            let confirm = UIButton.smallActionButton(title: "Confirm my email instead", style: .secondary)
-            confirm.addTarget(self, action: #selector(confirmTapped), for: .touchUpInside)
             stack.addArrangedSubview(faceID)
-            stack.addArrangedSubview(confirm)
-            stack.setCustomSpacing(22, after: confirm)
+            stack.setCustomSpacing(22, after: faceID)
             safetyEmail = email
         }
 
@@ -199,11 +196,6 @@ final class ClipWelcomeViewController: BaseViewController {
     @objc private func faceIDTapped() {
         guard let email = safetyEmail else { return }
         AccountSafetyPrompt.setUpFaceID(email: email, from: self)
-    }
-
-    @objc private func confirmTapped() {
-        guard let email = safetyEmail else { return }
-        AccountSafetyPrompt.confirmEmail(email, from: self)
     }
 
     @objc private func doneTapped() {

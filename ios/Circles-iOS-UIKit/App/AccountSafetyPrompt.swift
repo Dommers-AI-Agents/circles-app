@@ -1,26 +1,43 @@
 import UIKit
 
 /// After an instant App Clip sign-up (just an email, nothing confirmed —
-/// Wes, 2026-10-31), the app asks them to keep the account: set up Face ID
-/// (a passkey) or confirm the email with a 6-digit code. Either one means
-/// they can always sign back in. Shown in the clip welcome sheet, or on its
-/// own when there's no store welcome; asked up to three launches.
+/// Wes, 2026-10-31), the app offers Face ID (a passkey) so signing back in
+/// is a glance. Shown in the clip welcome sheet, or on its own when there's
+/// no store welcome.
+///
+/// Asked at most twice, at least three days apart (Wes, 2026-11-12: a new
+/// tester was interrupted three times in one first session). There is no
+/// "confirm your email" option any more: an emailed code signs anyone in to
+/// their account whether or not it was confirmed, and that first code
+/// confirms it, so asking up front gave the person nothing.
 enum AccountSafetyPrompt {
 
     private static let emailKey = "accountSafety.unconfirmedEmail"
     private static let askedKey = "accountSafety.timesAsked"
-    private static let maxAsks = 3
+    private static let lastAskedKey = "accountSafety.lastAskedAt"
+    static let maxAsks = 2
+    static let minGap: TimeInterval = 3 * 24 * 3600
+
+    /// Pure pacing rule: never more than `maxAsks`, never twice within `minGap`
+    static func shouldAsk(timesAsked: Int, lastAskedAt: Date?, now: Date = Date()) -> Bool {
+        guard timesAsked < maxAsks else { return false }
+        guard let last = lastAskedAt else { return true }
+        return now.timeIntervalSince(last) >= minGap
+    }
 
     static func stash(email: String) {
         UserDefaults.standard.set(email, forKey: emailKey)
         UserDefaults.standard.set(0, forKey: askedKey)
+        UserDefaults.standard.removeObject(forKey: lastAskedKey)
     }
 
-    /// The email still waiting, if we haven't asked too many times
+    /// The email still waiting, if it's time to ask again
     /// …and only for the account it was stashed for (2026-11-07)
     static var stashedEmail: String? {
-        guard UserDefaults.standard.integer(forKey: askedKey) < maxAsks,
-              let email = UserDefaults.standard.string(forKey: emailKey),
+        let defaults = UserDefaults.standard
+        guard shouldAsk(timesAsked: defaults.integer(forKey: askedKey),
+                        lastAskedAt: defaults.object(forKey: lastAskedKey) as? Date),
+              let email = defaults.string(forKey: emailKey),
               PasskeyAccountMatch.isForSignedInAccount(stashedEmail: email,
                                                        signedInEmail: AuthService.shared.currentUser?.email) else { return nil }
         return email
@@ -28,11 +45,13 @@ enum AccountSafetyPrompt {
 
     static func markAsked() {
         UserDefaults.standard.set(UserDefaults.standard.integer(forKey: askedKey) + 1, forKey: askedKey)
+        UserDefaults.standard.set(Date(), forKey: lastAskedKey)
     }
 
     static func done() {
         UserDefaults.standard.removeObject(forKey: emailKey)
         UserDefaults.standard.removeObject(forKey: askedKey)
+        UserDefaults.standard.removeObject(forKey: lastAskedKey)
     }
 
     /// The stand-alone ask (no store welcome sheet to put it in)
@@ -41,11 +60,10 @@ enum AccountSafetyPrompt {
     static func present(email: String, from presenter: UIViewController, then: (() -> Void)? = nil) {
         markAsked()
         AlertPresenter.showAlert(
-            title: "Keep your points safe",
-            message: "You joined with \(email). Set up Face ID so you can always sign back in, or confirm your email.",
+            title: "Sign in with Face ID?",
+            message: "Set up Face ID for \(email) and signing in is a glance, with no codes to type.",
             actions: [
                 (title: "Set Up Face ID", style: .default, handler: { setUpFaceID(email: email, from: presenter, then: then) }),
-                (title: "Confirm Email", style: .default, handler: { confirmEmail(email, from: presenter, then: then) }),
                 (title: "Not Now", style: .cancel, handler: { then?() })
             ],
             from: presenter
@@ -66,50 +84,6 @@ enum AccountSafetyPrompt {
                     if case PasskeyAuthService.PasskeyError.canceled? = error as? PasskeyAuthService.PasskeyError { then?(); return }
                     if (error as NSError).code == 1001 { then?(); return }
                     AlertPresenter.showError(message: FriendlyError.message(for: error), from: presenter) { then?() }
-                }
-            }
-        }
-    }
-
-    /// Emails a code to their own address, then asks for it
-    static func confirmEmail(_ email: String, from presenter: UIViewController, then: (() -> Void)? = nil) {
-        let loading = AlertPresenter.showLoading(message: "Sending a code\u{2026}", from: presenter)
-        APIService.shared.request(endpoint: "auth/email-code/start", method: .post, body: ["email": email], requiresAuth: false) { (result: Result<SimpleResponse, APIError>) in
-            DispatchQueue.main.async {
-                loading.dismiss(animated: true) {
-                    switch result {
-                    case .success:
-                        askForCode(email: email, from: presenter, then: then)
-                    case .failure(let error):
-                        AlertPresenter.showError(message: FriendlyError.message(for: error), from: presenter) { then?() }
-                    }
-                }
-            }
-        }
-    }
-
-    private static func askForCode(email: String, from presenter: UIViewController, then: (() -> Void)?) {
-        AlertPresenter.showTextInput(
-            title: "Check your email",
-            message: "Enter the 6-digit code we sent to \(email).",
-            placeholder: "6-digit code",
-            keyboardType: .numberPad,
-            autocapitalization: .none,
-            confirmTitle: "Confirm",
-            from: presenter,
-            onCancel: { then?() }
-        ) { text in
-            let code = (text ?? "").filter(\.isNumber)
-            guard code.count == 6 else { then?(); return }
-            APIService.shared.request(endpoint: "auth/email-code/confirm", method: .post, body: ["code": code], requiresAuth: true) { (result: Result<SimpleResponse, APIError>) in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success:
-                        done()
-                        AlertPresenter.showSuccess(title: "Email confirmed", message: "Your account and points are safe.", from: presenter) { then?() }
-                    case .failure(let error):
-                        AlertPresenter.showError(message: FriendlyError.message(for: error), from: presenter) { then?() }
-                    }
                 }
             }
         }

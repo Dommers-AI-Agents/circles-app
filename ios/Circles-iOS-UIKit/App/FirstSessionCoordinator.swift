@@ -126,7 +126,7 @@ final class FirstSessionCoordinator: SceneCoordinator {
         }
     }
 
-    /// "Keep your points safe": Face ID or confirm the email, for an account
+    /// "Sign in with Face ID?" (AccountSafetyPrompt), for an account
     /// made with just an email in the clip; straight on otherwise
     private func offerAccountSafety(over tabBarController: CirclesTabBarController, then: @escaping () -> Void) {
         guard let email = AccountSafetyPrompt.stashedEmail else { return then() }
