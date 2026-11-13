@@ -1355,6 +1355,11 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         mapSearchBar.resignFirstResponder()
     }
 
+    /// The tapped place's card rides along while the map pans and zooms
+    func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+        poiCoordinator.mapDidMove()
+    }
+
     func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
         // Only the places in and around the screen carry annotation views
         recullAnnotationsIfNeeded()
@@ -1488,6 +1493,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
     /// A tapped place was let go (its sheet cancelled): the hint comes back
     func mapView(_ mapView: MKMapView, didDeselect annotation: MKAnnotation) {
         if #available(iOS 16.0, *), annotation is MKMapFeatureAnnotation {
+            poiCoordinator.dismissCallout()
             refreshMapTapHint()
         }
     }

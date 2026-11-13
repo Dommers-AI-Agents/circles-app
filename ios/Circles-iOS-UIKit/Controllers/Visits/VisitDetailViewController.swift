@@ -115,6 +115,8 @@ class VisitDetailViewController: UIViewController {
         return stack
     }()
     private var choiceCandidates: [VisitPlaceSuggestion.Candidate] = []
+    /// The card on a tapped map place (2026-11-12)
+    private var poiCallout: MapPlaceCalloutView?
 
     private lazy var addToCircleButton = UIButton.primaryButton(title: "Add to Circle")
     private lazy var dismissButton = UIButton.dangerButton(title: "Dismiss Visit")
@@ -608,34 +610,46 @@ extension VisitDetailViewController: MKMapViewDelegate {
         }
     }
     
-    @available(iOS 16.0, *)
+    func mapView(_ mapView: MKMapView, didDeselect annotation: MKAnnotation) {
+        if annotation is MKMapFeatureAnnotation {
+            poiCallout?.dismiss()
+            poiCallout = nil
+        }
+    }
+
+    func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+        poiCallout?.reposition()
+    }
+
+    /// A card on the place: Add Place (the circle is chosen on its Circle
+    /// card, Wes 2026-11-11) or Directions
     private func handlePOISelection(_ featureAnnotation: MKMapFeatureAnnotation) {
-        let poiName = featureAnnotation.title ?? "Unknown Place"
+        poiCallout?.dismiss(animated: false)
+        let poiName = featureAnnotation.title ?? "This place"
         let coordinate = featureAnnotation.coordinate
-        
-        // First, show options for what to do with this POI
-        let alertController = UIAlertController(
-            title: poiName,
-            message: "What would you like to do with this place?",
-            preferredStyle: .actionSheet
-        )
-        
-        alertController.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-            // Add Place with this place filled in; the circle is chosen on its
-            // Circle card (Wes, 2026-11-11), not in a picker first
+        let card = MapPlaceCalloutView(
+            model: .init(feature: featureAnnotation, userLocation: mapView.userLocation.location, isSaved: false),
+            coordinate: coordinate)
+        let close: () -> Void = { [weak self] in
+            self?.poiCallout?.dismiss()
+            self?.poiCallout = nil
+            self?.mapView.deselectAnnotation(featureAnnotation, animated: true)
+        }
+        card.onPrimary = { [weak self] in
+            close()
             let addPlaceVC = AddPlaceViewController(circles: [])
             self?.navigationController?.pushViewController(addPlaceVC, animated: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 addPlaceVC.prefillSearchWithPlace(name: poiName, coordinate: coordinate)
             }
-        })
-        
-        alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        
-        // Deselect the POI annotation
-        mapView.deselectAnnotation(featureAnnotation, animated: true)
-        
-        present(alertController, animated: true)
+        }
+        card.onDirections = {
+            MapPOIAddCoordinator.openDirections(to: featureAnnotation)
+            close()
+        }
+        card.onClose = close
+        card.show(on: mapView)
+        poiCallout = card
     }
 }
 

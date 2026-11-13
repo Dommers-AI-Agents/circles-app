@@ -267,6 +267,28 @@ extension UIButton {
         return button
     }
 
+    /// A rounded icon + title button for a floating card: filled brand blue
+    /// for the main action, tinted gray for the other (the map place card).
+    static func capsuleButton(title: String, systemName: String, filled: Bool) -> UIButton {
+        var config = filled ? UIButton.Configuration.filled() : UIButton.Configuration.gray()
+        config.title = title
+        config.image = UIImage(systemName: systemName,
+                               withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .bold))
+        config.imagePadding = 6
+        config.cornerStyle = .capsule
+        config.baseBackgroundColor = filled ? Constants.Colors.primary : nil
+        config.baseForegroundColor = filled ? .white : Constants.Colors.label
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+            return outgoing
+        }
+        config.contentInsets = NSDirectionalEdgeInsets(top: 11, leading: 14, bottom: 11, trailing: 14)
+        let button = UIButton(configuration: config)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }
+
     /// Icon + short title on a tinted card: the Directions / Website / Call /
     /// Check In row on the place page.
     static func rowButton(title: String, systemName: String) -> UIButton {

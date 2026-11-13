@@ -12,14 +12,15 @@ protocol MapPOIAddCoordinatorDelegate: AnyObject {
     func poiCoordinator(_ coordinator: MapPOIAddCoordinator, openAddPlaceWith circles: [Circle], configure: @escaping (AddPlaceViewController) -> Void)
 }
 
-/// The "tap a map point of interest → add it" flow: the small sheet naming
-/// the place, then AddPlace with it prefilled. The circle is chosen on Add
-/// Place's Circle card, like Home's Add Place button (Wes, 2026-11-11: "I
-/// thought we changed this flow to do it in the add place view").
+/// The "tap a map point of interest → add it" flow: a card on the place
+/// (MapPlaceCalloutView: its icon, name, kind and distance, Add Place and
+/// Directions), then AddPlace with it prefilled. The circle is chosen on Add
+/// Place's Circle card, like Home's Add Place button (Wes, 2026-11-11).
 final class MapPOIAddCoordinator {
     private unowned let presenter: UIViewController
     private unowned let mapView: MKMapView
     weak var delegate: MapPOIAddCoordinatorDelegate?
+    private var callout: MapPlaceCalloutView?
 
     init(presenter: UIViewController, mapView: MKMapView) {
         self.presenter = presenter
@@ -27,51 +28,54 @@ final class MapPOIAddCoordinator {
     }
 
     func handlePOISelection(_ featureAnnotation: MKMapFeatureAnnotation) {
-        // Get POI details
-        let poiName = featureAnnotation.title ?? "Unknown Place"
-        let poiSubtitle = featureAnnotation.subtitle ?? ""
+        dismissCallout(animated: false)
+        let name = featureAnnotation.title ?? "This place"
         let coordinate = featureAnnotation.coordinate
+        let existing = delegate?.poiCoordinator(self, existingPlaceNamed: name, at: coordinate)
 
-        // Check if this place already exists in the current places
-        let isAlreadySaved = delegate?.poiCoordinator(self, existingPlaceNamed: poiName, at: coordinate) != nil
-
-        // Show custom action sheet with options
-        let alertController = UIAlertController(
-            title: poiName,
-            message: isAlreadySaved ? "\(poiSubtitle)\n\n✓ Already saved" : poiSubtitle,
-            preferredStyle: .actionSheet
-        )
-
-        if !isAlreadySaved {
-            // Add Place only if not already saved
-            alertController.addAction(UIAlertAction(title: "Add Place", style: .default) { [weak self] _ in
-                self?.openAddPlace(for: featureAnnotation)
-            })
-        } else {
-            // Show which circles contain this place
-            let viewDetailsAction = UIAlertAction(title: "View Details", style: .default) { [weak self] _ in
-                guard let self = self else { return }
-                if let existingPlace = self.delegate?.poiCoordinator(self, existingPlaceNamed: poiName, at: coordinate) {
-                    self.delegate?.poiCoordinator(self, didChooseExistingPlace: existingPlace)
-                }
+        let card = MapPlaceCalloutView(
+            model: .init(feature: featureAnnotation, userLocation: mapView.userLocation.location, isSaved: existing != nil),
+            coordinate: coordinate)
+        card.onPrimary = { [weak self] in
+            guard let self else { return }
+            if let existing {
+                self.close(featureAnnotation)
+                self.delegate?.poiCoordinator(self, didChooseExistingPlace: existing)
+            } else {
+                self.openAddPlace(for: featureAnnotation)
             }
-            alertController.addAction(viewDetailsAction)
         }
-
-        // Cancel action
-        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
-            self?.mapView.deselectAnnotation(featureAnnotation, animated: true)
+        card.onDirections = { [weak self] in
+            Self.openDirections(to: featureAnnotation)
+            self?.close(featureAnnotation)
         }
-        alertController.addAction(cancelAction)
+        card.onClose = { [weak self] in self?.close(featureAnnotation) }
+        card.show(on: mapView)
+        callout = card
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
 
-        // For iPad
-        if let popover = alertController.popoverPresentationController {
-            popover.sourceView = mapView
-            let point = mapView.convert(coordinate, toPointTo: mapView)
-            popover.sourceRect = CGRect(x: point.x, y: point.y, width: 0, height: 0)
-        }
+    /// Keeps the card on its place while the map moves
+    func mapDidMove() {
+        callout?.reposition()
+    }
 
-        presenter.present(alertController, animated: true)
+    /// The place was let go (a tap elsewhere on the map): the card goes too
+    func dismissCallout(animated: Bool = true) {
+        callout?.dismiss(animated: animated)
+        callout = nil
+    }
+
+    private func close(_ featureAnnotation: MKMapFeatureAnnotation) {
+        dismissCallout()
+        mapView.deselectAnnotation(featureAnnotation, animated: true)
+    }
+
+    /// Apple Maps directions to the tapped place
+    static func openDirections(to feature: MKMapFeatureAnnotation) {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: feature.coordinate))
+        item.name = feature.title ?? nil
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDefault])
     }
 
     /// Add Place with the tapped place filled in; the person's circles go
@@ -84,12 +88,13 @@ final class MapPOIAddCoordinator {
                     guard let self else { return }
                     switch result {
                     case .success(let circles):
+                        self.dismissCallout(animated: false)
                         self.mapView.deselectAnnotation(featureAnnotation, animated: false)
                         self.delegate?.poiCoordinator(self, openAddPlaceWith: circles) { addPlaceVC in
                             addPlaceVC.configureWithPOI(featureAnnotation)
                         }
                     case .failure(let error):
-                        self.mapView.deselectAnnotation(featureAnnotation, animated: true)
+                        self.close(featureAnnotation)
                         self.presenter.showError(FriendlyError.message(for: error))
                     }
                 }
