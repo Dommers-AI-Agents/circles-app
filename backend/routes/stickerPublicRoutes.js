@@ -17,10 +17,15 @@ router.get('/:code', async (req, res) => {
   const appStoreUrl = rewardConfig.APP_STORE_URL;
 
   let venueName = 'This place';
+  // A flyer's coupon on the link (?c=, services/storeCoupons): named on the
+  // page, and carried into the app so the first scan there claims it
+  const couponId = require('../services/storeCoupons').normalizeId(req.query?.c);
+  let coupon = null;
   try {
     const venue = await rewardService.findVenueByCode(code);
     if (venue && venue.active !== false) {
       venueName = venue.venueName;
+      if (couponId) coupon = require('../services/storeCoupons').preview(venue, couponId);
       // A landing-page hit means the app wasn't installed — count the scan.
       // (Installed-app scans are counted by POST /api/rewards/scan.)
       rewardService.incrementVenueStats(venue.venueId, 'scans');
@@ -32,6 +37,11 @@ router.get('/:code', async (req, res) => {
   }
 
   const safeVenueName = venueName.replace(/[<>&"]/g, '');
+  const safeCoupon = coupon && coupon.available !== false ? String(coupon.title).replace(/[<>&"]/g, '') : null;
+  const couponQuery = couponId ? `&c=${couponId}` : '';
+  const couponLine = safeCoupon
+    ? `<p style="margin:0 0 20px;font-size:18px;font-weight:700">Your coupon: ${safeCoupon}<br><span style="font-weight:400;opacity:.9;font-size:15px">Get the app and it's saved to you, so it's never left at home.</span></p>`
+    : '';
 
   res.send(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -41,10 +51,10 @@ router.get('/:code', async (req, res) => {
 <div style="font-size:56px;margin-bottom:8px">&#128205;</div>
 <h1 style="margin:0 0 8px">Don't forget ${safeVenueName}!</h1>
 <p style="margin:0 0 20px;opacity:.9">Save this place on FavCircles and earn rewards<br>you can use on your next visit.</p>
-<a id="get-app" href="${appStoreUrl}" data-clipboard="favcircles-sticker:${code}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get the App &amp; Earn Rewards</a>
+${couponLine}<a id="get-app" href="${appStoreUrl}" data-clipboard="favcircles-sticker:${code}${couponId ? `;c=${couponId}` : ''}" style="background:#fff;color:#3182CE;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block">Get the App &amp; Earn Rewards</a>
 <p style="margin:20px 0 0;font-size:14px;opacity:.85">After installing, open FavCircles and your reward for<br>${safeVenueName} picks up right where you left off &mdash;<br>or just scan the code again.</p>
 </div>
-<meta name="fc-app-link" content="circles://sticker?code=${code}">
+<meta name="fc-app-link" content="circles://sticker?code=${code}${couponQuery}">
 <meta name="fc-store-url" content="${appStoreUrl}">
 <script src="/public/landing.js"></script>
 </body></html>`);
