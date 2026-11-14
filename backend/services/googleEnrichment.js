@@ -43,7 +43,7 @@ async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
     // A name someone typed or picked on Apple Maps: only Google's listing of
     // THAT venue, never the nearest business to "Mom's house"
     if (options.mustMatchName) {
-      candidates = candidates.filter((c) => isSameVenueListing(placeName, location, c));
+      candidates = candidates.filter((c) => isSameVenueListing(placeName, location, c, options.address));
     }
     if (candidates.length === 0) {
       console.log(`No Google Places results found for: ${placeName}`);
@@ -142,9 +142,25 @@ const plainName = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+
  * where it is, within 300 m of the save. Pure.
  * location: { latitude, longitude } or null.
  */
-function isSameVenueListing(placeName, location, candidate) {
+// "705 Tenth Ave, Belmar, NJ 07719" → { number: '705', zip: '07719' }
+const addressKey = (address) => {
+  const text = String(address || '');
+  const number = (text.match(/^\s*(\d+[a-z]?)\b/i) || [])[1];
+  const zips = text.match(/\b\d{5}\b/g) || [];
+  const zip = zips.filter((z) => z !== number).pop();
+  return number && zip ? `${number.toLowerCase()}|${zip}` : null;
+};
+
+function isSameVenueListing(placeName, location, candidate, address = null) {
   if (!candidate || !candidate.name) return false;
   const { namesLikelySameVenue, sharedWords, leadingWord } = require('./venueNameMatch');
+  const lead = leadingWord(placeName);
+  const nameOverlaps = () => namesLikelySameVenue(placeName, candidate.name)
+    || sharedWords(placeName, candidate.name).length >= 1 || (!!lead && lead === leadingWord(candidate.name));
+  // The same door: house number and zip agree, so a pin dropped a block off
+  // (Federici's on 10th, 329 m; Doggie Sweets, 1.2 km) still finds its listing
+  const key = addressKey(address);
+  if (key && key === addressKey(candidate.formatted_address) && nameOverlaps()) return true;
   const at = candidate.geometry && candidate.geometry.location;
   let meters = null;
   if (location && at) {
@@ -160,8 +176,7 @@ function isSameVenueListing(placeName, location, candidate) {
   // Restaurant" is Google's "RA Sushi - Tucson", 3 m away): one distinctive
   // word or the same leading name word is enough there
   if (meters == null || meters > PIN_RADIUS_METERS) return false;
-  const lead = leadingWord(placeName);
-  return sharedWords(placeName, candidate.name).length >= 1 || (!!lead && lead === leadingWord(candidate.name));
+  return nameOverlaps();
 }
 
 // The app's Apple Maps filler (MKPointOfInterestCategory+Description.swift),
@@ -223,7 +238,8 @@ async function enrichSaveFromGoogle(placeData, options = {}) {
         // byte-identical duplicate under a new URL.
         skipPhotos: !!(canonicalData && require('./placePhotoService').hasVisiblePhotos(canonicalData.photos))
           || (Array.isArray(placeData.photos) && placeData.photos.length > 0),
-        mustMatchName: options.mustMatchName === true
+        mustMatchName: options.mustMatchName === true,
+        address: placeData.address
       });
       if (googleData.googlePlaceId) {
         placeData.googlePlaceId = googleData.googlePlaceId;

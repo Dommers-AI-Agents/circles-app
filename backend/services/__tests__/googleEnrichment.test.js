@@ -56,6 +56,16 @@ describe('a save without a Google id from the app', () => {
     expect(isSameVenueListing('RA Sushi Bar Restaurant', at, listing('RA Sushi Bar Restaurant', 32.25, -110.85))).toBe(false);
   });
 
+  it('trusts the same door when the pin is a block off', () => {
+    const far = { name: "Federici's on 10th", formatted_address: '705 10th Ave, Belmar, NJ 07719, USA', geometry: { location: { lat: 32.3284, lng: -110.9289 } } };
+    expect(isSameVenueListing("Federici's On 10th", at, far, '705 Tenth Ave, Belmar, NJ 07719, USA')).toBe(true);
+    const sweets = { name: 'Doggie Sweets LLC', formatted_address: '15 Morris Ave Unit 119, Long Branch, NJ 07740, USA', geometry: { location: { lat: 32.335, lng: -110.9289 } } };
+    expect(isSameVenueListing('Doggie Sweets', at, sweets, '15 Morris Ave, Long Branch, NJ 07740, USA')).toBe(true);
+    // Another number on the street, or another name at the door
+    expect(isSameVenueListing('Doggie Sweets', at, sweets, '19 Morris Ave, Long Branch, NJ 07740, USA')).toBe(false);
+    expect(isSameVenueListing('Bagel Nook', at, sweets, '15 Morris Ave, Long Branch, NJ 07740, USA')).toBe(false);
+  });
+
   it('replaces only the app\'s own filler description', () => {
     expect(isGeneratedDescription('Phone: +1 (520) 448-3572\nWebsite: https://rasushi.com/')).toBe(true);
     expect(isGeneratedDescription('A dining establishment in Tucson\nPhone: 555')).toBe(true);

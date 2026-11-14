@@ -7,6 +7,7 @@
 //   DRY_RUN=true node scripts/backfill-bare-venue-google.js   # list, no Google calls
 //   ONLY=<venueId> node scripts/backfill-bare-venue-google.js # one venue
 //   LIMIT=20 node scripts/backfill-bare-venue-google.js       # the first 20
+//   RETRY=true node scripts/backfill-bare-venue-google.js     # again, after the match rule changed
 //   node scripts/backfill-bare-venue-google.js                # all
 //
 // Idempotent: each venue is tried once (googleBackfillAt); a venue whose
@@ -23,6 +24,7 @@ const { isStreetLineName } = require('../services/googleAddressGuard');
 const DRY_RUN = process.env.DRY_RUN === 'true';
 const ONLY = process.env.ONLY || null;
 const LIMIT = Number(process.env.LIMIT) || Infinity;
+const RETRY = process.env.RETRY === 'true'; // try venues an earlier run found no listing for
 
 (async () => {
   const docs = ONLY
@@ -33,7 +35,7 @@ const LIMIT = Number(process.env.LIMIT) || Infinity;
     const v = doc.exists ? doc.data() : null;
     const coords = v && v.location && v.location.coordinates;
     if (!v || v.deletedAt || v.googlePlaceId || isHiddenVenue(v) || isStreetLineName(v.name, v.address)
-      || !Array.isArray(coords) || coords.length !== 2 || (v.googleBackfillAt && !ONLY)) { counts.skipped++; continue; }
+      || !Array.isArray(coords) || coords.length !== 2 || (v.googleBackfillAt && !ONLY && !RETRY)) { counts.skipped++; continue; }
     if (counts.eligible >= LIMIT) break;
     counts.eligible++;
     if (DRY_RUN) { console.log(`would look up ${doc.id} ${v.name}`); continue; }
