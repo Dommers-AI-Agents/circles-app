@@ -82,7 +82,7 @@ async function peopleFor(user, venue) {
 }
 
 /** Pure: the email. `store` = {name, address, photoUrl, placeUrl}; `rewards` only when live. */
-function buildEmail({ user, store, awardedPoints = 0, rewards = null, people = [] }) {
+function buildEmail({ user, store, awardedPoints = 0, rewards = null, people = [], coupon = null }) {
   const first = String(user.displayName || '').trim().split(/\s+/)[0];
   const greeting = first && !first.includes('@') ? `Hi ${first},` : 'Hi there,';
   const appUrl = rewardConfig.APP_STORE_URL;
@@ -94,6 +94,16 @@ function buildEmail({ user, store, awardedPoints = 0, rewards = null, people = [
   const pointsLine = awardedPoints > 0
     ? `<p style="font-size:17px;font-weight:700;color:${INK};margin:14px 0 2px;">+${awardedPoints} points at ${esc(store.name)}</p>`
     : '';
+  // The coupon their scan claimed (services/storeCoupons): it lives in the
+  // app and on the store's Wallet card, so it can't be left at home
+  const couponBlock = coupon ? `
+      <div style="border:2px dashed #9A7B12;border-radius:12px;padding:14px 16px;margin:14px 0;">
+        <div style="font-size:12px;font-weight:700;letter-spacing:.06em;color:#9A7B12;">YOUR COUPON AT ${esc(store.name.toUpperCase())}</div>
+        <p style="font-size:18px;font-weight:700;color:${INK};margin:6px 0 2px;">${esc(coupon.title)}</p>
+        ${coupon.detail ? `<p style="font-size:13px;color:#4a5568;margin:0 0 6px;">${esc(coupon.detail)}</p>` : ''}
+        ${coupon.onlineCode ? `<p style="font-size:14px;margin:6px 0 0;">Online code: <strong>${esc(coupon.onlineCode)}</strong></p>` : ''}
+        ${coupon.expiresAt ? `<p style="font-size:13px;color:#4a5568;margin:6px 0 0;">Good through ${esc(new Date(coupon.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }))}. It's saved in FavCircles and on your ${esc(store.name)} Wallet card: scan the register code when you're there and show the ticket.</p>` : ''}
+      </div>` : '';
   const rewardRows = rewards ? rewards.offers.map((o) => `
       <tr><td style="padding:6px 0;font-size:15px;color:${INK};">${esc(o.title)}</td>
           <td style="padding:6px 0;font-size:15px;color:#4a5568;text-align:right;white-space:nowrap;">${o.pointsCost} points</td></tr>`).join('') : '';
@@ -137,6 +147,7 @@ function buildEmail({ user, store, awardedPoints = 0, rewards = null, people = [
       <p style="font-size:16px;font-weight:600;margin:12px 0 0;"><a href="${esc(store.placeUrl)}" style="color:${INK};text-decoration:none;">${esc(store.name)}</a></p>
       ${store.address ? `<p style="font-size:13px;color:#4a5568;margin:2px 0 0;">${esc(store.address)}</p>` : ''}
       ${pointsLine}
+      ${couponBlock}
       ${rewardsBlock}
       <h2 style="font-family:Georgia,serif;font-size:20px;margin:24px 0 6px;color:${INK};">What FavCircles does</h2>
       <ul style="font-size:15px;line-height:1.7;padding-left:20px;margin:0;">
@@ -158,6 +169,7 @@ function buildEmail({ user, store, awardedPoints = 0, rewards = null, people = [
     'Welcome to FavCircles.', `You saved ${store.name}.`, '', greeting, '',
     store.name, store.address || '',
     awardedPoints > 0 ? `+${awardedPoints} points at ${store.name}` : '',
+    coupon ? `Your coupon: ${coupon.title}${coupon.onlineCode ? ` (online code ${coupon.onlineCode})` : ''}` : '',
     rewards ? `Every visit earns ${rewards.earnRate} points. Scan the code at the register.` : '',
     ...(rewards ? rewards.offers.map((o) => `- ${o.title}: ${o.pointsCost} points`) : []),
     '', 'What FavCircles does:',
@@ -176,7 +188,7 @@ function buildEmail({ user, store, awardedPoints = 0, rewards = null, people = [
  * After a store-code scan: sends the store welcome if this is the store the
  * account joined at and it hasn't had one. Fire-and-forget from the scan.
  */
-async function maybeSendAfterScan(userId, venue, { awardedPoints = 0, balance = 0 } = {}) {
+async function maybeSendAfterScan(userId, venue, { awardedPoints = 0, balance = 0, coupon = null } = {}) {
   try {
     if (!venue || venue.genericJoin) return { sent: false, reason: 'generic' };
     const userRef = db().collection(COLLECTIONS.USERS).doc(userId);
@@ -216,7 +228,7 @@ async function maybeSendAfterScan(userId, venue, { awardedPoints = 0, balance = 
       photoUrl,
       placeUrl: venue.globalPlaceId ? `${BASE_URL}/place/${encodeURIComponent(venue.globalPlaceId)}` : BASE_URL
     };
-    const email = buildEmail({ user, store, awardedPoints, rewards, people });
+    const email = buildEmail({ user, store, awardedPoints, rewards, people, coupon });
     await require('./emailService').sendEmail({ to: user.email, subject: email.subject, html: email.html, text: email.text });
     console.log(`🏪 Store welcome email sent for ${venue.venueName} (${people.length} people)`);
     return { sent: true };

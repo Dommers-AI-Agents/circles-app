@@ -65,7 +65,8 @@ const isRedemption = (event) => event.type === 'redemption' && event.status !== 
 function computeInsights({
   range, since, now = new Date(), timeZone = null,
   events = [], customers = [], saves = [], comments = [],
-  teamIds = [], google = null, followersCount = 0
+  teamIds = [], google = null, followersCount = 0,
+  venue = null, couponClaims = []
 }) {
   const nowMs = now.getTime();
   const sinceIso = since.toISOString();
@@ -176,7 +177,10 @@ function computeInsights({
       }))
     },
     saves: new Set(saves.map((s) => s.addedBy).filter(Boolean)).size,
-    followers: followersCount || 0
+    followers: followersCount || 0,
+    // Coupons (services/storeCoupons): per flyer coupon, scans → claims →
+    // used, new customers, and who came in after claiming (all time)
+    campaigns: venue ? require('./storeCoupons').campaignRows({ venue, claims: couponClaims, visits, now }) : []
   };
 }
 
@@ -191,7 +195,7 @@ async function loadInputs(venue, since) {
     .where('createdAt', '>=', since.toISOString())
     .orderBy('createdAt', 'desc')
     .limit(MAX_EVENTS);
-  const [eventsSnap, customers, savesSnap, commentsSnap, globalDoc, ownerDoc] = await Promise.all([
+  const [eventsSnap, customers, savesSnap, commentsSnap, globalDoc, ownerDoc, couponClaims] = await Promise.all([
     eventsQuery.get(),
     storeCustomers.listCustomers(venue),
     globalPlaceId
@@ -203,7 +207,10 @@ async function loadInputs(venue, since) {
       : Promise.resolve({ docs: [] }),
     globalPlaceId ? db().collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId).get() : Promise.resolve(null),
     // The store has no time zone of its own; the owner is at the store, so theirs is the next best
-    venue.timeZone || !venue.ownerUserId ? Promise.resolve(null) : db().collection(COLLECTIONS.USERS).doc(String(venue.ownerUserId)).get()
+    venue.timeZone || !venue.ownerUserId ? Promise.resolve(null) : db().collection(COLLECTIONS.USERS).doc(String(venue.ownerUserId)).get(),
+    require('./storeCoupons').liveCoupons(venue).length
+      ? require('./storeCoupons').claimsForVenue(venue.venueId).catch(() => [])
+      : Promise.resolve([])
   ]);
   const globalData = globalDoc && globalDoc.exists ? globalDoc.data() : {};
   return {
@@ -214,6 +221,8 @@ async function loadInputs(venue, since) {
     teamIds: [venue.ownerUserId, ...venueManagerIds(venue)].filter(Boolean),
     google: (globalData.googleData && typeof globalData.googleData.rating === 'number') ? globalData.googleData : null,
     followersCount: globalData.followersCount || 0,
+    venue,
+    couponClaims,
     timeZone: venue.timeZone || (ownerDoc && ownerDoc.exists && ownerDoc.data().notificationPreferences && ownerDoc.data().notificationPreferences.timezone) || null
   };
 }

@@ -20,9 +20,9 @@ const { findOwnSaveOfStore } = require('../../services/ownSaveOfVenue');
 const { saveStoreForClip } = require('../../services/clipStoreSave');
 // The store welcome email goes out after the first scan at the store they
 // joined at (once; fire-and-forget, never slows the scan)
-const welcomeAfterScan = (userId, venue, awardedPoints, balance) => {
+const welcomeAfterScan = (userId, venue, awardedPoints, balance, coupon = null) => {
   require('../../services/storeWelcomeEmailService')
-    .maybeSendAfterScan(userId, venue, { awardedPoints, balance }).catch(() => {});
+    .maybeSendAfterScan(userId, venue, { awardedPoints, balance, coupon }).catch(() => {});
 };
 
 // Did this user already save the store's place? One rule, shared with Add
@@ -174,18 +174,28 @@ exports.scan = async (req, res) => {
         const result = await rewardService.awardStickerSave(userId, venue);
         if (result.awarded) awarded = { type: 'sticker_save', points: result.points };
       }
+      // A coupon's QR (2026-11-14): the window link carried ?c=<coupon>; the
+      // coupon is claimed for this account so it can't be left on the fridge
+      const couponCode = req.body.c || req.body.coupon;
+      let coupon = null;
+      if (couponCode) {
+        coupon = await require('../../services/storeCoupons')
+          .claim({ venue, couponId: String(couponCode), userId, via: clipSave ? 'clip_scan' : 'window_scan' })
+          .catch((e) => { console.error('coupon claim failed', e.message); return null; });
+      }
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
       const venueBalance = (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0;
       const offers = loyaltyLive ? activeOffers(venue) : [];
       const earnRate = loyaltyLive ? rewardService.effectiveEarnRate(venue) : null;
       const next = loyaltyLive ? rewardProgress.nextReward(offers, venueBalance, earnRate) : null;
-      welcomeAfterScan(userId, venue, awarded ? awarded.points : 0, venueBalance);
+      welcomeAfterScan(userId, venue, awarded ? awarded.points : 0, venueBalance, coupon && coupon.status === 'claimed' ? coupon.coupon : null);
       return res.json({
         success: true,
         data: {
           kind: 'window',
           venue: publicVenueInfo(venue),
           awarded,
+          ...(coupon ? { coupon } : {}),
           saved,
           ...(savePending ? { savePending: true } : {}),
           alreadySaved,
@@ -263,6 +273,11 @@ exports.scan = async (req, res) => {
     const offers = activeOffers(venue);
     const earnRate = rewardService.effectiveEarnRate(venue);
     welcomeAfterScan(userId, venue, visitResult.awarded ? visitResult.points : 0, venueBalance);
+    // A coupon claimed from the store's flyer becomes its counter ticket on
+    // this scan (services/storeCoupons), whether or not the visit paid
+    const couponTicket = notAtStore ? null : await require('../../services/storeCoupons')
+      .issueTicket({ userId, venueId: venue.venueId })
+      .catch((e) => { console.error('coupon ticket failed', e.message); return null; });
     return res.json({
       success: true,
       data: {
@@ -271,6 +286,7 @@ exports.scan = async (req, res) => {
         awarded: visitResult.awarded
           ? { type: 'venue_visit', points: visitResult.points }
           : null,
+        ...(couponTicket ? { coupon: { status: 'ticket', coupon: null, claim: couponTicket.claim, voucher: couponTicket.voucher } } : {}),
         alreadyEarnedToday: visitResult.reason === 'already_today',
         ...(notAtStore ? { notAtStore: true } : {}),
         ...(visitResult.reason === 'removed' ? { removedFromRewards: true } : {}),
@@ -689,6 +705,10 @@ exports.getVenueByPlace = async (req, res) => {
         myWaitlist: await require('../../services/waitlistService').mine(venue.venueId, req.user.uid).catch(() => null),
         // Bring a friend: the offer and the caller's own invite link, while it's on (2026-11-09)
         referral: isOwner ? null : require('../../services/storeReferrals').publicReferral(venue, req.user.uid, { live: venueLoyaltyLive }),
+        // Coupons the caller claimed here that are still open (2026-11-14)
+        myCoupons: await require('../../services/storeCoupons').openAtVenue(req.user.uid, venue.venueId)
+          .then((rows) => rows.map((c) => require('../../services/storeCoupons').claimView(c)))
+          .catch(() => []),
         isOwner,
         // Super-users keep the place page's "Store Admin" door once
         // the store is enrolled too (it opens the Store page)
@@ -762,4 +782,31 @@ exports.getMe = async (req, res) => {
       email: req.user.email || null
     }
   });
+};
+
+// @desc    The caller's coupons: open ones first (services/storeCoupons)
+// @route   GET /api/rewards/coupons
+// @access  Private
+exports.listMyCoupons = async (req, res) => {
+  try {
+    const coupons = await require('../../services/storeCoupons').listForUser(req.user.uid);
+    res.json({ success: true, data: { coupons } });
+  } catch (error) {
+    sendServiceError(res, error, { log: '❌ listMyCoupons failed', fallbackMessage: 'Could not load your coupons' });
+  }
+};
+
+// @desc    Use a claimed coupon now: a 15-minute ticket to show at the counter
+// @route   POST /api/rewards/coupons/:claimId/use
+// @access  Private
+exports.useCoupon = async (req, res) => {
+  try {
+    const coupons = require('../../services/storeCoupons');
+    const doc = await db.collection(coupons.CLAIMS).doc(String(req.params.claimId)).get();
+    if (!doc.exists || doc.data().userId !== req.user.uid) return res.status(404).json({ success: false, error: 'That coupon wasn’t found' });
+    const result = await coupons.issueTicket({ userId: req.user.uid, venueId: doc.data().venueId, claimId: doc.id });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    sendServiceError(res, error, { log: '❌ useCoupon failed', fallbackMessage: 'Could not open that coupon' });
+  }
 };

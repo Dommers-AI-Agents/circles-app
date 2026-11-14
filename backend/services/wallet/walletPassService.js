@@ -70,6 +70,12 @@ const coords = (location) => {
 /// Front of the card, under the points: the next reward by name and how far
 /// it is ("Ready" / "75 pts"). Store cards hold four of these fields in all.
 function frontRewardFields(progress) {
+  // A claimed coupon is the front's headline when the store has no points
+  // ladder yet (its rewards aren't live, or no offers): short, like the rest
+  if (progress.coupons && progress.coupons.length && (!progress.live || !progress.next)) {
+    const c = progress.coupons[0];
+    return [{ key: 'coupon', label: 'YOUR COUPON', value: c.title.length > 28 ? `${c.title.slice(0, 27)}…` : c.title }];
+  }
   if (!progress.live || !progress.next) return [];
   const next = progress.next;
   return [
@@ -138,6 +144,12 @@ function passJson({ serial, authToken, venue, progress }) {
           value: progress.offers.map((o) => `${o.pointsCost} pts · ${o.title}${o.pointsCost <= progress.points ? '  ✓' : ''}`).join('\n')
         }] : []),
         ...(progress.live && progress.nextRewardLine ? [{ key: 'progress', label: 'Your progress', value: progress.nextRewardLine }] : []),
+        // Coupons claimed from the store's flyer (services/storeCoupons)
+        ...(progress.coupons && progress.coupons.length ? [{
+          key: 'coupons',
+          label: progress.coupons.length === 1 ? 'Your coupon' : 'Your coupons',
+          value: progress.coupons.map((c) => `${c.title}${c.onlineCode ? ` · code ${c.onlineCode}` : ''}${c.expiresAt ? ` · through ${c.expiresAt.slice(0, 10)}` : ''}`).join('\n')
+        }] : []),
         ...(progress.announcement ? [{ key: 'news', label: `What's on at ${name}`, value: `${progress.announcement.title}\n${progress.announcement.message}`.trim() }] : []),
         ...(progress.lastVisitAt ? [{ key: 'lastVisit', label: 'Your last visit', value: progress.lastVisitAt, dateStyle: 'PKDateStyleMedium', timeStyle: 'PKDateStyleNone' }] : []),
         {
@@ -251,8 +263,11 @@ async function progressFor(userId, venue) {
     ? await require('../rewardHistoryService').forUserAtVenue(userId, venue.venueId).catch(() => null)
     : null;
   const announcement = live ? (rewardService.activeAnnouncements(venue) || [])[0] || null : null;
+  const coupons = await require('../storeCoupons').openAtVenue(userId, venue.venueId)
+    .then((rows) => rows.map((c) => ({ title: c.title, onlineCode: c.onlineCode || null, expiresAt: c.expiresAt || null })))
+    .catch(() => []);
   return {
-    live, points, earnRate, next,
+    live, points, earnRate, next, coupons,
     nextRewardLine: next ? rewardProgress.nextRewardLine(next) : null,
     offers: live ? rewardProgress.rewardLadder(activeOffers(venue)) : [],
     visits: history ? history.visits : 0,

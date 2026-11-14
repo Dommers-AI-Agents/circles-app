@@ -50,7 +50,9 @@ const publicVoucher = (voucher, now = Date.now()) => ({
   expiresAt: voucher.expiresAt,
   status: effectiveStatus(voucher, now),
   givenAt: voucher.givenAt || null,
-  refunded: voucher.refunded === true || effectiveStatus(voucher, now) === 'expired'
+  refunded: voucher.pointsCost !== 0 && (voucher.refunded === true || effectiveStatus(voucher, now) === 'expired'),
+  // A coupon's ticket (services/storeCoupons): its online code for the store's own site
+  ...(voucher.couponId ? { couponId: voucher.couponId, onlineCode: voucher.onlineCode || null } : {})
 });
 
 /// Staff tapped "Given" on the customer's phone
@@ -69,7 +71,11 @@ async function markGiven(userId, voucherId, now = Date.now()) {
     tx.update(db().collection(STICKER_COLLECTIONS.REWARD_EVENTS).doc(voucherId), { status: 'given', givenAt });
     return { voucher: { ...voucher, status: 'given', givenAt }, already: false };
   });
-  if (!result.already) require('./rewardService').incrementVenueStats(result.voucher.venueId, 'rewardsGiven');
+  if (!result.already) {
+    require('./rewardService').incrementVenueStats(result.voucher.venueId, 'rewardsGiven');
+    // A coupon ticket given = the coupon used (services/storeCoupons)
+    await require('./storeCoupons').onTicketGiven(result.voucher, new Date(now)).catch((e) => console.warn('coupon given hook:', e.message));
+  }
   return publicVoucher(result.voucher, now);
 }
 
@@ -83,8 +89,11 @@ async function expireOne(voucherId, now = Date.now()) {
     const voucher = doc.data();
     if (voucher.status !== 'issued' || effectiveStatus(voucher, now) !== 'expired') return null;
     const at = new Date(now).toISOString();
-    tx.update(ref, { status: 'expired', expiredAt: at, refunded: true });
+    tx.update(ref, { status: 'expired', expiredAt: at, refunded: voucher.pointsCost !== 0 });
     tx.update(db().collection(STICKER_COLLECTIONS.REWARD_EVENTS).doc(voucherId), { status: 'expired' });
+    // A coupon's ticket cost no points: nothing to give back (the coupon
+    // itself goes back to claimed, below)
+    if (voucher.pointsCost === 0) return voucher;
     tx.update(db().collection(COLLECTIONS.USERS).doc(voucher.userId), {
       rewardPoints: FieldValue.increment(voucher.pointsCost),
       [`rewardPointsByVenue.${voucher.venueId}.points`]: FieldValue.increment(voucher.pointsCost)
@@ -100,6 +109,9 @@ async function expireOne(voucherId, now = Date.now()) {
   if (refunded) {
     const rewardService = require('./rewardService');
     rewardService.incrementVenueStats(refunded.venueId, 'rewardsExpired');
+    if (refunded.couponClaimId) {
+      await require('./storeCoupons').onTicketExpired({ ...refunded, voucherId }).catch((e) => console.warn('coupon expiry hook:', e.message));
+    }
     rewardService.walletBalanceChanged(refunded.userId, refunded.venueId);
   }
   return !!refunded;

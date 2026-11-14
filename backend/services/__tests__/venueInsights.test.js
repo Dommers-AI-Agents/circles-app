@@ -126,6 +126,21 @@ describe('computeInsights', () => {
     expect(data.comments.awaiting.map((c) => c.id)).toEqual(['c1', 'c4']);
   });
 
+  it('tables the store\'s flyer coupons: scans, claims, used, new customers, came in (2026-11-14)', () => {
+    const venueWithCoupon = { venueId: 'v1', windowCode: 'W', coupons: [{ couponId: 'ABCDEF', title: '20% off', campaign: 'Nov mailer', expiresAt: daysAgo(-20), active: true }], couponCounts: { ABCDEF: { scans: 9, claims: 2 } } };
+    const data = insights.computeInsights({
+      ...base,
+      venue: venueWithCoupon,
+      events: [visit('ben', 1)],
+      couponClaims: [
+        { couponId: 'ABCDEF', userId: 'ben', claimedAt: daysAgo(3), status: 'used', newCustomer: true },
+        { couponId: 'ABCDEF', userId: 'cy', claimedAt: daysAgo(2), status: 'claimed', newCustomer: false }
+      ]
+    });
+    expect(data.campaigns).toEqual([{ couponId: 'ABCDEF', title: '20% off', campaign: 'Nov mailer', expiresAt: daysAgo(-20), state: 'live', scans: 9, claims: 2, used: 1, newCustomers: 1, cameIn: 1 }]);
+    expect(insights.computeInsights({ ...base }).campaigns).toEqual([]);
+  });
+
   it('refuses a range it does not know', () => {
     expect(() => insights.parseRange('7d')).toThrow(/30d, 90d or 12m/);
     expect(insights.parseRange(undefined)).toBe('30d');

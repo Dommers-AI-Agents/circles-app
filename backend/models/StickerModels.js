@@ -25,7 +25,8 @@ const REWARD_EVENT_TYPES = [
   'share_conversion',
   'redemption',
   'code_redemption',
-  'referral' // bring a friend (services/storeReferrals): role 'referrer' | 'friend'
+  'referral', // bring a friend (services/storeReferrals): role 'referrer' | 'friend'
+  'coupon_redemption' // a claimed coupon's counter ticket, 0 points (services/storeCoupons)
 ];
 
 // Venue with a window sticker (discovery) and a register card (purchase proof).

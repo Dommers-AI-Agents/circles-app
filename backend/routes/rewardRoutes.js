@@ -116,6 +116,9 @@ const receiptClaims = require('../controllers/venues/receiptClaimsController');
 router.post('/venues/:venueId/receipts', appAttestMonitor, receiptClaims.submit);
 // Reward tickets (2026-11-01): open + recent, and the staff "Given" tap
 const rewardVouchers = require('../controllers/venues/rewardVouchersController');
+// Coupons claimed from a store's flyer QR (services/storeCoupons, 2026-11-14)
+router.get('/coupons', require('../controllers/venues/rewardScanController').listMyCoupons);
+router.post('/coupons/:claimId/use', require('../controllers/venues/rewardScanController').useCoupon);
 router.get('/vouchers', rewardVouchers.listMine);
 router.post('/vouchers/:voucherId/given', rewardVouchers.markGiven);
 // Single-use brand loyalty codes (order-box cards, booth handouts)
@@ -240,6 +243,13 @@ router.put('/venues/:venueId/waitlist', requireVenueOwner, requireOwnerPremium, 
 router.post('/venues/:venueId/waitlist/:entryId/:action', requireVenueOwner, requireOwnerPremium, waitlistHost.act);
 // Bring a friend: the referral points and results, Business (2026-11-09)
 const venueReferrals = require('../controllers/venues/venueReferralsController');
+// Coupons: the store's flyer/mailer coupons and how each campaign is doing (2026-11-14)
+const venueCoupons = require('../controllers/venues/venueCouponsController');
+router.get('/venues/:venueId/coupons', requireVenueOwner, requireOwnerPremium, venueCoupons.list);
+router.post('/venues/:venueId/coupons', requireVenueOwner, requireOwnerPremium, venueCoupons.create);
+router.put('/venues/:venueId/coupons/:couponId', requireVenueOwner, requireOwnerPremium, venueCoupons.update);
+router.delete('/venues/:venueId/coupons/:couponId', requireVenueOwner, requireOwnerPremium, venueCoupons.remove);
+router.get('/venues/:venueId/coupons/:couponId/qr.png', requireVenueOwner, requireOwnerPremium, venueCoupons.qr);
 router.get('/venues/:venueId/referrals', requireVenueOwner, requireOwnerPremium, venueReferrals.get);
 router.put('/venues/:venueId/referrals', requireVenueOwner, requireOwnerPremium, venueReferrals.update);
 

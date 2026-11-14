@@ -96,7 +96,9 @@ exports.getVenuePreview = async (req, res) => {
         coverUrl,
         location: clipLocation(venue.location),
         // The store's waitlist, when it's on and the plan is live: the clip offers "Join the line" (2026-11-09)
-        waitlist: await clipWaitlist(venue)
+        waitlist: await clipWaitlist(venue),
+        // The coupon on the link (/s/<code>?c=<coupon>): the clip says it's waiting (2026-11-14)
+        coupon: req.query?.c ? require('../services/storeCoupons').preview(venue, String(req.query.c)) : null
       }
     });
   } catch (error) {

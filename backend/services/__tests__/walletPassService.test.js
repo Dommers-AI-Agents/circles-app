@@ -78,6 +78,21 @@ test('a store without live rewards never says "earn" on the front', () => {
   expect(pass.locations).toBeUndefined();
 });
 
+test('a claimed coupon rides on the back of the card, and leads the front when there is no points ladder (2026-11-14)', () => {
+  const coupons = [{ title: '20% off any pickup order', onlineCode: 'TGOSTVQC', expiresAt: '2026-12-05T04:59:00.000Z' }];
+  const live = wallet.passJson({
+    serial: 's1', authToken: 't'.repeat(32), venue,
+    progress: { live: true, points: 40, next: { title: 'Free coffee', pointsCost: 100, remaining: 60, canRedeem: false }, coupons }
+  });
+  expect(live.storeCard.secondaryFields[0].label).toBe('NEXT REWARD');
+  expect(live.storeCard.backFields.find((f) => f.key === 'coupons')).toEqual({ key: 'coupons', label: 'Your coupon', value: '20% off any pickup order · code TGOSTVQC · through 2026-12-05' });
+
+  const saved = wallet.passJson({ serial: 's1', authToken: 't'.repeat(32), venue, progress: { live: false, points: 0, coupons } });
+  expect(saved.storeCard.secondaryFields).toEqual([{ key: 'coupon', label: 'YOUR COUPON', value: '20% off any pickup order' }]);
+  const none = wallet.passJson({ serial: 's1', authToken: 't'.repeat(32), venue, progress: { live: false, points: 0, coupons: [] } });
+  expect(none.storeCard.backFields.find((f) => f.key === 'coupons')).toBeUndefined();
+});
+
 test('the serial is stable per customer and store', () => {
   expect(wallet.serialFor('u1', 'v1')).toBe(wallet.serialFor('u1', 'v1'));
   expect(wallet.serialFor('u1', 'v1')).not.toBe(wallet.serialFor('u1', 'v2'));
