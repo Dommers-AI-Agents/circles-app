@@ -8,6 +8,8 @@ struct StoreAutomations: Codable, Equatable {
         /// Days without a purchase before the nudge: 14, 30, 60 or 90
         var days: Int
         var bonusPoints: Int
+        /// One of the store's coupons, claimed for the customer with the nudge (2026-11-14)
+        var couponId: String? = nil
     }
     struct Birthday: Codable, Equatable {
         var enabled: Bool
@@ -26,7 +28,7 @@ struct StoreAutomations: Codable, Equatable {
 
     var asBody: [String: Any] {
         [
-            "winBack": ["enabled": winBack.enabled, "days": winBack.days, "bonusPoints": winBack.bonusPoints],
+            "winBack": ["enabled": winBack.enabled, "days": winBack.days, "bonusPoints": winBack.bonusPoints, "couponId": winBack.couponId ?? NSNull()],
             "birthday": ["enabled": birthday.enabled, "bonusPoints": birthday.bonusPoints],
             "almostThere": ["enabled": almostThere.enabled]
         ]

@@ -12,6 +12,8 @@ struct ClipInvocation {
     var tag: String? = nil
     /// Bring a friend: the inviter on the link (/s/<code>?ref=<userId>), 2026-11-09
     var ref: String? = nil
+    /// A flyer's coupon on the link (/s/<code>?c=<coupon>), claimed by the scan, 2026-11-14
+    var coupon: String? = nil
     let payload: APActivationPayload?
 
     /// true = Apple confirmed the phone is at the store, false = Apple says

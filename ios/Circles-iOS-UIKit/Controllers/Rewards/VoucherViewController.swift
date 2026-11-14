@@ -175,6 +175,10 @@ class VoucherViewController: BaseViewController {
             avatarView.tintColor = .systemGreen
         }
         codeLabel.text = voucher.voucherCode
+        // A coupon's ticket (2026-11-14): the online code too, for the store's own site
+        if voucher.isCoupon, let line = StoreCouponCopy.onlineCodeLine(voucher.onlineCode) {
+            staffInstructionLabel.text = line + "\n\n" + (staffInstructionLabel.text ?? "")
+        }
 
         if voucher.status == "given" {
             showGiven()
@@ -291,7 +295,9 @@ class VoucherViewController: BaseViewController {
             checkmarkImageView.isHidden = false
             checkmarkImageView.image = UIImage(systemName: "arrow.uturn.backward.circle.fill")
             checkmarkImageView.tintColor = .systemOrange
-            staffInstructionLabel.text = "This reward wasn\u{2019}t marked as given, so your \(voucher.pointsCost) points are back at \(voucher.venueName)."
+            staffInstructionLabel.text = voucher.isCoupon
+                ? StoreCouponCopy.ticketExpiredLine(storeName: voucher.venueName)
+                : "This reward wasn\u{2019}t marked as given, so your \(voucher.pointsCost) points are back at \(voucher.venueName)."
             RewardsService.shared.clearActiveVoucher()
             // The server refunds on this read; every points display refreshes
             RewardsService.shared.fetchRewardTickets { _ in }

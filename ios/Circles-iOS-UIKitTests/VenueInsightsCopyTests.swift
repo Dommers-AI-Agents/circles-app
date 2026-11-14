@@ -27,6 +27,24 @@ struct VenueInsightsCopyTests {
         #expect(C.trendLine(-1.2) == "−1.2 vs. the 30 days before")
     }
 
+    @Test func couponCampaignsReadScansToUsed() {
+        let c = VenueInsightsData.Campaign(couponId: "ABCDEF", title: "20% off any pickup order", campaign: "Nov mailer", expiresAt: nil, state: "live",
+                                           scans: 84, claims: 31, used: 12, newCustomers: 9, cameIn: 14)
+        #expect(C.campaignTitle(c) == "Nov mailer · 20% off any pickup order")
+        #expect(C.campaignLine(c) == "84 scans → 31 claimed → 12 used · 9 new customers · 14 came in after claiming")
+        let quiet = VenueInsightsData.Campaign(couponId: "X", title: "Free knots", campaign: nil, expiresAt: nil, state: "ended",
+                                               scans: 1, claims: 0, used: 0, newCustomers: 0, cameIn: 0)
+        #expect(C.campaignTitle(quiet) == "Free knots")
+        #expect(C.campaignLine(quiet) == "1 scan → 0 claimed → 0 used · ended")
+    }
+
+    @Test func postsSayWhoTheyReachedAndWhoCameIn() {
+        let event = VenueInsightsData.Post(id: "a1", kind: "event", title: "Live music", at: nil, sentTo: 41, audience: 41, cameIn: 3)
+        #expect(C.postLine(event) == "Event · sent to 41 followers · 3 came in since")
+        let offer = VenueInsightsData.Post(id: "o1", kind: "offer", title: "Free coffee", at: nil, sentTo: 1, audience: 1, cameIn: 0)
+        #expect(C.postLine(offer) == "Reward · sent to 1 follower")
+    }
+
     @Test func googleRatingStaysBesideTheScore() {
         #expect(C.googleLine(rating: 4.6, total: 212) == "Google 4.6★ · 212 reviews")
         #expect(C.googleLine(rating: 5, total: 1) == "Google 5.0★ · 1 review")

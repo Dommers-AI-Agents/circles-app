@@ -106,6 +106,9 @@ final class GetRewardsViewController: BaseViewController {
     }()
     /// An open reward ticket here (2026-11-01): one tap to show staff
     private let ticketSlot = GetRewardsViewController.vertical(spacing: 0)
+    /// Coupons claimed from the store's flyer (2026-11-14)
+    private let couponsSlot = GetRewardsViewController.vertical(spacing: Constants.Spacing.small)
+    private var coupons: [StoreCoupon] = []
     private let statsSlot = GetRewardsViewController.vertical(spacing: Constants.Spacing.small)
     private let offersStack = GetRewardsViewController.vertical(spacing: Constants.Spacing.xsmall)
     /// The store's current posts
@@ -208,6 +211,7 @@ final class GetRewardsViewController: BaseViewController {
         balanceCard.addSubview(cardStack)
 
         stack.addArrangedSubview(ticketSlot)
+        stack.addArrangedSubview(couponsSlot)
         stack.addArrangedSubview(statsSlot)
         stack.addArrangedSubview(earnSection())
         stack.addArrangedSubview(deliverySlot)
@@ -291,6 +295,7 @@ final class GetRewardsViewController: BaseViewController {
         venueId = data.venue?.venueId ?? venueId
         redeemableOffers = (data.offers ?? []).filter { $0.active != false }
         if let history = data.myHistory { self.history = history }
+        coupons = (data.myCoupons ?? []).filter(\.isOpen)
         address = data.venue?.placeAddress ?? address
         if let cover = data.venue?.coverPhotoUrl, !cover.isEmpty { coverPhotoUrl = cover }
         deliveryReceipts = data.takesDeliveryReceipts ? data.deliveryReceipts : nil
@@ -328,6 +333,7 @@ final class GetRewardsViewController: BaseViewController {
 
         renderNextReward()
         renderTicket()
+        renderCoupons()
         renderStats()
         renderOffers()
         renderAnnouncements()
@@ -352,6 +358,65 @@ final class GetRewardsViewController: BaseViewController {
         }, for: .touchUpInside)
         deliverySlot.addArrangedSubview(Self.sectionCard(title: "Ordered for delivery?", symbol: "bag.badge.plus",
                                                          tint: Constants.Colors.primary, rows: [body, button], dividers: false))
+    }
+
+    /// The flyer's coupons, open here: what they give, the fine print, "Use now"
+    private func renderCoupons() {
+        couponsSlot.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        couponsSlot.isHidden = coupons.isEmpty
+        guard !coupons.isEmpty else { return }
+        let rows: [UIView] = coupons.map { coupon in
+            let title = Self.label(size: Constants.FontSize.large, weight: .semibold)
+            title.text = coupon.title
+            let detail = Self.label(size: Constants.FontSize.medium, weight: .regular, color: Constants.Colors.secondaryLabel)
+            detail.text = StoreCouponCopy.claimDetail(coupon)
+            let words = UIStackView(arrangedSubviews: [title, detail])
+            words.axis = .vertical
+            words.spacing = Constants.Spacing.tiny
+            var parts: [UIView] = [Self.rewardPicture(coupon.title), words]
+            if let buttonTitle = StoreCouponCopy.useButton(coupon) {
+                let use = UIButton.smallActionButton(title: buttonTitle, style: .primary)
+                use.contentEdgeInsets = UIEdgeInsets(top: 7, left: 14, bottom: 7, right: 14)
+                use.setContentHuggingPriority(.required, for: .horizontal)
+                use.setContentCompressionResistancePriority(.required, for: .horizontal)
+                use.addAction(UIAction { [weak self] _ in self?.useCoupon(coupon) }, for: .touchUpInside)
+                parts.append(use)
+            }
+            let row = UIStackView(arrangedSubviews: parts)
+            row.spacing = Constants.Spacing.small
+            row.alignment = .center
+            row.isLayoutMarginsRelativeArrangement = true
+            row.layoutMargins = UIEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
+            return row
+        }
+        couponsSlot.addArrangedSubview(Self.sectionCard(title: coupons.count == 1 ? "Your coupon" : "Your coupons", symbol: "ticket.fill",
+                                                        tint: Constants.Colors.success, rows: rows))
+    }
+
+    /// "Use now": the coupon becomes the same counter ticket a points reward gets
+    private func useCoupon(_ coupon: StoreCoupon) {
+        let open: () -> Void = { [weak self] in
+            guard let self else { return }
+            let loading = AlertPresenter.showLoading(message: "Opening…", from: self)
+            RewardsService.shared.useCoupon(claimId: coupon.claimId) { [weak self] result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        guard let self else { return }
+                        switch result {
+                        case .success(let ticket):
+                            let voucherVC = VoucherViewController(voucher: ticket.voucher)
+                            voucherVC.modalPresentationStyle = .fullScreen
+                            self.present(voucherVC, animated: true)
+                            self.loadData()
+                        case .failure(let error):
+                            self.showError(error)
+                        }
+                    }
+                }
+            }
+        }
+        if coupon.status == "ticket" { open(); return }
+        showConfirmation(title: "Use \(coupon.title)?", message: StoreCouponCopy.useExplainer, confirmTitle: "Use now", onConfirm: open)
     }
 
     private func renderTicket() {

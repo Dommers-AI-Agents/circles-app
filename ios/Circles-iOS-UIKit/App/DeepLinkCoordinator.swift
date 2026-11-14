@@ -101,10 +101,15 @@ final class DeepLinkCoordinator: SceneCoordinator {
     /// ?ref=<their id>; the scan it leads to reports it, so the friend's first
     /// purchase pays them both
     private func rememberReferrer(in url: URL, for destination: DeepLinkDestination) {
-        guard case .sticker = destination,
-              let ref = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "ref" })?.value,
-              !ref.isEmpty else { return }
-        RewardsService.shared.rememberReferrer(ref)
+        guard case .sticker = destination else { return }
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        if let ref = items.first(where: { $0.name == "ref" })?.value, !ref.isEmpty {
+            RewardsService.shared.rememberReferrer(ref)
+        }
+        // A flyer's coupon (2026-11-14): ?c=<coupon>, claimed by the scan
+        if let coupon = items.first(where: { $0.name == "c" })?.value, !coupon.isEmpty {
+            RewardsService.shared.rememberCoupon(coupon)
+        }
     }
 
     /// Custom-scheme links (circles://…).
@@ -128,6 +133,9 @@ final class DeepLinkCoordinator: SceneCoordinator {
             Logger.debug("📱 SceneDelegate: Unrecognized deep link: \(url.absoluteString)")
             return
         }
+        // circles://sticker?code=…&ref=…&c=… from the web landing page: the
+        // inviter and the coupon ride along, like on the https link
+        rememberReferrer(in: url, for: destination)
         // A store's rewards waits for the interface itself, and loads meanwhile
         if case .storeRewards = destination { return route(destination) }
         // Scheme links can arrive before the interface is fully up — give it a beat

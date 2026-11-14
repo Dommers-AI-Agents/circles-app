@@ -5,21 +5,27 @@ enum StoreReferralCopy {
 
     /// The button on the store's page: "Invite a friend · you both get points"
     static func inviteButton(_ referral: StoreReferral) -> String {
-        referral.referrerPoints == referral.friendPoints
+        if let coupon = referral.friendCoupon {
+            return "Invite a friend · they get \(coupon.title), you get \(referral.referrerPoints) points"
+        }
+        return referral.referrerPoints == referral.friendPoints
             ? "Invite a friend · you both get \(referral.referrerPoints) points"
             : "Invite a friend · you get \(referral.referrerPoints), they get \(referral.friendPoints)"
     }
 
     /// The one-bubble link's title
     static func shareTitle(storeName: String, referral: StoreReferral) -> String {
-        "Join me at \(storeName) on FavCircles — \(referral.friendPoints) bonus points on your first visit"
+        if let coupon = referral.friendCoupon {
+            return "Join me at \(storeName) on FavCircles — \(coupon.title), plus \(referral.friendPoints) bonus points on your first visit"
+        }
+        return "Join me at \(storeName) on FavCircles — \(referral.friendPoints) bonus points on your first visit"
     }
 
     // MARK: Owner
 
     static func summary(_ settings: StoreReferralSettings) -> String {
         settings.enabled
-            ? "On · inviter \(settings.referrerPoints) pts, friend \(settings.friendPoints) pts"
+            ? "On · inviter \(settings.referrerPoints) pts, friend \(settings.friendPoints) pts\(settings.couponId != nil ? " + a coupon" : "")"
             : "Off: customers invite friends with your window link; both earn points"
     }
 
@@ -32,4 +38,7 @@ enum StoreReferralCopy {
     static let explanation = "Customers share your window link with ?ref on it. When the friend's first purchase is scanned at the register, the inviter and the friend both get the points you set here. Honor-system points, like the rest of rewards; at most 20 rewarded invites per person a month."
 
     static func pointsLine(_ points: Int) -> String { "\(points) points" }
+
+    static let couponRowTitle = "The new customer also gets"
+    static let couponExplanation = "A coupon from your Coupons list rides on the invite link, so the friend's first scan claims it too."
 }

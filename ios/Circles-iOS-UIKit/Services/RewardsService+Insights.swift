@@ -67,6 +67,35 @@ struct VenueInsightsData: Codable, Equatable {
     let saves: Int
     let followers: Int
     let stale: Bool?
+    /// Flyer coupons (2026-11-14): per coupon, scans → claims → used, new
+    /// customers, and who came in after claiming. nil from a cache made before.
+    var campaigns: [Campaign]? = nil
+    /// Posts (2026-11-14): what each offer, announcement or event reached, and
+    /// how many customers came in after it went. nil from an older cache.
+    var posts: [Post]? = nil
+
+    struct Post: Codable, Equatable {
+        let id: String?
+        let kind: String
+        let title: String
+        let at: String?
+        let sentTo: Int
+        let audience: Int?
+        let cameIn: Int
+    }
+
+    struct Campaign: Codable, Equatable {
+        let couponId: String
+        let title: String
+        let campaign: String?
+        let expiresAt: String?
+        let state: String?
+        let scans: Int
+        let claims: Int
+        let used: Int
+        let newCustomers: Int
+        let cameIn: Int
+    }
 }
 
 extension RewardsService {

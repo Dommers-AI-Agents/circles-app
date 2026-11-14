@@ -61,6 +61,12 @@ enum StoreAutomationsCopy {
 
     static let bonusPrompt = "Bonus points (0 for none)"
 
+    /// The win-back's coupon row (2026-11-14)
+    static let couponRowTitle = "Coupon"
+    static func couponLine(_ title: String?) -> String {
+        title.map { "\($0) · claimed for them with the note" } ?? "No coupon"
+    }
+
     // MARK: Customer side
 
     static let birthdayRowTitle = "Birthday treats"

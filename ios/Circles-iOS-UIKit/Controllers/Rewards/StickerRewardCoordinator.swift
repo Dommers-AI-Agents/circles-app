@@ -319,9 +319,11 @@ final class StickerRewardCoordinator: NSObject {
             showWelcomeBack(scan, from: presenter)
             return
         }
+        // The flyer's coupon came along (2026-11-14): say it's saved, then the save
+        let couponLine = scan.coupon.flatMap { StoreCouponCopy.scanLine($0, storeName: name) }
         AlertPresenter.showConfirmation(
-            title: "Don't forget \(name)!",
-            message: "Build your map! Save \(name) to one of your circles and never forget it.",
+            title: couponLine != nil ? "Coupon saved" : "Don't forget \(name)!",
+            message: [couponLine, "Build your map! Save \(name) to one of your circles and never forget it."].compactMap { $0 }.joined(separator: "\n\n"),
             confirmTitle: "Save",
             cancelTitle: "Not Now",
             from: presenter
@@ -365,7 +367,10 @@ final class StickerRewardCoordinator: NSObject {
 
         var message = "\(name) is already in your circles."
         if let line { message += "\n\n\(line)" }
-        AlertPresenter.showAlert(title: "Welcome back!", message: message, actions: actions, from: presenter)
+        // The flyer's coupon came along (2026-11-14)
+        let couponLine = scan.coupon.flatMap { StoreCouponCopy.scanLine($0, storeName: name) }
+        if let couponLine { message = couponLine + "\n\n" + message }
+        AlertPresenter.showAlert(title: couponLine != nil ? "Coupon saved" : "Welcome back!", message: message, actions: actions, from: presenter)
     }
 
     /// "Save this store?" after a register scan, into the circle they pick
@@ -538,6 +543,20 @@ final class StickerRewardCoordinator: NSObject {
 
         let affordableOffers = (scan.offers ?? []).filter { $0.pointsCost <= balanceHere }
 
+        // A claimed coupon became its counter ticket on this scan (2026-11-14):
+        // the ticket is already open; one tap shows it to staff
+        var couponAction: (title: String, style: UIAlertAction.Style, handler: () -> Void)?
+        if let coupon = scan.coupon, let voucher = coupon.voucher, let line = StoreCouponCopy.ticketLine(coupon) {
+            message += "\n\n\(line)"
+            RewardsService.shared.storeActiveVoucher(voucher)
+            couponAction = (title: StoreCouponCopy.ticketButton(coupon) ?? "Show my coupon", style: .default, handler: { [weak self] in
+                guard let presenter = self?.presenter else { return }
+                let ticket = VoucherViewController(voucher: voucher)
+                ticket.modalPresentationStyle = .fullScreen
+                presenter.present(ticket, animated: true)
+            })
+        }
+
         guard !affordableOffers.isEmpty else {
             // The store's own terms (Wes, 2026-10-29): "75 more points for a
             // free coffee · about 3 more visits", the same line as Get Rewards
@@ -546,12 +565,13 @@ final class StickerRewardCoordinator: NSObject {
             }
             // OK, or straight to their rewards (Wes, 2026-10-30). The save
             // offer follows OK only: My Rewards leaves the store page.
-            AlertPresenter.showAlert(title: title, message: message, actions: [
-                (title: "My Rewards", style: .default, handler: { [weak self] in
-                    self?.openStoreRewards(highlight: scan.venue.venueId, earned: scan.awarded?.points)
-                }),
-                (title: "OK", style: .cancel, handler: afterPoints)
-            ], from: presenter)
+            var plain: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = []
+            if let couponAction { plain.append(couponAction) }
+            plain.append((title: "My Rewards", style: .default, handler: { [weak self] in
+                self?.openStoreRewards(highlight: scan.venue.venueId, earned: scan.awarded?.points)
+            }))
+            plain.append((title: "OK", style: .cancel, handler: afterPoints))
+            AlertPresenter.showAlert(title: title, message: message, actions: plain, from: presenter)
             return
         }
 
@@ -562,6 +582,7 @@ final class StickerRewardCoordinator: NSObject {
                 self?.redeemOffer(offer, venue: scan.venue)
             })
         }
+        if let couponAction { actions.insert(couponAction, at: 0) }
         actions.append((title: "My Rewards", style: .default, handler: { [weak self] in
             self?.openStoreRewards(highlight: scan.venue.venueId, earned: scan.awarded?.points)
         }))

@@ -235,18 +235,31 @@ class RewardsViewController: BaseViewController {
 
     // MARK: - Rewards used
 
+    private var shownTickets: [RewardVoucher] = []
+    private var shownCoupons: [StoreCoupon] = []
+
     private func loadTickets() {
         RewardsService.shared.fetchRewardTickets { [weak self] result in
             DispatchQueue.main.async {
                 guard let self, case .success(let data) = result else { return }
                 self.updateActiveVoucherBanner()
-                self.renderTickets(RewardTicketCopy.shown(data.recent))
+                self.shownTickets = RewardTicketCopy.shown(data.recent)
+                self.renderTickets(self.shownTickets)
+            }
+        }
+        // Coupons claimed from flyers (2026-11-14), open ones first
+        RewardsService.shared.fetchMyCoupons { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let coupons) = result else { return }
+                self.shownCoupons = coupons.filter(\.isOpen)
+                self.renderTickets(self.shownTickets)
             }
         }
     }
 
     private func renderTickets(_ tickets: [RewardVoucher]) {
         ticketsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        renderCoupons(shownCoupons)
         guard !tickets.isEmpty else { return }
         let header = UILabel()
         header.text = "Rewards used"
@@ -274,6 +287,36 @@ class RewardsViewController: BaseViewController {
             }
             ticketsStack.addArrangedSubview(row)
         }
+    }
+
+    /// The coupons on hand: the store, what it gives, when it ends; tap for the store's rewards
+    private func renderCoupons(_ coupons: [StoreCoupon]) {
+        guard !coupons.isEmpty else { return }
+        let header = UILabel()
+        header.text = coupons.count == 1 ? "Your coupon" : "Your coupons"
+        header.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        header.textColor = .label
+        ticketsStack.addArrangedSubview(header)
+        for coupon in coupons.prefix(10) {
+            let row = UIStackView()
+            row.axis = .horizontal
+            row.spacing = 8
+            row.alignment = .top
+            let icon = UIImageView(image: UIImage(systemName: "ticket.fill"))
+            icon.tintColor = .systemGreen
+            icon.setContentHuggingPriority(.required, for: .horizontal)
+            let text = UILabel()
+            text.numberOfLines = 0
+            text.font = .systemFont(ofSize: 14)
+            let store = coupon.venueName.map { "\($0): " } ?? ""
+            text.text = "\(store)\(coupon.title) · \(StoreCouponCopy.claimDetail(coupon))"
+            row.addArrangedSubview(icon)
+            row.addArrangedSubview(text)
+            ticketsStack.addArrangedSubview(row)
+        }
+        let spacer = UIView()
+        spacer.heightAnchor.constraint(equalToConstant: 8).isActive = true
+        ticketsStack.addArrangedSubview(spacer)
     }
 
     // MARK: - Offers loading (with best-effort location for the Nearby section)

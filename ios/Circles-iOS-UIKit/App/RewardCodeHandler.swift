@@ -206,6 +206,10 @@ final class RewardCodeHandler: SceneCoordinator {
 
         let code = String(text[match].dropFirst("favcircles-sticker:".count))
         Logger.debug("📱 SceneDelegate: Found sticker code on pasteboard from pre-install scan: \(code)")
+        // The flyer's coupon came along (";c=ABCDEF", 2026-11-14): the scan claims it
+        if let couponMatch = text.range(of: #";c=([23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6})"#, options: .regularExpression) {
+            RewardsService.shared.rememberCoupon(String(text[couponMatch].dropFirst(";c=".count)))
+        }
 
         // Consume it so a later launch (or another app) doesn't see it
         UIPasteboard.general.items = []

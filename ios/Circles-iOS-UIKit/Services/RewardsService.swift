@@ -81,6 +81,8 @@ class RewardsService {
         }
         // Bring a friend: the inviter from the link this scan came from, if any (2026-11-09)
         if let ref = takeReferrer() { body["ref"] = ref }
+        // A flyer's coupon on the link this scan came from, if any (2026-11-14)
+        if let coupon = takeCoupon() { body["c"] = coupon }
 
         apiService.attestedRequest(
             endpoint: "rewards/scan",
@@ -1060,6 +1062,9 @@ struct RewardScanData: Codable {
     let earnRate: Int?
     /// Whether the store's loyalty program runs yet; nil from older servers
     let loyaltyLive: Bool?
+    /// A flyer's coupon (2026-11-14): claimed by a window scan with ?c=, or
+    /// opened as a counter ticket by the register scan. Lenient: never sinks the scan.
+    @LenientlyDecoded var coupon: ScanCouponResult?
 
     /// The scan in the store's own terms: balance here, and the next reward
     var rewardDetails: RewardsAvailability.Details {
@@ -1179,6 +1184,12 @@ struct RewardVoucher: Codable, Equatable {
     /// "issued" | "given" | "expired"
     var status: String?
     var givenAt: String?
+    /// A coupon's ticket (2026-11-14): no points, and the store's online code if it has one
+    var couponId: String? = nil
+    var onlineCode: String? = nil
+
+    /// A coupon's ticket costs no points
+    var isCoupon: Bool { couponId != nil || pointsCost == 0 }
 
     var expiryDate: Date? {
         let formatter = ISO8601DateFormatter()
@@ -1338,6 +1349,8 @@ struct PlaceVenueData: Codable {
     @LenientlyDecoded var myWaitlist: WaitlistEntry?
     /// Bring a friend: the store's offer and the caller's invite link, while it's on (2026-11-09)
     @LenientlyDecoded var referral: StoreReferral?
+    /// Coupons the caller claimed here that are still open (2026-11-14)
+    @LenientlyDecoded var myCoupons: [StoreCoupon]?
     let isOwner: Bool?
     // Present only when isOwner: whether the owner has the Business tier
     // (false drives the in-place "Upgrade to Business" teaser)
@@ -1555,6 +1568,8 @@ struct VenueAnnouncement: Codable {
     let createdAt: String?
     /// Set when the post is an event ("Live music Friday 7 PM")
     let event: AnnouncementEvent?
+    /// Who the post reached when it went (2026-11-14); nil for edits-only posts and older servers
+    @LenientlyDecoded var alerted: StoreAlertReach?
 
     var expiryDate: Date? {
         guard let expiresAt = expiresAt else { return nil }
@@ -1590,6 +1605,13 @@ struct AnnouncementEvent: Codable, Equatable {
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: text)
     }
+}
+
+/// What a post reached when it was made (server: rememberReach)
+struct StoreAlertReach: Codable, Equatable {
+    let audience: Int?
+    let sent: Int
+    let at: String?
 }
 
 struct VenueAnnouncementsData: Codable {

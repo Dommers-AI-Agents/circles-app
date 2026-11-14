@@ -108,4 +108,34 @@ enum VenueInsightsCopy {
 
     /// The page's stale banner while the server recomputes (never blocks the page)
     static let staleNote = "Updating…"
+
+    // MARK: Coupons (2026-11-14)
+
+    /// "Nov mailer · 20% off any pickup order"
+    static func campaignTitle(_ c: VenueInsightsData.Campaign) -> String {
+        [c.campaign, c.title].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// "84 scans → 31 claimed → 12 used · 9 new customers · 14 came in"
+    static func campaignLine(_ c: VenueInsightsData.Campaign) -> String {
+        var line = "\(c.scans) scan\(c.scans == 1 ? "" : "s") → \(c.claims) claimed → \(c.used) used"
+        if c.newCustomers > 0 { line += " · \(c.newCustomers) new customer\(c.newCustomers == 1 ? "" : "s")" }
+        if c.cameIn > 0 { line += " · \(c.cameIn) came in after claiming" }
+        if c.state == "ended" { line += " · ended" } else if c.state == "paused" { line += " · paused" }
+        return line
+    }
+
+    static let campaignsEmpty = "No coupons yet. Add one under Coupons in Manage Store and put its QR on your next flyer."
+
+    // MARK: Posts (2026-11-14)
+
+    /// "Sent to 212 · 38 came in since"
+    static func postLine(_ p: VenueInsightsData.Post) -> String {
+        let kind = p.kind == "event" ? "Event" : (p.kind == "offer" ? "Reward" : "Post")
+        var line = "\(kind) · sent to \(p.sentTo) follower\(p.sentTo == 1 ? "" : "s")"
+        if p.cameIn > 0 { line += " · \(p.cameIn) came in since" }
+        return line
+    }
+
+    static let postsEmpty = "Nothing posted yet. A new offer, announcement or event goes to everyone who turned on your store's alerts, and you'll see here how many came in after."
 }

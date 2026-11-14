@@ -7,6 +7,8 @@ final class VenueReferralsViewController: BaseViewController {
     private let venueId: String
     private var settings: StoreReferralSettings
     private var stats: StoreReferralStats?
+    /// The store's coupons, for the friend's-coupon row words (2026-11-14)
+    private var coupons: [VenueCoupon] = []
     var onChanged: ((StoreReferralSettings) -> Void)?
 
     override var enablesPullToRefresh: Bool { true }
@@ -62,6 +64,23 @@ final class VenueReferralsViewController: BaseViewController {
                 }
             }
         }
+        RewardsService.shared.fetchCoupons(venueId: venueId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let coupons) = result else { return }
+                self.coupons = coupons
+                self.tableView.reloadData()
+            }
+        }
+    }
+
+    private func pickCoupon(from sourceView: UIView) {
+        VenueCouponPicker.present(venueId: venueId, current: settings.couponId, from: self, sourceView: sourceView) { [weak self] couponId, coupon in
+            guard let self else { return }
+            if let coupon, !self.coupons.contains(where: { $0.couponId == coupon.couponId }) { self.coupons.append(coupon) }
+            var next = self.settings
+            next.couponId = couponId
+            self.save(next)
+        }
     }
 
     private func save(_ next: StoreReferralSettings) {
@@ -107,9 +126,9 @@ final class VenueReferralsViewController: BaseViewController {
 
 extension VenueReferralsViewController: UITableViewDataSource, UITableViewDelegate {
     func numberOfSections(in tableView: UITableView) -> Int { 2 }
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { section == 0 ? 3 : 1 }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { section == 0 ? 4 : 1 }
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? { section == 0 ? "Bring a friend" : "Results" }
-    func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? { section == 0 ? StoreReferralCopy.explanation : nil }
+    func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? { section == 0 ? StoreReferralCopy.explanation + " " + StoreReferralCopy.couponExplanation : nil }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
@@ -126,6 +145,11 @@ extension VenueReferralsViewController: UITableViewDataSource, UITableViewDelega
             enabledSwitch.isOn = settings.enabled
             cell.accessoryView = enabledSwitch
             cell.selectionStyle = .none
+        } else if indexPath.row == 3 {
+            config.text = StoreReferralCopy.couponRowTitle
+            config.secondaryText = VenueCouponPicker.title(for: settings.couponId, in: coupons)
+            config.secondaryTextProperties.color = .secondaryLabel
+            cell.accessoryType = .disclosureIndicator
         } else {
             let referrer = indexPath.row == 1
             config.text = referrer ? "The inviter gets" : "The new customer gets"
@@ -140,6 +164,7 @@ extension VenueReferralsViewController: UITableViewDataSource, UITableViewDelega
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         guard indexPath.section == 0, indexPath.row > 0 else { return }
+        if indexPath.row == 3 { pickCoupon(from: tableView.cellForRow(at: indexPath) ?? tableView); return }
         editPoints(referrer: indexPath.row == 1)
     }
 }

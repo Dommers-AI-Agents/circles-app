@@ -193,7 +193,7 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
             do {
                 // A store's window code saves the store as it signs them in
                 let result = try await ClipAPIClient.shared.redeemSticker(code: code, token: session.token, atStore: atStore,
-                                                                          save: preview.isStoreWindow, ref: invocation.ref)
+                                                                          save: preview.isStoreWindow, ref: invocation.ref, coupon: invocation.coupon)
                 // Scan handled in-clip — tell the full app not to redeem it again
                 // A save that has to wait for the app goes through its own
                 // save flow, not a welcome sheet as well
@@ -305,6 +305,13 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
             detailLabel.text = "Open the FavCircles app and \(name) goes on your map."
         }
         nameLabel.text = name
+        // The flyer's coupon (2026-11-14): claimed, it leads the panel
+        if let claimed = result.coupon, let coupon = claimed.coupon, claimed.status == "claimed" || claimed.status == "already" {
+            hookLabel.attributedText = ClipTheme.hookText("Coupon saved.", coupon.title, size: 40)
+            var line = "It's in \(name)'s rewards and on its Wallet card. Scan the register code when you're there and show the ticket."
+            if let code = coupon.onlineCode { line += " Ordering online? Use code \(code)." }
+            detailLabel.text = line
+        }
         if result.loyaltyLive == true, result.isOnTheirMap {
             fillRewardsPanel(balance: balance, earnRate: result.earnRate ?? preview.earnRate, nextLine: result.nextRewardLine)
         }

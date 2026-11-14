@@ -52,5 +52,10 @@ struct StoreAutomationsCopyTests {
         #expect(winBack?["days"] as? Int == 60)
         #expect(winBack?["bonusPoints"] as? Int == 25)
         #expect((body["almostThere"] as? [String: Any])?["enabled"] as? Bool == false)
+        #expect(winBack?["couponId"] is NSNull)
+        settings.winBack.couponId = "ABCDEF"
+        #expect((settings.asBody["winBack"] as? [String: Any])?["couponId"] as? String == "ABCDEF")
+        #expect(C.couponLine(nil) == "No coupon")
+        #expect(C.couponLine("20% off") == "20% off · claimed for them with the note")
     }
 }

@@ -48,7 +48,7 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
         // TestFlight's row): the generic Join FavCircles flow, never a dead
         // end (Wes, 2026-11-07)
         if code == nil { code = Self.genericJoinCode }
-        window.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, tag: activity.flatMap(Self.stickerTag(from:)), ref: activity.flatMap(Self.stickerRef(from:)), payload: activity?.appClipActivationPayload))
+        window.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, tag: activity.flatMap(Self.stickerTag(from:)), ref: activity.flatMap(Self.stickerRef(from:)), coupon: activity.flatMap(Self.stickerCoupon(from:)), payload: activity?.appClipActivationPayload))
         window.makeKeyAndVisible()
     }
 
@@ -59,7 +59,7 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         guard let code = Self.stickerCode(from: userActivity)
                 ?? (userActivity.webpageURL?.host == "appclip.apple.com" ? Self.genericJoinCode : nil) else { return }
-        window?.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, tag: Self.stickerTag(from: userActivity), ref: Self.stickerRef(from: userActivity), payload: userActivity.appClipActivationPayload))
+        window?.rootViewController = Self.rootViewController(for: ClipInvocation(code: code, tag: Self.stickerTag(from: userActivity), ref: Self.stickerRef(from: userActivity), coupon: Self.stickerCoupon(from: userActivity), payload: userActivity.appClipActivationPayload))
     }
 
     /// Always the offer screen: it loads the store, then skips straight to
@@ -119,6 +119,15 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
                 .queryItems?.first(where: { $0.name == "ref" })?.value,
               !ref.isEmpty else { return nil }
         return ref
+    }
+
+    /// A flyer's coupon: `?c=` on the store's window link (2026-11-14)
+    static func stickerCoupon(from activity: NSUserActivity) -> String? {
+        guard let url = activity.webpageURL,
+              let coupon = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "c" })?.value,
+              !coupon.isEmpty else { return nil }
+        return coupon
     }
 
     static func stickerCode(fromPath path: String) -> String? {

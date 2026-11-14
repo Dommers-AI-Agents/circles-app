@@ -33,6 +33,8 @@ struct VenuePreview: Decodable {
     let location: ClipLocation?
     /// The store's waitlist, while it's on: the clip offers "Join the line" (2026-11-09)
     let waitlist: ClipWaitlist?
+    /// The coupon on the link (?c=), when the store still has it (2026-11-14)
+    var coupon: ClipCoupon? = nil
 
     var isGeneric: Bool { generic == true }
     /// A store's window code: the clip saves the store as it signs them in
@@ -138,6 +140,8 @@ struct ScanResult: Decodable {
     let savedPlace: SavedPlace?
     let loyaltyLive: Bool?
     let offers: [ClipOffer]?
+    /// The flyer's coupon: claimed on this scan, or why not (2026-11-14)
+    var coupon: ClipCouponResult? = nil
 
     struct SavedPlace: Decodable {
         let placeId: String?
@@ -145,6 +149,23 @@ struct ScanResult: Decodable {
     }
 
     var isOnTheirMap: Bool { saved == true || alreadySaved == true }
+}
+
+/// A store's flyer coupon as the link names it
+struct ClipCoupon: Decodable {
+    let couponId: String?
+    let title: String
+    let detail: String?
+    let onlineCode: String?
+    let expiresAt: String?
+    /// false once it has ended, been paused or all been claimed
+    var available: Bool? = nil
+}
+
+struct ClipCouponResult: Decodable {
+    /// claimed | already | expired | full | paused | not_found
+    let status: String
+    let coupon: ClipCoupon?
 }
 
 struct ClipWaitlist: Decodable {

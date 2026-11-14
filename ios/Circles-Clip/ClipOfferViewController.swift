@@ -145,7 +145,7 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
     private func loadPreview(code: String) {
         Task { @MainActor in
             do {
-                let preview = try await ClipAPIClient.shared.venuePreview(code: code, tag: self.invocation.tag)
+                let preview = try await ClipAPIClient.shared.venuePreview(code: code, tag: self.invocation.tag, coupon: self.invocation.coupon)
                 self.preview = preview
                 // Photo and words arrive together: wait for the photo, but
                 // never more than 2.5 s (a slow photo fades in afterwards)
@@ -203,8 +203,15 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
         } else if preview.isStoreWindow {
             nameLabel.text = preview.venueName
             subtitleLabel.isHidden = true
-            rewardLabel.text = preview.pointsHere > 0 ? "+\(preview.pointsHere) points when it's saved" : nil
-            rewardLabel.isHidden = preview.pointsHere == 0
+            // The flyer's coupon (2026-11-14): the reason they scanned
+            if let coupon = preview.coupon, coupon.available != false {
+                hookLabel.attributedText = ClipTheme.hookText("Your coupon.", "Just sign in.", size: 46)
+                rewardLabel.text = "\(coupon.title) — saved to your phone, so it's never left at home"
+                rewardLabel.isHidden = false
+            } else {
+                rewardLabel.text = preview.pointsHere > 0 ? "+\(preview.pointsHere) points when it's saved" : nil
+                rewardLabel.isHidden = preview.pointsHere == 0
+            }
             statusLabel.text = "Free · no password"
         } else {
             nameLabel.text = preview.venueName

@@ -22,7 +22,9 @@ final class VenueAutomationsViewController: BaseViewController {
         return table
     }()
 
-    private enum Row { case toggle, days, bonus, stats }
+    private enum Row { case toggle, days, bonus, coupon, stats }
+    /// The store's coupons, for the win-back row's words (2026-11-14)
+    private var coupons: [VenueCoupon] = []
 
     init(venueId: String, settings: StoreAutomations?) {
         self.venueId = venueId
@@ -65,6 +67,23 @@ final class VenueAutomationsViewController: BaseViewController {
                     self.showError(error)
                 }
             }
+        }
+        RewardsService.shared.fetchCoupons(venueId: venueId) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self, case .success(let coupons) = result else { return }
+                self.coupons = coupons
+                self.tableView.reloadData()
+            }
+        }
+    }
+
+    private func pickCoupon(from sourceView: UIView) {
+        VenueCouponPicker.present(venueId: venueId, current: settings.winBack.couponId, from: self, sourceView: sourceView) { [weak self] couponId, coupon in
+            guard let self else { return }
+            if let coupon, !self.coupons.contains(where: { $0.couponId == coupon.couponId }) { self.coupons.append(coupon) }
+            var next = self.settings
+            next.winBack.couponId = couponId
+            self.save(next)
         }
     }
 
@@ -130,7 +149,7 @@ final class VenueAutomationsViewController: BaseViewController {
     private func rows(for kind: StoreAutomationsCopy.Kind) -> [Row] {
         var rows: [Row] = [.toggle]
         switch kind {
-        case .winBack: rows += [.days, .bonus]
+        case .winBack: rows += [.days, .bonus, .coupon]
         case .birthday: rows += [.bonus]
         case .almostThere: break
         }
@@ -198,6 +217,10 @@ extension VenueAutomationsViewController: UITableViewDataSource, UITableViewDele
             config.text = "Bonus"
             config.secondaryText = StoreAutomationsCopy.bonusLine(kind == .winBack ? settings.winBack.bonusPoints : settings.birthday.bonusPoints)
             cell.accessoryType = .disclosureIndicator
+        case .coupon:
+            config.text = StoreAutomationsCopy.couponRowTitle
+            config.secondaryText = StoreAutomationsCopy.couponLine(settings.winBack.couponId.map { VenueCouponPicker.title(for: $0, in: coupons) })
+            cell.accessoryType = .disclosureIndicator
         case .stats:
             let stat = self.stat(for: kind)
             config.text = StoreAutomationsCopy.statsLine(sent: stat?.sent ?? 0, cameBack: stat?.cameBack ?? 0)
@@ -215,6 +238,7 @@ extension VenueAutomationsViewController: UITableViewDataSource, UITableViewDele
         switch rows(for: kind)[indexPath.row] {
         case .days: pickDays(from: tableView.cellForRow(at: indexPath) ?? tableView)
         case .bonus: editBonus(kind)
+        case .coupon: pickCoupon(from: tableView.cellForRow(at: indexPath) ?? tableView)
         case .toggle, .stats: break
         }
     }

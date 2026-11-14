@@ -39,9 +39,12 @@ final class ClipAPIClient {
     // MARK: - Endpoints
 
     /// `tag`: the NFC sticker that was tapped, counted with the preview
-    func venuePreview(code: String, tag: String? = nil) async throws -> VenuePreview {
+    func venuePreview(code: String, tag: String? = nil, coupon: String? = nil) async throws -> VenuePreview {
+        var query: [URLQueryItem] = []
+        if let tag { query.append(URLQueryItem(name: "t", value: tag)) }
+        if let coupon { query.append(URLQueryItem(name: "c", value: coupon)) }
         let response: VenuePreviewResponse = try await request(path: "clip/venue/\(code)", method: "GET",
-                                                               query: tag.map { [URLQueryItem(name: "t", value: $0)] })
+                                                               query: query.isEmpty ? nil : query)
         return response.data
     }
 
@@ -88,11 +91,12 @@ final class ClipAPIClient {
 
     /// `atStore`: Apple's location check (nil when it couldn't tell)
     /// `save`: a window code saves the store for them (2026-11-01)
-    func redeemSticker(code: String, token: String, atStore: Bool?, save: Bool = false, ref: String? = nil) async throws -> ScanResult {
+    func redeemSticker(code: String, token: String, atStore: Bool?, save: Bool = false, ref: String? = nil, coupon: String? = nil) async throws -> ScanResult {
         var body: [String: Any] = ["code": code]
         if let atStore { body["atStore"] = atStore }
         if save { body["save"] = true }
         if let ref { body["ref"] = ref }
+        if let coupon { body["c"] = coupon }
         let response: ScanResponse = try await request(
             path: "rewards/scan", method: "POST",
             body: body,

@@ -124,6 +124,34 @@ final class VenueInsightsViewController: BaseViewController {
             contentStack.addArrangedSubview(card(data.offers.map { body(VenueInsightsCopy.offerLine($0)) }))
         }
 
+        // Flyer coupons (2026-11-14): every campaign, scans to used
+        if let campaigns = data.campaigns {
+            contentStack.addArrangedSubview(header("Coupons"))
+            if campaigns.isEmpty {
+                contentStack.addArrangedSubview(caption(VenueInsightsCopy.campaignsEmpty))
+            } else {
+                contentStack.addArrangedSubview(card(campaigns.flatMap { campaign -> [UIView] in
+                    let title = body(VenueInsightsCopy.campaignTitle(campaign))
+                    title.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+                    return [title, caption(VenueInsightsCopy.campaignLine(campaign))]
+                }))
+            }
+        }
+
+        // Posts (2026-11-14): what each reached, who came in after
+        if let posts = data.posts {
+            contentStack.addArrangedSubview(header("Your posts"))
+            if posts.isEmpty {
+                contentStack.addArrangedSubview(caption(VenueInsightsCopy.postsEmpty))
+            } else {
+                contentStack.addArrangedSubview(card(posts.prefix(6).flatMap { post -> [UIView] in
+                    let title = body(post.title)
+                    title.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+                    return [title, caption(VenueInsightsCopy.postLine(post))]
+                }))
+            }
+        }
+
         contentStack.addArrangedSubview(header("Reviews on FavCircles"))
         contentStack.addArrangedSubview(caption(VenueInsightsCopy.commentsLine(inPeriod: data.comments.inPeriod, total: data.comments.total, range: range)))
         if data.comments.total > 0 {

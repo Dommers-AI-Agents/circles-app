@@ -966,6 +966,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             set("Bring them back", StoreAutomationsCopy.summary(automations), "bell.and.waves.left.and.right")
         case .referrals:
             set("Bring a friend", StoreReferralCopy.summary(referrals), "person.badge.plus")
+        case .coupons:
+            set(StoreCouponCopy.rowTitle, StoreCouponCopy.rowSubtitle, "ticket")
         case .waitlist:
             set(waitlist.enabled && waitlistWaiting > 0 ? "Waitlist (\(waitlistWaiting))" : "Waitlist",
                 WaitlistCopy.rowSummary(enabled: waitlist.enabled, waiting: waitlistWaiting), "person.3.sequence")
@@ -1007,6 +1009,7 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
                     ? " · expired \(formatter.string(from: expiry))"
                     : " · until \(formatter.string(from: expiry))"
             }
+            if let reach = announcement.alerted { detail += " · sent to \(reach.sent)" }
             set(announcement.title, detail, expired ? "megaphone" : "megaphone.fill")
             config.textProperties.color = expired ? .secondaryLabel : .label
             config.imageProperties.tintColor = expired ? .systemGray3 : .systemOrange
@@ -1096,6 +1099,8 @@ extension VenueManageViewController: UITableViewDataSource, UITableViewDelegate 
             navigationController?.pushViewController(VenueCodesViewController(venueId: venueId, venueName: venueName), animated: true)
         case .rewardsUsed:
             navigationController?.pushViewController(VenueRewardTicketsViewController(venueId: venueId), animated: true)
+        case .coupons:
+            navigationController?.pushViewController(VenueCouponsViewController(venueId: venueId, venueName: venueName), animated: true)
         case .referrals:
             let vc = VenueReferralsViewController(venueId: venueId, settings: referrals)
             vc.onChanged = { [weak self] settings in

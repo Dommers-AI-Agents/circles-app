@@ -73,9 +73,10 @@ struct VenueManageLayoutTests {
 
     @Test func rewardsCustomersAndCodesAreSeparate() {
         let facts = L.Facts(offerCount: 2, announcementCount: 1)
-        #expect(rows(facts, .loyalty) == [.earnRate, .savePoints, .deliveryOrders, .automations, .referrals, .offer(0), .offer(1), .addOffer, .rewardsUsed])
+        #expect(rows(facts, .loyalty) == [.earnRate, .savePoints, .deliveryOrders, .automations, .referrals, .coupons, .offer(0), .offer(1), .addOffer, .rewardsUsed])
         #expect(L.isBusiness(.automations))
         #expect(L.isBusiness(.referrals))
+        #expect(L.isBusiness(.coupons))
         #expect(rows(facts, .customers) == [.customers, .savers, .followers, .feedback])
         #expect(rows(facts, .codes) == [.showRegisterCard, .showWindowSticker, .nfcStickers, .loyaltyCodes, .emailStickers, .replaceRegisterCard])
         #expect(rows(facts, .announcements) == [.announcement(0), .addAnnouncement])
