@@ -254,9 +254,39 @@ async function createGlobalPlaceFromLegacy(legacyPlaceDoc) {
   globalPlaceData.dataCompleteness = calculateDataCompleteness(globalPlaceData);
   globalPlaceData.qualityScore = calculateQualityScore(globalPlaceData);
 
-  const docRef = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).add(globalPlaceData);
+  // One venue per save, even when the place page's parallel requests all
+  // arrive before any of them has linked it (2026-11-11: opening a Google
+  // Imports save made three "Roosevelt Overlook Campground" venues in 23 ms).
+  // The first request claims the save; the others wait for its venue.
+  const docRef = db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc();
+  const claim = db.collection(LEGACY_VENUE_CLAIMS).doc(legacyId);
+  try {
+    await claim.create({ globalPlaceId: docRef.id, createdAt: new Date().toISOString() });
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+    const joined = await waitForClaimedVenue(claim, legacyId);
+    if (joined) return joined;
+    // The claimer died before writing its venue: this request makes it
+    await claim.set({ globalPlaceId: docRef.id, createdAt: new Date().toISOString() });
+  }
+  await docRef.set(globalPlaceData);
   console.log(`🆕 [GlobalPlace] Auto-created globalPlace ${docRef.id} from legacy place ${legacyId}`);
   return { resolvedId: docRef.id, resolvedData: globalPlaceData };
+}
+
+const LEGACY_VENUE_CLAIMS = 'globalPlaceLegacyClaims';
+const isAlreadyExists = (error) => error && (error.code === 6 || /ALREADY_EXISTS/i.test(String(error.message)));
+
+/** The venue another request claimed for this save, or null when it never appeared */
+async function waitForClaimedVenue(claim, legacyId, { tries = 20, delayMs = 150 } = {}) {
+  const { globalPlaceId } = (await claim.get()).data() || {};
+  for (let i = 0; globalPlaceId && i < tries; i++) {
+    const venue = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId).get();
+    if (venue.exists) return { resolvedId: venue.id, resolvedData: venue.data(), joined: true };
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  console.warn(`⚠️ [GlobalPlace] Venue claimed for save ${legacyId} never appeared — creating it`);
+  return null;
 }
 
 // Create a canonical venue record straight from business details — no legacy
@@ -559,7 +589,8 @@ async function ensureGlobalPlaceLink(placeDoc, { knownVenueId = null } = {}) {
       const created = await createGlobalPlaceFromLegacy(placeDoc);
       globalPlaceId = created.resolvedId;
       resolvedData = created.resolvedData;
-      minted = true;
+      // A request that joined another's new venue doesn't announce it again
+      minted = !created.joined;
     }
 
     // Stamp the link and drop the now-canonical venue fields in one write —

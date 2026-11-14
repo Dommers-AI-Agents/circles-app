@@ -57,3 +57,14 @@ test('a Google id has one live holder; merged and deleted records never hold it'
   expect((await resolver.findVenueByGooglePlaceId('ChIJg')).id).toBe('live');
   expect(await resolver.findVenueByGooglePlaceId(null)).toBeNull();
 });
+
+test("a save's parallel first reads make one venue, not one each", async () => {
+  // 2026-11-11: opening a Google Imports save fired the place page's requests
+  // together and made three "Roosevelt Overlook Campground" venues in 23 ms
+  mockDb.collection('places').doc('save1').set({ name: 'Roosevelt Overlook Campground', address: 'Address pending', addedBy: 'u1', category: 'other' });
+  const save = await mockDb.collection('places').doc('save1').get();
+  const results = await Promise.all([1, 2, 3].map(() => resolver.createGlobalPlaceFromLegacy(save)));
+  expect(new Set(results.map((r) => r.resolvedId)).size).toBe(1);
+  expect(results.filter((r) => !r.joined)).toHaveLength(1);
+  expect(mockDb.collection('globalPlaces').store.docs.size).toBe(1);
+});
