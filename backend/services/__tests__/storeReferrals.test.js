@@ -27,12 +27,23 @@ beforeEach(async () => {
 });
 
 test('settings, the public offer and the invite link', () => {
-  expect(ref.settingsOf({})).toEqual({ enabled: false, referrerPoints: 50, friendPoints: 25 });
-  expect(ref.normalizeSettings({ enabled: true, referrerPoints: 100, friendPoints: 10 })).toEqual({ enabled: true, referrerPoints: 100, friendPoints: 10 });
+  expect(ref.settingsOf({})).toEqual({ enabled: false, referrerPoints: 50, friendPoints: 25, couponId: null });
+  expect(ref.normalizeSettings({ enabled: true, referrerPoints: 100, friendPoints: 10 })).toEqual({ enabled: true, referrerPoints: 100, friendPoints: 10, couponId: null });
   expect(() => ref.normalizeSettings({ referrerPoints: 99999 })).toThrow(/whole number/);
   expect(ref.inviteUrl(venue, 'ana')).toBe('https://api.favcircles.com/s/WIN123?ref=ana');
-  expect(ref.publicReferral(venue, 'ana', { live: true })).toEqual({ enabled: true, referrerPoints: 50, friendPoints: 25, inviteUrl: 'https://api.favcircles.com/s/WIN123?ref=ana' });
+  expect(ref.publicReferral(venue, 'ana', { live: true })).toEqual({ enabled: true, referrerPoints: 50, friendPoints: 25, inviteUrl: 'https://api.favcircles.com/s/WIN123?ref=ana', friendCoupon: null });
   expect(ref.publicReferral(venue, 'ana', { live: false })).toBeNull();
+});
+
+test('a coupon for the friend rides on the invite link while the store still offers it (2026-11-14)', () => {
+  const mailer = { couponId: 'ABCDEF', title: '20% off any pickup order', expiresAt: new Date(NOW.getTime() + 20 * 86400000).toISOString(), active: true };
+  const withCoupon = { ...venue, coupons: [mailer], referrals: { ...venue.referrals, couponId: 'ABCDEF' } };
+  expect(ref.inviteUrl(withCoupon, 'ana', { now: NOW })).toBe('https://api.favcircles.com/s/WIN123?ref=ana&c=ABCDEF');
+  expect(ref.publicReferral(withCoupon, 'ana', { live: true, now: NOW }).friendCoupon).toMatchObject({ couponId: 'ABCDEF', title: '20% off any pickup order' });
+  const ended = { ...withCoupon, coupons: [{ ...mailer, expiresAt: new Date(NOW.getTime() - 86400000).toISOString() }] };
+  expect(ref.inviteUrl(ended, 'ana', { now: NOW })).toBe('https://api.favcircles.com/s/WIN123?ref=ana');
+  expect(ref.normalizeSettings({ enabled: true, couponId: 'abcdef' }).couponId).toBe('ABCDEF');
+  expect(() => ref.normalizeSettings({ couponId: 'bad!' })).toThrow(/one of your coupons/);
 });
 
 test('a friend is remembered once, never yourself, never an existing customer', async () => {

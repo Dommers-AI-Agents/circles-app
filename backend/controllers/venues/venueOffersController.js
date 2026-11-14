@@ -26,6 +26,18 @@ const alertStoreFollowers = async (venue, kind, title, message) => {
   });
 };
 
+/**
+ * Stamps `alerted {audience, sent, at}` on the post just made (the array's
+ * last row) and saves the list again. Never fails the post.
+ */
+const rememberReach = async (venueId, fieldName, list, index, alerted) => {
+  if (!alerted || !list[index] || typeof alerted.sent !== 'number') return;
+  list[index].alerted = { audience: alerted.audience || 0, sent: alerted.sent || 0, throttled: alerted.throttled === true, at: new Date().toISOString() };
+  await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).doc(venueId)
+    .update({ [fieldName]: list, updatedAt: new Date().toISOString() })
+    .catch((error) => console.warn(`⚠️ reach not saved for ${venueId}: ${error.message}`));
+};
+
 // Fire-and-forget activity for venue announcements/offers so they surface in
 // followers' feeds. Actor id 'place_<globalPlaceId>' — the feed query adds a
 // user's followed places under the same key, and enrichment synthesizes a
@@ -93,6 +105,9 @@ exports.addOffer = async (req, res) => {
     emitVenueActivity(req.venue, 'venue_offer', String(title).trim());
     notifySpecialsChanged(req.venue.venueId);
     const alerted = await alertStoreFollowers(req.venue, 'offer', String(title).trim());
+    // Reach (2026-11-14): who it went to stays on the offer, so Insights can
+    // say "sent to N · M came in since"
+    await rememberReach(req.venue.venueId, 'offers', offers, offers.length - 1, alerted);
 
     res.status(201).json({ success: true, data: { offers, alerted } });
   } catch (error) {
@@ -192,6 +207,7 @@ exports.addAnnouncement = async (req, res) => {
     notifySpecialsChanged(req.venue.venueId);
     const alerted = await alertStoreFollowers(req.venue, event ? 'event' : 'announcement',
       String(title).trim(), String(message).trim());
+    await rememberReach(req.venue.venueId, 'announcements', announcements, announcements.length - 1, alerted);
 
     res.status(201).json({ success: true, data: { announcements, alerted } });
   } catch (error) {

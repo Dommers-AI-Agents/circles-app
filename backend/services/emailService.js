@@ -1102,6 +1102,12 @@ FavCircles · Save the places you love`;
           ${summary && summary.repeatRatePct !== null && summary.repeatRatePct !== undefined
     ? row('Customers who came back', `${summary.repeatRatePct}%`)
     : ''}
+          ${summary && summary.coupons
+    ? row('Your coupons', `${summary.coupons.claimed} claimed · ${summary.coupons.used} used · ${summary.coupons.newCustomers} new customer${summary.coupons.newCustomers === 1 ? '' : 's'}`)
+    : ''}
+          ${summary && summary.posts
+    ? row('Your posts', `${summary.posts.count} sent to ${summary.posts.sentTo} follower${summary.posts.sentTo === 1 ? '' : 's'} · ${summary.posts.cameIn} came in after`)
+    : ''}
         </table>
         <p style="margin-top:16px">Every save means a customer who won't forget you — and every reward
         redemption is a customer who came back. Thanks for being part of FavCircles!</p>
@@ -1115,7 +1121,9 @@ Place saves: ${safeStats.saves}
 Verified repeat visits: ${safeStats.visits}
 Rewards redeemed: ${safeStats.redemptions}${summary && summary.favScore !== null && summary.favScore !== undefined ? `
 FavCircles score: ${summary.favScore}/10 (${summary.ratings} ratings)` : ''}${summary && summary.repeatRatePct !== null && summary.repeatRatePct !== undefined ? `
-Customers who came back: ${summary.repeatRatePct}%` : ''}`;
+Customers who came back: ${summary.repeatRatePct}%` : ''}${summary && summary.coupons ? `
+Coupons: ${summary.coupons.claimed} claimed, ${summary.coupons.used} used, ${summary.coupons.newCustomers} new customers` : ''}${summary && summary.posts ? `
+Posts: ${summary.posts.count} sent to ${summary.posts.sentTo} followers, ${summary.posts.cameIn} came in after` : ''}`;
 
     return this.sendEmail({ to: venue.contactEmail, subject, html, text });
   }

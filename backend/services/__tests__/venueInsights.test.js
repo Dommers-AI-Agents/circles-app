@@ -141,6 +141,20 @@ describe('computeInsights', () => {
     expect(insights.computeInsights({ ...base }).campaigns).toEqual([]);
   });
 
+  it('says what each post reached and who came in after it (2026-11-14)', () => {
+    const venueWithPosts = {
+      venueId: 'v1',
+      offers: [{ offerId: 'o1', title: 'Free coffee', createdAt: daysAgo(9), alerted: { audience: 40, sent: 38, at: daysAgo(9) } }, { offerId: 'o2', title: 'Never sent' }],
+      announcements: [{ announcementId: 'a1', title: 'Live music', event: { startsAt: 'x' }, createdAt: daysAgo(4), alerted: { audience: 41, sent: 41, at: daysAgo(4) } }]
+    };
+    const data = insights.computeInsights({ ...base, venue: venueWithPosts, events: [visit('ana', 2), visit('ana', 3), visit('ben', 6), visit('cy', 12)] });
+    expect(data.posts).toEqual([
+      { id: 'a1', kind: 'event', title: 'Live music', at: daysAgo(4), sentTo: 41, audience: 41, cameIn: 1 },
+      { id: 'o1', kind: 'offer', title: 'Free coffee', at: daysAgo(9), sentTo: 38, audience: 40, cameIn: 2 }
+    ]);
+    expect(insights.computeInsights({ ...base }).posts).toEqual([]);
+  });
+
   it('refuses a range it does not know', () => {
     expect(() => insights.parseRange('7d')).toThrow(/30d, 90d or 12m/);
     expect(insights.parseRange(undefined)).toBe('30d');

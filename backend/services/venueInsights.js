@@ -180,8 +180,27 @@ function computeInsights({
     followers: followersCount || 0,
     // Coupons (services/storeCoupons): per flyer coupon, scans → claims →
     // used, new customers, and who came in after claiming (all time)
-    campaigns: venue ? require('./storeCoupons').campaignRows({ venue, claims: couponClaims, visits, now }) : []
+    campaigns: venue ? require('./storeCoupons').campaignRows({ venue, claims: couponClaims, visits, now }) : [],
+    // Posts (2026-11-14): what each offer, announcement or event reached
+    // ("sent to N"), and how many distinct customers came in after it went
+    posts: venue ? postReach(venue, visits) : []
   };
+}
+
+/** Every offer, announcement and event that alerted followers, newest first. Pure. */
+function postReach(venue, visits) {
+  const rows = [];
+  (venue.offers || []).forEach((o) => rows.push({ id: o.offerId, kind: 'offer', title: o.title, alerted: o.alerted, createdAt: o.createdAt || null }));
+  (venue.announcements || []).forEach((a) => rows.push({ id: a.announcementId, kind: a.event ? 'event' : 'announcement', title: a.title, alerted: a.alerted, createdAt: a.createdAt || null }));
+  return rows
+    .filter((r) => r.alerted && typeof r.alerted.sent === 'number')
+    .map((r) => ({
+      id: r.id, kind: r.kind, title: r.title, at: r.alerted.at || r.createdAt,
+      sentTo: r.alerted.sent, audience: r.alerted.audience || 0,
+      cameIn: new Set(visits.filter((v) => String(v.createdAt || '') > String(r.alerted.at || r.createdAt || '')).map((v) => String(v.userId))).size
+    }))
+    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
+    .slice(0, 20);
 }
 
 /** Everything the fold needs, read once. */
@@ -270,11 +289,25 @@ async function getInsights(venue, range, now = new Date()) {
 async function reportSummary(venue) {
   try {
     const data = await getInsights(venue, DEFAULT_RANGE);
+    const campaigns = data.campaigns || [];
+    const posts = data.posts || [];
     return {
       favScore: data.score.average,
       ratings: data.score.ratings,
       googleRating: data.score.google ? data.score.google.rating : null,
-      repeatRatePct: data.customers.repeatRatePct
+      repeatRatePct: data.customers.repeatRatePct,
+      // Coupons and posts (2026-11-14), for the monthly report's two extra lines
+      coupons: campaigns.length ? {
+        count: campaigns.length,
+        claimed: campaigns.reduce((n, c) => n + (c.claims || 0), 0),
+        used: campaigns.reduce((n, c) => n + (c.used || 0), 0),
+        newCustomers: campaigns.reduce((n, c) => n + (c.newCustomers || 0), 0)
+      } : null,
+      posts: posts.length ? {
+        count: posts.length,
+        sentTo: posts.reduce((n, p) => n + (p.sentTo || 0), 0),
+        cameIn: posts.reduce((n, p) => n + (p.cameIn || 0), 0)
+      } : null
     };
   } catch (error) {
     console.warn(`⚠️ insights summary skipped for ${venue.venueName}: ${error.message}`);
@@ -283,6 +316,6 @@ async function reportSummary(venue) {
 }
 
 module.exports = {
-  computeInsights, getInsights, reportSummary, parseRange,
+  computeInsights, getInsights, reportSummary, parseRange, postReach,
   RANGE_DAYS, CACHE_TTL_MS, LAPSED_DAYS, REGULAR_PURCHASES, RECOMMEND_MIN
 };

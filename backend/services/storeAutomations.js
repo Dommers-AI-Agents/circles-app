@@ -21,6 +21,14 @@
 // A bonus is a promise, not points: `pendingBonus {points, automation,
 // expiresAt}` on the bucket, paid by the next register scan
 // (rewardService.awardVenueVisit → applyPendingBonus), 30 days to use it.
+//
+// Coupons (2026-11-14, services/storeCoupons):
+//   * a win-back may hand out a coupon (`winBack.couponId`) instead of, or
+//     with, bonus points: the nudge claims it for the customer;
+//   * `couponEnding` — a coupon someone claimed ends in 3 days and is still
+//     unused: "Your 20% off ends Sunday". Time-bound, so it ignores the
+//     14-day gap and never counts as the customer's one nudge; keyed per
+//     coupon, so it's said once.
 const { getFirestore, FieldValue } = require('../config/firebase');
 const { COLLECTIONS } = require('../models/FirestoreModels');
 const { STICKER_COLLECTIONS, validateBonusPoints } = require('../models/StickerModels');
@@ -29,7 +37,8 @@ const { localDateKey } = require('../utils/localClock');
 const { nextReward, article } = require('./rewardProgress');
 
 const SENDS = 'storeAutomationSends';
-const TYPES = ['birthday', 'almostThere', 'winBack']; // priority order: one nudge per customer per run
+const TYPES = ['birthday', 'almostThere', 'winBack', 'couponEnding']; // priority order: one nudge per customer per run (couponEnding rides alongside)
+const COUPON_ENDING_DAYS = 3;
 const WIN_BACK_DAYS = [14, 30, 60, 90];
 const NUDGE_GAP_DAYS = 14;
 const BONUS_TTL_DAYS = 30;
@@ -38,7 +47,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_CUSTOMERS = 1000;
 
 const DEFAULTS = Object.freeze({
-  winBack: { enabled: false, days: 30, bonusPoints: 0 },
+  winBack: { enabled: false, days: 30, bonusPoints: 0, couponId: null },
   birthday: { enabled: false, bonusPoints: 0 },
   almostThere: { enabled: false }
 });
@@ -57,7 +66,8 @@ const settingsOf = (venue) => {
     winBack: {
       enabled: wb.enabled === true,
       days: WIN_BACK_DAYS.includes(wb.days) ? wb.days : DEFAULTS.winBack.days,
-      bonusPoints: Number.isInteger(wb.bonusPoints) && wb.bonusPoints >= 0 ? wb.bonusPoints : 0
+      bonusPoints: Number.isInteger(wb.bonusPoints) && wb.bonusPoints >= 0 ? wb.bonusPoints : 0,
+      couponId: typeof wb.couponId === 'string' && wb.couponId ? wb.couponId : null
     },
     birthday: {
       enabled: bd.enabled === true,
@@ -86,8 +96,13 @@ const normalizeSettings = (body) => {
   if (!WIN_BACK_DAYS.includes(days)) {
     throw new ServiceError(400, 'invalid_automations', `Win-back waits ${WIN_BACK_DAYS.join(', ')} days.`);
   }
+  let couponId = null;
+  if (wb.couponId !== undefined && wb.couponId !== null && wb.couponId !== '') {
+    couponId = require('./storeCoupons').normalizeId(wb.couponId);
+    if (!couponId) throw new ServiceError(400, 'invalid_automations', 'Pick one of your coupons for the win-back.');
+  }
   return {
-    winBack: { enabled: bool(wb.enabled, 'Win-back'), days, bonusPoints: bonus(wb.bonusPoints, 'Win-back bonus') },
+    winBack: { enabled: bool(wb.enabled, 'Win-back'), days, bonusPoints: bonus(wb.bonusPoints, 'Win-back bonus'), couponId },
     birthday: { enabled: bool((input.birthday || {}).enabled, 'Birthday'), bonusPoints: bonus((input.birthday || {}).bonusPoints, 'Birthday bonus') },
     almostThere: { enabled: bool((input.almostThere || {}).enabled, 'Almost there') }
   };
@@ -112,16 +127,29 @@ const normalizeBirthday = (value) => {
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** The words for one nudge. Pure. Never mentions texting. */
-const messageFor = (type, { venueName, bonusPoints = 0, reward = null }) => {
+const messageFor = (type, { venueName, bonusPoints = 0, reward = null, coupon = null }) => {
   const store = venueName || 'your store';
   switch (type) {
     case 'winBack':
+      if (coupon) {
+        return {
+          title: `We miss you at ${store}`,
+          body: `${coupon.title} — it's yours, saved in FavCircles${bonusPoints > 0 ? `, and your next purchase earns +${bonusPoints} bonus points too` : ''}. Scan the register code when you're in and show the ticket.`
+        };
+      }
       return {
         title: `We miss you at ${store}`,
         body: bonusPoints > 0
           ? `Come back soon — your next purchase earns +${bonusPoints} bonus points on top of the usual.`
           : `It's been a while. Your points here are waiting for your next visit.`
       };
+    case 'couponEnding': {
+      const when = coupon && coupon.expiresAt ? new Date(coupon.expiresAt).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/New_York' }) : 'soon';
+      return {
+        title: coupon ? `Your ${coupon.title} at ${store} ends ${when}` : `Your coupon at ${store} ends ${when}`,
+        body: `It's saved in FavCircles and on your ${store} Wallet card: scan the register code when you're in and show the ticket.${coupon && coupon.onlineCode ? ` Ordering online? Use code ${coupon.onlineCode}.` : ''}`
+      };
+    }
     case 'birthday':
       return {
         title: `Happy birthday from ${store}!`,
@@ -147,10 +175,14 @@ const messageFor = (type, { venueName, bonusPoints = 0, reward = null }) => {
  * person's birthday (MM-DD) and time zone. One nudge per customer, the
  * most time-sensitive first: birthday, almost there, win-back.
  */
-const planNudges = ({ venue, settings, customers = [], now = new Date() }) => {
+const planNudges = ({ venue, settings, customers = [], claims = [], now = new Date() }) => {
   const nowMs = now.getTime();
   const gapBefore = new Date(nowMs - NUDGE_GAP_DAYS * DAY_MS).toISOString();
   const earnRate = require('./rewardService').effectiveEarnRate(venue);
+  const coupons = require('./storeCoupons');
+  // The win-back's coupon, only while the store still offers it
+  const winBackCoupon = settings.winBack.couponId ? coupons.findCoupon(venue, settings.winBack.couponId) : null;
+  const winBackCouponLive = winBackCoupon && coupons.claimVerdict({ coupon: winBackCoupon, counts: coupons.countsOf(venue, winBackCoupon.couponId), now }) === 'ok';
   const plan = [];
   for (const c of customers) {
     if (c.removed) continue;
@@ -179,13 +211,28 @@ const planNudges = ({ venue, settings, customers = [], now = new Date() }) => {
     if (settings.winBack.enabled && (c.purchases || 0) >= 1 && c.lastScanAt) {
       const quietSince = new Date(nowMs - settings.winBack.days * DAY_MS).toISOString();
       if (String(c.lastScanAt) < quietSince) {
+        const coupon = winBackCouponLive ? coupons.publicCoupon(winBackCoupon) : null;
         plan.push({
           userId: c.userId, type: 'winBack', key: `winBack_${String(c.lastScanAt).slice(0, 10)}`,
           bonusPoints: settings.winBack.bonusPoints,
-          message: messageFor('winBack', { venueName: venue.venueName, bonusPoints: settings.winBack.bonusPoints })
+          ...(coupon ? { couponId: coupon.couponId } : {}),
+          message: messageFor('winBack', { venueName: venue.venueName, bonusPoints: settings.winBack.bonusPoints, coupon })
         });
       }
     }
+  }
+  // A claimed, unused coupon ending within 3 days: said once per coupon,
+  // whatever else the person was told lately (it can't wait 14 days)
+  const removed = new Set(customers.filter((c) => c.removed).map((c) => c.userId));
+  const endingBefore = new Date(nowMs + COUPON_ENDING_DAYS * DAY_MS).toISOString();
+  const nowIso = now.toISOString();
+  for (const claim of claims) {
+    if (!coupons.isOpen(claim, now) || removed.has(String(claim.userId))) continue;
+    if (!claim.expiresAt || String(claim.expiresAt) > endingBefore || String(claim.expiresAt) <= nowIso) continue;
+    plan.push({
+      userId: String(claim.userId), type: 'couponEnding', key: `couponEnd_${claim.couponId}`, bonusPoints: 0, timeBound: true,
+      message: messageFor('couponEnding', { venueName: venue.venueName, coupon: claim })
+    });
   }
   return plan;
 };
@@ -301,11 +348,22 @@ async function deliver(venue, globalPlaceId, nudge, customer, now) {
       subject: nudge.message.title,
       html: emailHtml({ ...nudge.message, venueName: venue.venueName || 'your store', unsub }),
       text: `${nudge.message.title}\n\n${nudge.message.body}\n\nOpen my rewards: https://api.favcircles.com/app/open?path=rewards\nStop these emails: ${unsub}`,
-      headers: { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
+      headers: { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+      // Tracked by nudge type (services/emailTracking): store_win_back, store_coupon_ending…
+      kind: `store_${String(nudge.type).replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)}`
     });
   }
 
-  // Delivered: stamp the bucket (field-path pairs, so sibling fields stay)
+  // A win-back's coupon: claimed for them now, so it's on their card when they come in
+  if (nudge.couponId) {
+    await require('./storeCoupons').claim({ venue, couponId: nudge.couponId, userId: nudge.userId, via: 'win_back', now })
+      .catch((e) => console.warn(`coupon for win-back (${venue.venueName} → ${nudge.userId}): ${e.message}`));
+  }
+
+  // A time-bound nudge (a coupon ending) isn't the customer's one nudge for
+  // the fortnight; everything else stamps the bucket (field-path pairs, so
+  // sibling fields stay)
+  if (nudge.timeBound) return channel;
   const bucketUpdate = [field(venue.venueId, 'lastNudgeAt'), now.toISOString()];
   if (nudge.bonusPoints > 0) {
     bucketUpdate.push(field(venue.venueId, 'pendingBonus'), {
@@ -329,23 +387,35 @@ async function runDue({ now = new Date(), dryRun = false } = {}) {
   for (const doc of snapshot.docs) {
     const venue = { venueId: doc.id, ...doc.data() };
     const settings = settingsOf(venue);
-    if (!anyEnabled(settings)) continue;
+    const hasCoupons = require('./storeCoupons').liveCoupons(venue).length > 0;
+    if (!anyEnabled(settings) && !hasCoupons) continue;
     if (!(await isVenueBusinessLive(venue))) { summary.lapsed++; continue; }
     summary.venues++;
     const customers = await loadCustomers(venue);
-    const plan = planNudges({ venue, settings, customers, now });
+    // Open claims ending soon: the "ends Sunday" reminder (services/storeCoupons)
+    const claims = hasCoupons ? await require('./storeCoupons').claimsForVenue(venue.venueId).catch(() => []) : [];
+    const plan = planNudges({ venue, settings, customers, claims, now });
     summary.planned += plan.length;
     if (!plan.length) continue;
     const globalPlaceId = dryRun ? null : await venueGlobalPlaceId(venue);
     const byUser = new Map(customers.map((c) => [c.userId, c]));
+    // Someone who claimed a coupon but never bought here has no bucket row yet
     for (const nudge of plan) {
+      if (!byUser.has(nudge.userId)) {
+        const userDoc = await db().collection(COLLECTIONS.USERS).doc(nudge.userId).get().catch(() => null);
+        if (userDoc && userDoc.exists) byUser.set(nudge.userId, { userId: nudge.userId, user: userDoc.data() });
+      }
+    }
+    for (const nudge of plan) {
+      const customer = byUser.get(nudge.userId);
+      if (!customer) continue;
       summary.byType[nudge.type] = (summary.byType[nudge.type] || 0) + 1;
       if (dryRun) {
-        summary.would.push({ venue: venue.venueName, userId: nudge.userId, type: nudge.type, key: nudge.key, bonusPoints: nudge.bonusPoints, channel: channelFor(byUser.get(nudge.userId).user) });
+        summary.would.push({ venue: venue.venueName, userId: nudge.userId, type: nudge.type, key: nudge.key, bonusPoints: nudge.bonusPoints, couponId: nudge.couponId || null, channel: channelFor(customer.user) });
         continue;
       }
       try {
-        const outcome = await deliver(venue, globalPlaceId, nudge, byUser.get(nudge.userId), now);
+        const outcome = await deliver(venue, globalPlaceId, nudge, customer, now);
         if (outcome === 'push' || outcome === 'email') summary.sent[outcome]++;
         else summary[outcome]++;
       } catch (error) {
@@ -385,7 +455,7 @@ async function stats(venue) {
 }
 
 module.exports = {
-  DEFAULTS, WIN_BACK_DAYS, NUDGE_GAP_DAYS, BONUS_TTL_DAYS, EMAIL_KIND, TYPES, SENDS,
+  DEFAULTS, WIN_BACK_DAYS, NUDGE_GAP_DAYS, BONUS_TTL_DAYS, COUPON_ENDING_DAYS, EMAIL_KIND, TYPES, SENDS,
   settingsOf, normalizeSettings, anyEnabled, normalizeBirthday,
   messageFor, planNudges, applyPendingBonus, channelFor,
   loadCustomers, runDue, stats

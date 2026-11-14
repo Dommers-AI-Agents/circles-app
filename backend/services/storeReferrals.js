@@ -5,7 +5,9 @@
 // FIRST purchase is scanned at the register, both earn the points the owner
 // set. Business only; honor-system points like the rest of rewards.
 //
-//   stickerVenues.referrals = { enabled, referrerPoints, friendPoints }
+//   stickerVenues.referrals = { enabled, referrerPoints, friendPoints, couponId? }
+//     couponId (2026-11-14): one of the store's coupons (services/storeCoupons)
+//     rides on the invite link as &c=, so the friend's first scan claims it too
 //   users/{friend}.rewardPointsByVenue.{venue}.referredBy = <referrer id>   (set by the window scan)
 //   users/{referrer}.rewardPointsByVenue.{venue}.referralsByMonth.{YYYY-MM}  (the cap, no index)
 //   rewardEvents type 'referral', role 'referrer' | 'friend', sourceUserId = the other person
@@ -17,7 +19,7 @@ const { COLLECTIONS } = require('../models/FirestoreModels');
 const { STICKER_COLLECTIONS, validateBonusPoints } = require('../models/StickerModels');
 const { ServiceError } = require('../utils/serviceError');
 
-const DEFAULTS = Object.freeze({ enabled: false, referrerPoints: 50, friendPoints: 25 });
+const DEFAULTS = Object.freeze({ enabled: false, referrerPoints: 50, friendPoints: 25, couponId: null });
 const MONTHLY_CAP = 20;
 const db = () => getFirestore();
 const field = (venueId, name) => `rewardPointsByVenue.${venueId}.${name}`;
@@ -31,7 +33,8 @@ const settingsOf = (venue) => {
   return {
     enabled: r.enabled === true,
     referrerPoints: points(r.referrerPoints, DEFAULTS.referrerPoints),
-    friendPoints: points(r.friendPoints, DEFAULTS.friendPoints)
+    friendPoints: points(r.friendPoints, DEFAULTS.friendPoints),
+    couponId: typeof r.couponId === 'string' && r.couponId ? r.couponId : null
   };
 };
 
@@ -45,24 +48,41 @@ const normalizeSettings = (input = {}) => {
     if (errors.length) throw new ServiceError(400, 'invalid_referrals', errors[0]);
     return n;
   };
+  let couponId = null;
+  if (input.couponId !== undefined && input.couponId !== null && input.couponId !== '') {
+    couponId = require('./storeCoupons').normalizeId(input.couponId);
+    if (!couponId) throw new ServiceError(400, 'invalid_referrals', 'Pick one of your coupons for the friend.');
+  }
   return {
     enabled: input.enabled === true,
     referrerPoints: points(input.referrerPoints, 'Points for the friend who invites', DEFAULTS.referrerPoints),
-    friendPoints: points(input.friendPoints, 'Points for the new customer', DEFAULTS.friendPoints)
+    friendPoints: points(input.friendPoints, 'Points for the new customer', DEFAULTS.friendPoints),
+    couponId
   };
 };
 
 /** The store's own window link with the inviter on it. */
-const inviteUrl = (venue, userId) => {
+const inviteUrl = (venue, userId, { now = new Date() } = {}) => {
   if (!venue || !venue.windowCode || !userId) return null;
-  return `${require('./rewardService').stickerUrl(venue.windowCode)}?ref=${encodeURIComponent(String(userId))}`;
+  const coupon = friendCoupon(venue, now);
+  return `${require('./rewardService').stickerUrl(venue.windowCode)}?ref=${encodeURIComponent(String(userId))}${coupon ? `&c=${coupon.couponId}` : ''}`;
+};
+
+/** The coupon the friend gets on the link, while the store still offers it. */
+const friendCoupon = (venue, now = new Date()) => {
+  const s = settingsOf(venue);
+  if (!s.couponId) return null;
+  const coupons = require('./storeCoupons');
+  const coupon = coupons.findCoupon(venue, s.couponId);
+  if (!coupon || coupons.claimVerdict({ coupon, counts: coupons.countsOf(venue, coupon.couponId), now }) !== 'ok') return null;
+  return coupons.publicCoupon(coupon);
 };
 
 /** What a customer sees on the store's page: the offer and their link; null while off or the plan isn't live. */
-const publicReferral = (venue, userId, { live }) => {
+const publicReferral = (venue, userId, { live, now = new Date() }) => {
   const s = settingsOf(venue);
   if (!live || !s.enabled) return null;
-  return { enabled: true, referrerPoints: s.referrerPoints, friendPoints: s.friendPoints, inviteUrl: inviteUrl(venue, userId) };
+  return { enabled: true, referrerPoints: s.referrerPoints, friendPoints: s.friendPoints, inviteUrl: inviteUrl(venue, userId, { now }), friendCoupon: friendCoupon(venue, now) };
 };
 
 // ---------- The two moments ----------
@@ -168,4 +188,4 @@ async function saveSettings(venue, input) {
   return settings;
 }
 
-module.exports = { DEFAULTS, MONTHLY_CAP, settingsOf, normalizeSettings, inviteUrl, publicReferral, shouldRemember, remember, creditOnVisit, stats, saveSettings };
+module.exports = { DEFAULTS, MONTHLY_CAP, settingsOf, normalizeSettings, inviteUrl, friendCoupon, publicReferral, shouldRemember, remember, creditOnVisit, stats, saveSettings };

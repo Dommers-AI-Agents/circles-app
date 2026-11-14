@@ -29,9 +29,12 @@ const customer = (userId, extra = {}) => ({ userId, points: 0, purchases: 3, las
 describe('settings', () => {
   it('fills defaults and refuses bad values', () => {
     expect(auto.settingsOf({})).toEqual(auto.DEFAULTS);
-    expect(auto.settingsOf({ automations: { winBack: { enabled: true, days: 45, bonusPoints: -5 } } }).winBack).toEqual({ enabled: true, days: 30, bonusPoints: 0 });
+    expect(auto.settingsOf({ automations: { winBack: { enabled: true, days: 45, bonusPoints: -5 } } }).winBack).toEqual({ enabled: true, days: 30, bonusPoints: 0, couponId: null });
     expect(auto.normalizeSettings({ winBack: { enabled: true, days: 60, bonusPoints: 50 }, almostThere: { enabled: true } }))
-      .toEqual({ winBack: { enabled: true, days: 60, bonusPoints: 50 }, birthday: { enabled: false, bonusPoints: 0 }, almostThere: { enabled: true } });
+      .toEqual({ winBack: { enabled: true, days: 60, bonusPoints: 50, couponId: null }, birthday: { enabled: false, bonusPoints: 0 }, almostThere: { enabled: true } });
+    // A coupon for the win-back (2026-11-14): one of the store's own, by its id
+    expect(auto.normalizeSettings({ winBack: { enabled: true, couponId: 'abcdef' } }).winBack.couponId).toBe('ABCDEF');
+    expect(() => auto.normalizeSettings({ winBack: { couponId: 'nope' } })).toThrow(/one of your coupons/);
     expect(() => auto.normalizeSettings({ winBack: { days: 45 } })).toThrow(/14, 30, 60, 90/);
     expect(() => auto.normalizeSettings({ birthday: { bonusPoints: 99999 } })).toThrow(/whole number/);
     expect(() => auto.normalizeSettings({ almostThere: { enabled: 'yes' } })).toThrow(/on or off/);
@@ -84,6 +87,43 @@ describe('planNudges', () => {
     ] });
     expect(plan.map((p) => p.userId)).toEqual(['oldNudge']);
     expect(auto.planNudges({ venue, settings: auto.DEFAULTS, now: NOW, customers: [customer('x', { lastScanAt: daysAgo(90) })] })).toEqual([]);
+  });
+});
+
+describe('planNudges with coupons (2026-11-14)', () => {
+  const mailer = { couponId: 'ABCDEF', title: '20% off any pickup order', onlineCode: 'TGOSTVQC', expiresAt: daysAgo(-20), active: true };
+  const withCoupon = { ...venue, windowCode: 'WIN', coupons: [mailer] };
+
+  it('a win-back hands out the store\'s coupon while it is still live', () => {
+    const settings = { ...on, winBack: { enabled: true, days: 30, bonusPoints: 0, couponId: 'ABCDEF' } };
+    const plan = auto.planNudges({ venue: withCoupon, settings, now: NOW, customers: [customer('quiet', { lastScanAt: daysAgo(31) })] });
+    expect(plan[0]).toMatchObject({ type: 'winBack', couponId: 'ABCDEF' });
+    expect(plan[0].message.body).toContain('20% off any pickup order');
+    // Paused or ended: the plain win-back instead
+    const paused = { ...withCoupon, coupons: [{ ...mailer, active: false }] };
+    const plain = auto.planNudges({ venue: paused, settings, now: NOW, customers: [customer('quiet', { lastScanAt: daysAgo(31) })] });
+    expect(plain[0].couponId).toBeUndefined();
+    expect(plain[0].message.body).not.toContain('20% off');
+  });
+
+  it('a claimed, unused coupon ending within 3 days is said once, beside any other nudge, gap or not', () => {
+    const claims = [
+      { claimId: 'c1', userId: 'soon', couponId: 'ABCDEF', title: '20% off any pickup order', onlineCode: 'TGOSTVQC', expiresAt: daysAgo(-2), status: 'claimed' },
+      { claimId: 'c2', userId: 'later', couponId: 'ABCDEF', title: '20% off', expiresAt: daysAgo(-10), status: 'claimed' },
+      { claimId: 'c3', userId: 'used', couponId: 'ABCDEF', title: '20% off', expiresAt: daysAgo(-2), status: 'used' },
+      { claimId: 'c4', userId: 'gone', couponId: 'ABCDEF', title: '20% off', expiresAt: daysAgo(1), status: 'claimed' },
+      { claimId: 'c5', userId: 'removed', couponId: 'ABCDEF', title: '20% off', expiresAt: daysAgo(-1), status: 'claimed' }
+    ];
+    const plan = auto.planNudges({ venue: withCoupon, settings: on, now: NOW, claims, customers: [
+      customer('soon', { lastNudgeAt: daysAgo(2), birthday: '11-09' }), // birthday today too, nudged 2 days ago
+      customer('removed', { removed: true })
+    ] });
+    expect(plan.map((p) => [p.userId, p.type])).toEqual([['soon', 'couponEnding']]);
+    expect(plan[0]).toMatchObject({ key: 'couponEnd_ABCDEF', timeBound: true, bonusPoints: 0 });
+    expect(plan[0].message.title).toMatch(/^Your 20% off any pickup order at Sal's ends /);
+    expect(plan[0].message.body).toContain('Use code TGOSTVQC');
+    // Nothing switched on: the reminder still goes
+    expect(auto.planNudges({ venue: withCoupon, settings: auto.DEFAULTS, now: NOW, claims: [claims[0]] })).toHaveLength(1);
   });
 });
 
