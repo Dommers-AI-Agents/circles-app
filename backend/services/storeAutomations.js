@@ -403,7 +403,9 @@ async function runDue({ now = new Date(), dryRun = false } = {}) {
     for (const nudge of plan) {
       if (!byUser.has(nudge.userId)) {
         const userDoc = await db().collection(COLLECTIONS.USERS).doc(nudge.userId).get().catch(() => null);
-        if (userDoc && userDoc.exists) byUser.set(nudge.userId, { userId: nudge.userId, user: userDoc.data() });
+        if (userDoc && userDoc.exists && !require('./hiddenAccounts').isHiddenAccount(userDoc.data())) {
+          byUser.set(nudge.userId, { userId: nudge.userId, user: userDoc.data() });
+        }
       }
     }
     for (const nudge of plan) {
