@@ -275,7 +275,7 @@ exports.scan = async (req, res) => {
     welcomeAfterScan(userId, venue, visitResult.awarded ? visitResult.points : 0, venueBalance);
     // A coupon claimed from the store's flyer becomes its counter ticket on
     // this scan (services/storeCoupons), whether or not the visit paid
-    const couponTicket = notAtStore ? null : await require('../../services/storeCoupons')
+    const couponTicket = (notAtStore || visitResult.reason === 'removed') ? null : await require('../../services/storeCoupons')
       .issueTicket({ userId, venueId: venue.venueId })
       .catch((e) => { console.error('coupon ticket failed', e.message); return null; });
     return res.json({
