@@ -342,8 +342,13 @@ async function savePlace(user, body) {
     // enrichment only for venues new to the whole platform. Failure leaves a
     // bare-but-valid save — availability over completeness.
     // A known venue needs no lookup: the link takes its Google id and details
-    if (body.enrichFromGoogle === true && !placeData.googlePlaceId && !body.globalPlaceId) {
-      await require('./googleEnrichment').enrichSaveFromGoogle(placeData);
+    // Every other save without a Google id (an Apple Maps place, a typed
+    // name) gets the same lookup, held to Google's listing of that very name
+    // nearby (Wes, 2026-11-14: RA Sushi Bar, added from Apple Maps, had no
+    // rating, hours or photo). enrichFromGoogle: false opts out.
+    const hasCoordinates = Array.isArray(placeData.location?.coordinates) && placeData.location.coordinates.length === 2;
+    if (body.enrichFromGoogle !== false && hasCoordinates && !placeData.googlePlaceId && !body.globalPlaceId) {
+      await require('./googleEnrichment').enrichSaveFromGoogle(placeData, { mustMatchName: body.enrichFromGoogle !== true });
     }
 
     // Second duplicate gate, post-enrichment: a share-extension save arrives

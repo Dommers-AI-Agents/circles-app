@@ -32,14 +32,19 @@ async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
       params: {
         input: searchQuery,
         inputtype: 'textquery',
-        fields: ['place_id', 'name', 'formatted_address', 'photos', 'types', 'rating', 'price_level'],
+        fields: ['place_id', 'name', 'formatted_address', 'geometry', 'photos', 'types', 'rating', 'price_level'],
         locationbias: searchLocation ? `circle:1000@${searchLocation}` : undefined,
         key: googleMapsApiKey
       }
     });
     
     // An address entry is never this venue (services/googleAddressGuard)
-    const candidates = venueCandidates(searchResponse.data.candidates);
+    let candidates = venueCandidates(searchResponse.data.candidates);
+    // A name someone typed or picked on Apple Maps: only Google's listing of
+    // THAT venue, never the nearest business to "Mom's house"
+    if (options.mustMatchName) {
+      candidates = candidates.filter((c) => isSameVenueListing(placeName, location, c));
+    }
     if (candidates.length === 0) {
       console.log(`No Google Places results found for: ${placeName}`);
       // A definite "no such place" (not an error): check-ins remember it so
@@ -126,6 +131,61 @@ async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
   }
 }
 
+const GUARDED_RADIUS_METERS = 300;
+const PIN_RADIUS_METERS = 50;
+
+const plainName = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+/**
+ * Whether a Find Place candidate is the named venue: the same name (or the
+ * same distinctive words, services/venueNameMatch) and, when Google says
+ * where it is, within 300 m of the save. Pure.
+ * location: { latitude, longitude } or null.
+ */
+function isSameVenueListing(placeName, location, candidate) {
+  if (!candidate || !candidate.name) return false;
+  const { namesLikelySameVenue, sharedWords, leadingWord } = require('./venueNameMatch');
+  const at = candidate.geometry && candidate.geometry.location;
+  let meters = null;
+  if (location && at) {
+    const toRad = (d) => d * Math.PI / 180;
+    const dLat = toRad(at.lat - location.latitude);
+    const dLng = toRad(at.lng - location.longitude);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(location.latitude)) * Math.cos(toRad(at.lat)) * Math.sin(dLng / 2) ** 2;
+    meters = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    if (meters > GUARDED_RADIUS_METERS) return false;
+  }
+  if (plainName(placeName) === plainName(candidate.name) || namesLikelySameVenue(placeName, candidate.name)) return true;
+  // On the very pin, Google's wording may differ more ("RA Sushi Bar
+  // Restaurant" is Google's "RA Sushi - Tucson", 3 m away): one distinctive
+  // word or the same leading name word is enough there
+  if (meters == null || meters > PIN_RADIUS_METERS) return false;
+  const lead = leadingWord(placeName);
+  return sharedWords(placeName, candidate.name).length >= 1 || (!!lead && lead === leadingWord(candidate.name));
+}
+
+// The app's Apple Maps filler (MKPointOfInterestCategory+Description.swift),
+// optionally followed by " in <City>"
+const APPLE_FILLER = [
+  'A bar or nightlife venue', 'A coffee shop or casual dining spot', 'A dining establishment',
+  'Accommodation services', 'Amusement park and rides', 'Animal exhibits and attractions',
+  'Banking and financial services', 'Car rental services', 'Educational institution',
+  'Emergency services', 'Healthcare services', 'Historical landmark or attraction',
+  'Laundry services', 'Library and information services', 'Local business or point of interest',
+  'Marina and boating services', 'Mini golf recreation', 'Movie theater entertainment',
+  'Museum and cultural exhibits', 'Outdoor recreation area', 'Parking facility',
+  'Pharmacy and medication services', 'Postal services', 'Public transportation',
+  'Retail shopping location', 'Sports and event venue', 'Theater and performing arts venue',
+  'Vehicle fueling or charging station', 'Located'
+];
+
+/** The app's own filler ("A dining establishment in Tucson\nPhone: …"), not words someone wrote */
+function isGeneratedDescription(text) {
+  return String(text || '').split('\n').map((line) => line.trim()).filter(Boolean).every((line) =>
+    /^(Phone|Website|Rating): /.test(line)
+    || APPLE_FILLER.some((filler) => line === filler || line.startsWith(`${filler} in `)));
+}
+
 /**
  * Fill a bare save (name + coordinates, no googlePlaceId) from its venue:
  * the canonical record's googlePlaceId when it already has one (no Google
@@ -133,7 +193,7 @@ async function enrichPlaceWithGoogleData(placeName, location, options = {}) {
  * place so every save of the venue sees them. Mutates `placeData`. Returns
  * true when it found the venue on Google. Never throws.
  */
-async function enrichSaveFromGoogle(placeData) {
+async function enrichSaveFromGoogle(placeData, options = {}) {
   try {
     const coords = placeData.location?.coordinates;
     let canonicalDoc = null;
@@ -162,12 +222,16 @@ async function enrichSaveFromGoogle(placeData) {
         // save) — re-hosting Google's photo again would add a
         // byte-identical duplicate under a new URL.
         skipPhotos: !!(canonicalData && require('./placePhotoService').hasVisiblePhotos(canonicalData.photos))
+          || (Array.isArray(placeData.photos) && placeData.photos.length > 0),
+        mustMatchName: options.mustMatchName === true
       });
       if (googleData.googlePlaceId) {
         placeData.googlePlaceId = googleData.googlePlaceId;
         if (googleData.name) placeData.name = googleData.name;
         if (googleData.address) placeData.address = googleData.address;
-        if (googleData.photos && googleData.photos.length > 0) placeData.photos = googleData.photos;
+        // Never over the saver's own photos
+        const hasPhotos = Array.isArray(placeData.photos) && placeData.photos.length > 0;
+        if (!hasPhotos && googleData.photos && googleData.photos.length > 0) placeData.photos = googleData.photos;
         if (googleData.googleTypes && googleData.googleTypes.length > 0) placeData.googleTypes = googleData.googleTypes;
         if (googleData.googleSignals) placeData.googleSignals = googleData.googleSignals;
         placeData.rating = googleData.rating ?? placeData.rating;
@@ -181,7 +245,7 @@ async function enrichSaveFromGoogle(placeData) {
         placeData.reservable = googleData.reservable ?? placeData.reservable;
         placeData.takeout = googleData.takeout ?? placeData.takeout;
         placeData.curbsidePickup = googleData.curbsidePickup ?? placeData.curbsidePickup;
-        if (googleData.description) {
+        if (googleData.description && isGeneratedDescription(placeData.description)) {
           placeData.description = googleData.description;
           placeData.descriptionSource = 'google_editorial';
         }
@@ -221,7 +285,7 @@ async function enrichSaveFromGoogle(placeData) {
           // store's owner set (venueDetailsService stamps hoursSource 'owner')
           const ownerHours = (canonicalData.googleData || {}).hoursSource === 'owner';
           if (googleData.openingHours && !ownerHours) canonicalUpdates['googleData.openingHours'] = googleData.openingHours;
-          if (googleData.description && !canonicalData.description) {
+          if (googleData.description && isGeneratedDescription(canonicalData.description)) {
             canonicalUpdates.description = googleData.description;
             canonicalUpdates.descriptionSource = 'google_editorial';
           }
@@ -281,4 +345,4 @@ function pickGoogleCandidate(candidates, coordinates, nearMeters = 500) {
   return candidates.reduce((best, c) => (meters(c) < meters(best) ? c : best), candidates[0]);
 }
 
-module.exports = { enrichPlaceWithGoogleData, enrichSaveFromGoogle, pickGoogleCandidate };
+module.exports = { enrichPlaceWithGoogleData, enrichSaveFromGoogle, pickGoogleCandidate, isSameVenueListing, isGeneratedDescription };

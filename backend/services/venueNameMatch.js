@@ -75,7 +75,14 @@ const namesLikelySameVenue = (a, b) => {
 /** Two Google ids that differ mean two venues, whatever the names say. */
 const googleIdsConflict = (a, b) => !!(a && b && a !== b);
 
+/** The first word, when it names this place rather than a kind of place ("RA" of "RA Sushi") */
+const leadingWord = (name) => {
+  const first = String(name || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).find((w) => !STOPWORDS.has(w));
+  return first && !GENERIC.has(singular(first)) ? singular(first) : null;
+};
+
 module.exports = {
+  leadingWord,
   SIMILAR_NAME_RADIUS_METERS,
   MIN_SHARED,
   distinctiveWords,
