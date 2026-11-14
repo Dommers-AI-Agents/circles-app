@@ -188,6 +188,8 @@ router.get('/q/:code', async (req, res) => {
 <meta property="og:type" content="website">
 ${photo ? `<meta property="og:image" content="${esc(photo.photoUrl)}">` : ''}
 ${code ? `<meta property="og:url" content="${esc(scanActions.urlFor(code))}">` : ''}
+${code && action && !action.expired ? `<meta name="fc-app-link" content="circles://q/${esc(code)}">
+<meta name="fc-store-url" content="${appStoreUrl}">` : ''}
 </head>
 <body style="font-family:-apple-system,Helvetica,Arial,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#3182CE;color:#fff;text-align:center;padding:24px;box-sizing:border-box">
 <div style="max-width:420px;width:100%;display:flex;flex-direction:column;align-items:center">
