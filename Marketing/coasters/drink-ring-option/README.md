@@ -20,3 +20,4 @@ glass leaves. Both faces end the same way: "Scan to save." · QR · FavCircles. 
 - QR: `https://api.favcircles.com/s/JOINUS` (generic App Clip). About 0.55 in of dots on face A,
   0.5 in on face B, black on white.
 - Colours are sRGB: charcoal #111317, gold #F6C945, blue #3F8FDB, green #7CC464.
+- A thin rim line runs about 1/8 in inside the cut, as on the original coasters. A cut that lands off-centre will show against it, so ask the printer about their cutting tolerance.

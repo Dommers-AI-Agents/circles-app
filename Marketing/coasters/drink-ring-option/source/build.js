@@ -13,6 +13,7 @@ const rewardConfig = require(path.join(B, 'config/rewardConfig'));
 const PX = 2550;                       // 4.25 in at 600 dpi
 const TRIM = 500 * 4 / 4.25;           // cut line radius, units
 const SAFE = 500 * 3.7 / 4.25;         // keep words and the code inside this
+const BORDER = TRIM * 0.935;         // the thin rim line the original coasters have, about 1/8 in from the cut
 const INK = '#111317', GOLD = '#F6C945', BLUE = '#3F8FDB', GREEN = '#7CC464', MIST = '#C9D3DF';
 const serif = fs.readFileSync(path.join(B, 'assets/fonts/Gelasio-Bold.ttf')).toString('base64');
 const url = rewardService.stickerUrl(rewardConfig.GENERIC_JOIN_CODE);
@@ -47,20 +48,21 @@ function ground() {
   return `<rect width="1000" height="1000" fill="${INK}"/>
   <g stroke="#fff" stroke-opacity="0.045" stroke-width="2.2">${streets}</g>
   <g stroke="#fff" stroke-opacity="0.06" stroke-width="5"><line x1="-100" y1="640" x2="1100" y2="300"/><line x1="230" y1="-100" x2="620" y2="1100"/></g>
-  <rect width="1000" height="1000" fill="url(#vignette)"/>`;
+  <rect width="1000" height="1000" fill="url(#vignette)"/>
+  <circle cx="500" cy="500" r="${BORDER}" fill="none" stroke="#fff" stroke-opacity="0.6" stroke-width="2.4"/>`;
 }
 const sans = (x, y, size, text, { fill = '#fff', weight = 500, spacing = 0, anchor = 'middle', opacity = 1 } = {}) => `<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="'Avenir Next', Avenir, sans-serif" font-weight="${weight}" font-size="${size}" letter-spacing="${spacing}" fill="${fill}" fill-opacity="${opacity}">${text}</text>`;
 const head = (x, y, size, text, fill = '#fff') => `<text x="${x}" y="${y}" text-anchor="middle" font-family="Gelasio" font-weight="700" font-size="${size}" fill="${fill}">${text}</text>`;
 
 // Face A, the hook: the coaster talks about where you are right now
 const faceA = `${ground()}
-  ${ring(500, 392, 326, GOLD, { weight: 1.1 })}
-  ${sans(500, 196, 21, 'P S S T .', { fill: GOLD, weight: 600, spacing: 3, opacity: 0.9 })}
-  ${head(500, 302, 60, 'You’re sitting in')}
-  ${head(500, 392, 76, 'someone’s', GOLD)}
-  ${head(500, 478, 76, 'favorite place.', GOLD)}
-  ${sans(500, 556, 30, 'Is it one of yours?', { fill: '#fff', opacity: 0.88 })}
-  ${footer(812, 164)}`;
+  ${ring(500, 392, 302, GOLD, { weight: 1.1 })}
+  ${sans(500, 208, 20, 'P S S T .', { fill: GOLD, weight: 600, spacing: 3, opacity: 0.9 })}
+  ${head(500, 304, 57, 'You’re sitting in')}
+  ${head(500, 390, 72, 'someone’s', GOLD)}
+  ${head(500, 472, 72, 'favorite place.', GOLD)}
+  ${sans(500, 548, 29, 'Is it one of yours?', { fill: '#fff', opacity: 0.88 })}
+  ${footer(806, 164)}`;
 
 // Face B, the payoff: rings on a bar are circles on your map
 const spots = [
