@@ -29,17 +29,17 @@ function qrTile(cx, cy, size) {
 }
 /** Map pin with its tip at (x, y). */
 const pin = (x, y, s, fill, hole = INK) => `<g transform="translate(${x},${y}) scale(${s})"><path d="M0 0C-13-19-25-33-25-48A25 25 0 1 1 25-48C25-33 13-19 0 0Z" fill="${fill}"/><circle cy="-48" r="9.5" fill="${hole}"/></g>`;
-/** The mark a cold glass leaves: a rough bright rim, a thin inner tide line, a faint wash. */
-function ring(cx, cy, r, color, { seed = 1, weight = 1, gap = 0 } = {}) {
-  const c = 2 * Math.PI * r, dash = gap ? `stroke-dasharray="${(c * (1 - gap)).toFixed(1)} ${(c * gap).toFixed(1)}"` : '';
-  return `<g filter="url(#wet${seed})" transform="rotate(${seed * 67} ${cx} ${cy})">
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity="0.045"/>
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${7 * weight}" stroke-opacity="0.92" stroke-linecap="round" ${dash}/>
-    <circle cx="${cx + 2}" cy="${cy - 1}" r="${r - 11 * weight}" fill="none" stroke="${color}" stroke-width="${1.6 * weight}" stroke-opacity="0.38" stroke-dasharray="${(c * 0.55).toFixed(1)} ${(c * 0.09).toFixed(1)} ${(c * 0.2).toFixed(1)} ${(c * 0.16).toFixed(1)}"/>
-    <circle cx="${cx - 3}" cy="${cy + 2}" r="${r + 9 * weight}" fill="none" stroke="${color}" stroke-width="${1.1 * weight}" stroke-opacity="0.22" stroke-dasharray="${(c * 0.3).toFixed(1)} ${(c * 0.7).toFixed(1)}"/>
-  </g>`;
+/** A circle: one clean, even line with a faint wash inside. */
+function ring(cx, cy, r, color, { weight = 1 } = {}) {
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" fill-opacity="0.05" stroke="${color}" stroke-width="${6.5 * weight}"/>`;
 }
-const wetFilters = [1, 2, 3, 4, 5].map((s) => `<filter id="wet${s}" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" seed="${s * 7}" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="9" xChannelSelector="R" yChannelSelector="G"/></filter>`).join('');
+/** The foot of both faces: "Scan to save." · the code · FavCircles. */
+function footer(cy, size) {
+  const gap = 28, px = 500 + size / 2 + gap + 12;
+  return `${qrTile(500, cy, size)}
+  ${sans(500 - size / 2 - gap, cy + 9, 25, 'Scan to save.', { anchor: 'end', weight: 600 })}
+  ${pin(px, cy + 13, 27 / 62, BLUE)}<text x="${px + 19}" y="${cy + 9}" font-family="'Avenir Next', Avenir, sans-serif" font-weight="600" font-size="27" fill="#fff" letter-spacing="-0.3">FavCircles</text>`;
+}
 /** Charcoal bar top with the brand's street grid, faint. */
 function ground() {
   let streets = '';
@@ -49,45 +49,39 @@ function ground() {
   <g stroke="#fff" stroke-opacity="0.06" stroke-width="5"><line x1="-100" y1="640" x2="1100" y2="300"/><line x1="230" y1="-100" x2="620" y2="1100"/></g>
   <rect width="1000" height="1000" fill="url(#vignette)"/>`;
 }
-const wordmark = (cx, y, size) => `${pin(cx - size * 2.72, y + size * 0.1, size / 62, BLUE)}<text x="${cx + size * 0.38}" y="${y}" text-anchor="middle" font-family="'Avenir Next', Avenir, sans-serif" font-weight="600" font-size="${size}" fill="#fff" letter-spacing="-0.3">FavCircles</text>`;
 const sans = (x, y, size, text, { fill = '#fff', weight = 500, spacing = 0, anchor = 'middle', opacity = 1 } = {}) => `<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="'Avenir Next', Avenir, sans-serif" font-weight="${weight}" font-size="${size}" letter-spacing="${spacing}" fill="${fill}" fill-opacity="${opacity}">${text}</text>`;
 const head = (x, y, size, text, fill = '#fff') => `<text x="${x}" y="${y}" text-anchor="middle" font-family="Gelasio" font-weight="700" font-size="${size}" fill="${fill}">${text}</text>`;
 
 // Face A, the hook: the coaster talks about where you are right now
 const faceA = `${ground()}
-  ${ring(500, 392, 326, GOLD, { seed: 1, weight: 1.15, gap: 0.035 })}
+  ${ring(500, 392, 326, GOLD, { weight: 1.1 })}
   ${sans(500, 196, 21, 'P S S T .', { fill: GOLD, weight: 600, spacing: 3, opacity: 0.9 })}
   ${head(500, 302, 60, 'You’re sitting in')}
   ${head(500, 392, 76, 'someone’s', GOLD)}
   ${head(500, 478, 76, 'favorite place.', GOLD)}
   ${sans(500, 556, 30, 'Is it one of yours?', { fill: '#fff', opacity: 0.88 })}
-  ${qrTile(500, 768, 178)}
-  ${sans(382, 760, 25, 'Scan to', { anchor: 'end', weight: 600 })}${sans(382, 792, 25, 'save it.', { anchor: 'end', weight: 600 })}
-  ${sans(618, 760, 25, 'Free on', { anchor: 'start', opacity: 0.8 })}${sans(618, 792, 25, 'iPhone.', { anchor: 'start', opacity: 0.8 })}
-  ${wordmark(500, 912, 34)}`;
+  ${footer(812, 164)}`;
 
 // Face B, the payoff: rings on a bar are circles on your map
 const spots = [
-  { x: 372, y: 300, r: 128, c: BLUE, seed: 2, label: 'DATE NIGHT' },
-  { x: 592, y: 258, r: 112, c: GOLD, seed: 3, label: 'BEST TACOS' },
-  { x: 648, y: 432, r: 100, c: GREEN, seed: 4, label: 'COFFEE' },
-  { x: 470, y: 462, r: 92, c: MIST, seed: 5, label: 'WANT TO TRY' },
+  { x: 372, y: 300, r: 128, c: BLUE, label: 'DATE NIGHT' },
+  { x: 592, y: 258, r: 112, c: GOLD, label: 'BEST TACOS' },
+  { x: 648, y: 432, r: 100, c: GREEN, label: 'COFFEE' },
+  { x: 470, y: 462, r: 92, c: MIST, label: 'WANT TO TRY' },
 ];
 const faceB = `${ground()}<g transform="translate(0,-35)">
   <path d="M372 274 C430 186 540 186 592 232 C690 236 742 330 648 406 C600 446 520 396 470 436" fill="none" stroke="#fff" stroke-opacity="0.5" stroke-width="2.6" stroke-dasharray="9 9" stroke-linecap="round"/>
-  ${spots.map((s) => ring(s.x, s.y, s.r, s.c, { seed: s.seed, weight: 0.8, gap: 0.03 })).join('')}
+  ${spots.map((s) => ring(s.x, s.y, s.r, s.c, { weight: 0.8 })).join('')}
   ${spots.map((s) => `${pin(s.x, s.y + 4, 0.62, s.c)}${sans(s.x, s.y + 34, 15.5, s.label, { fill: '#fff', weight: 600, spacing: 2.2, opacity: 0.92 })}`).join('')}
   <text x="500" y="640" text-anchor="middle" font-family="Gelasio" font-weight="700" font-size="88" fill="#fff">Leave your <tspan fill="${GOLD}">mark.</tspan></text>
   ${sans(500, 690, 27, 'Save the places you love into circles.', { opacity: 0.88 })}
   ${sans(500, 726, 27, 'Share them with your people.', { opacity: 0.88 })}
-  ${qrTile(500, 836, 150)}
-  ${sans(398, 830, 23, 'Scan to start', { anchor: 'end', weight: 600 })}${sans(398, 860, 23, 'your map.', { anchor: 'end', weight: 600 })}
-  <g transform="translate(100,0)">${wordmark(590, 852, 27)}</g></g>`;
+  ${footer(836, 150)}</g>`;
 
 const page = (body, guides) => `<!doctype html><html><head><meta charset="utf-8"><style>
 @font-face{font-family:Gelasio;font-weight:700;src:url(data:font/ttf;base64,${serif})}
 html,body{margin:0;background:${INK}}svg{display:block;width:${PX}px;height:${PX}px}</style></head><body>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><defs>${wetFilters}
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><defs>
 <radialGradient id="vignette" cx="0.5" cy="0.42" r="0.62"><stop offset="0" stop-color="#2A3038" stop-opacity="0.55"/><stop offset="0.7" stop-color="${INK}" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.35"/></radialGradient></defs>
 ${body}${guides ? `<circle cx="500" cy="500" r="${TRIM}" fill="none" stroke="#f0f" stroke-width="1.5"/><circle cx="500" cy="500" r="${SAFE}" fill="none" stroke="#0ff" stroke-width="1" stroke-dasharray="6 6"/>` : ''}</svg></body></html>`;
 
