@@ -191,7 +191,7 @@ final class StickerRewardCoordinator: NSObject {
     /// The store's page couldn't open: the usual first run, from its start
     /// The generic "Join FavCircles" code (JOINUS) scanned in the app (Wes,
     /// 2026-11-09: the demo "FavCircles" venue is never something to save).
-    /// A new account gets the first run — "What's your favorite spot?" and the
+    /// A new account gets the first run — "What's your favorite place?" and the
     /// steps after it; everyone else goes straight to adding a place.
     @MainActor private func startGettingStarted() {
         guard let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }),

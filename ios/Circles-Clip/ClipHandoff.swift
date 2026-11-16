@@ -27,7 +27,7 @@ enum ClipHandoff {
         var accountEmail: String?        // with emailUnverified: the app asks to confirm it or set up Face ID
         var emailUnverified: Bool?
         /// The clip made this account just now: the app runs its first run
-        /// (name → favorite spot → people → tour) even with no store (2026-11-09)
+        /// (name → favorite place → people → tour) even with no store (2026-11-09)
         var isNewSignIn: Bool? = nil
         /// A Scan Action QR (2026-11-11) the app opens on first launch: the
         /// places the clip saved, or the guide / store setup it couldn't run

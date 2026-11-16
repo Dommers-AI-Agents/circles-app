@@ -52,7 +52,7 @@ final class RewardCodeHandler: SceneCoordinator {
             ClipWelcome.stash(welcome)
         } else if result.adopted, result.isNewSignIn == true {
             // Joined through the generic "Join FavCircles" code (no store):
-            // the app's own first run — name, "What's your favorite spot?",
+            // the app's own first run — name, "What's your favorite place?",
             // people, location, notifications, tour (Wes, 2026-11-09: the
             // demo "FavCircles" venue is never the destination)
             host?.firstSession.armFirstSessionChain()

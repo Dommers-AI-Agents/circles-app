@@ -92,7 +92,7 @@ function copyFor(kind, venue) {
   // sign invites people into the app, never to "save us"
   if (venue && venue.genericJoin) {
     return {
-      pill: "What's your favorite spot?",
+      pill: "What's your favorite place?",
       scan: 'Point your phone camera here',
       reward: null,
       steps: ['Scan', 'Join free', 'Save your favorites'],

@@ -103,7 +103,7 @@ function copyFor(venue, kind, { live = true } = {}) {
     // The title is also the camera's pill right after a scan (Wes, 2026-11-07:
     // "Build your map" said nothing): a question, and the subtitle says why
     return {
-      title: 'What\u2019s your favorite spot?',
+      title: 'What\u2019s your favorite place?',
       subtitle: 'Every great place has a story. Remember yours.',
       hook: ['The Road less', 'traveled is yours.', 'Save it.'],
       lead: null
@@ -404,7 +404,10 @@ function fingerprintFor(venue, kind, code, coverUrl, { live = true } = {}) {
   const reward = first ? `${first.pointsCost}:${first.title}` : '';
   // The card's words too: a copy change republishes without a version bump
   const copy = copyFor(venue, kind, { live });
-  const words = [copy.subtitle, ...copy.hook, copy.lead || ''].join('/');
+  // A store's title is its name (already below); the generic and scan cards
+  // have a written title, so a reworded one must republish too (2026-11-16)
+  const fixedTitle = venue.genericJoin ? [copy.title] : [];
+  const words = [copy.subtitle, ...copy.hook, copy.lead || '', ...fixedTitle].join('/');
   return crypto.createHash('md5').update([venue.venueName, points, reward, words, coverUrl || '', kind, code, `v${HEADER_VERSION}`].join('|')).digest('hex');
 }
 
