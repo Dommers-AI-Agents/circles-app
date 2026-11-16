@@ -321,14 +321,29 @@ final class StickerRewardCoordinator: NSObject {
         }
         // The flyer's coupon came along (2026-11-14): say it's saved, then the save
         let couponLine = scan.coupon.flatMap { StoreCouponCopy.scanLine($0, storeName: name) }
-        AlertPresenter.showConfirmation(
-            title: couponLine != nil ? "Coupon saved" : "Don't forget \(name)!",
-            message: [couponLine, "Build your map! Save \(name) to one of your circles and never forget it."].compactMap { $0 }.joined(separator: "\n\n"),
-            confirmTitle: "Save",
-            cancelTitle: "Not Now",
-            from: presenter
-        ) { [weak self] in
-            self?.startSaveFlow(venue: scan.venue, code: code)
+        // Where it will go is said up front (2026-11-16), never asked first
+        withSaveTarget { [weak self] target, circles in
+            guard let self, let presenter = self.presenter else { return }
+            AlertPresenter.showConfirmation(
+                title: couponLine != nil ? "Coupon saved" : "Don't forget \(name)!",
+                message: [couponLine, StickerSaveCopy.offer(storeName: name, listName: target?.name)].compactMap { $0 }.joined(separator: "\n\n"),
+                confirmTitle: "Save",
+                cancelTitle: "Not Now",
+                from: presenter
+            ) { [weak self] in
+                self?.startSaveFlow(venue: scan.venue, code: code, target: target, circles: circles)
+            }
+        }
+    }
+
+    /// The circle a store's save lands in (ScanSaveTarget: Favorite Local
+    /// Spots, the App Clip's rule), with the circles it was picked from
+    private func withSaveTarget(_ then: @escaping (Circle?, [Circle]) -> Void) {
+        CircleService.shared.fetchUserCircles { result in
+            DispatchQueue.main.async {
+                let circles = (try? result.get()) ?? []
+                then(ScanSaveTarget.pick(.storeSticker, from: circles), circles)
+            }
         }
     }
 
@@ -375,33 +390,40 @@ final class StickerRewardCoordinator: NSObject {
 
     /// "Save this store?" after a register scan, into the circle they pick
     private func offerSave(venue: RewardVenue, code: String, bonus: Int) {
-        guard let presenter = presenter else { return }
-        AlertPresenter.showConfirmation(
-            title: "Save \(venue.venueName)?",
-            message: bonus > 0
-                ? "Build your map! Save \(venue.venueName) to one of your circles and earn \(bonus) more points here."
-                : "Build your map! Save \(venue.venueName) to one of your circles and never forget it.",
-            confirmTitle: bonus > 0 ? "Save & Earn" : "Save",
-            cancelTitle: "Not Now",
-            from: presenter
-        ) { [weak self] in
-            self?.startSaveFlow(venue: venue, code: code)
+        withSaveTarget { [weak self] target, circles in
+            guard let self, let presenter = self.presenter else { return }
+            AlertPresenter.showConfirmation(
+                title: "Save \(venue.venueName)?",
+                message: StickerSaveCopy.offer(storeName: venue.venueName, listName: target?.name, bonus: bonus),
+                confirmTitle: bonus > 0 ? "Save & Earn" : "Save",
+                cancelTitle: "Not Now",
+                from: presenter
+            ) { [weak self] in
+                self?.startSaveFlow(venue: venue, code: code, target: target, circles: circles)
+            }
         }
     }
 
-    private func startSaveFlow(venue: RewardVenue, code: String) {
+    /// Saves straight into the shown list; the picker only when there is no
+    /// circle at all. `target`/`circles` come from the offer's lookup; absent
+    /// (the App Clip welcome's button), they are looked up here.
+    private func startSaveFlow(venue: RewardVenue, code: String, target: Circle? = nil, circles: [Circle]? = nil) {
+        guard let circles else {
+            return withSaveTarget { [weak self] target, circles in self?.startSaveFlow(venue: venue, code: code, target: target, circles: circles) }
+        }
+        if let target {
+            savePlace(venue: venue, code: code, to: target, others: circles.filter { $0.id != target.id })
+            return
+        }
         guard let presenter = presenter else { return }
         pendingVenue = venue
         pendingCode = code
-
-        let circleSelectionVC = CircleSelectionViewController(
-            customTitle: "Save \(venue.venueName) to a Circle"
-        )
+        let circleSelectionVC = CircleSelectionViewController(customTitle: StickerSaveCopy.pickerTitle(storeName: venue.venueName))
         circleSelectionVC.delegate = self
         presenter.present(circleSelectionVC, animated: true)
     }
 
-    private func savePlace(venue: RewardVenue, code: String, to circle: Circle) {
+    private func savePlace(venue: RewardVenue, code: String, to circle: Circle, others: [Circle] = []) {
         guard let presenter = presenter else { return }
         let loading = AlertPresenter.showLoading(message: "Saving place...", from: presenter)
 
@@ -425,8 +447,9 @@ final class StickerRewardCoordinator: NSObject {
         ) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
-                case .success:
-                    self?.confirmSaveReward(code: code, venue: venue, loading: loading)
+                case .success(let place):
+                    self?.confirmSaveReward(code: code, venue: venue, loading: loading, savedTo: circle.name,
+                                            move: others.isEmpty ? nil : (place: place, circles: others))
                 case .failure(let error):
                     if let duplicate = PlaceDuplicate.from(error) {
                         // Already in one of their circles (the scan's own check
@@ -450,13 +473,18 @@ final class StickerRewardCoordinator: NSObject {
     /// was in a circle all along, so the wording is "already saved", never
     /// an error.
     private func confirmSaveReward(code: String, venue: RewardVenue, loading: UIAlertController,
-                                   alreadySaved: PlaceDuplicate? = nil) {
+                                   alreadySaved: PlaceDuplicate? = nil, savedTo: String? = nil,
+                                   move: (place: Place, circles: [Circle])? = nil) {
         RewardsService.shared.confirmStickerSave(code: code) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     guard let presenter = self?.presenter else { return }
+                    // "Move to another list" when it just landed somewhere (2026-11-16)
+                    let moveAction: (title: String, style: UIAlertAction.Style, handler: () -> Void)? = move.map { pair in
+                        (title: StickerSaveCopy.moveButton, style: .default, handler: { [weak self] in self?.offerMove(pair.place, among: pair.circles) })
+                    }
                     let savedWhere: String = {
-                        guard let duplicate = alreadySaved else { return "Place saved to your circle!" }
+                        guard let duplicate = alreadySaved else { return StickerSaveCopy.saved(listName: savedTo) }
                         if let circle = duplicate.circleName {
                             return "\(venue.venueName) is already in your \"\(circle)\" circle."
                         }
@@ -469,18 +497,25 @@ final class StickerRewardCoordinator: NSObject {
                                 title: alreadySaved == nil
                                     ? "Place saved! +\(awarded.points) points"
                                     : "Already saved! +\(awarded.points) points",
-                                message: "You now have \(save.venueBalance ?? save.balance) points at \(venue.venueName).",
+                                message: (alreadySaved == nil && savedTo != nil ? "\(savedWhere) " : "") + "You now have \(save.venueBalance ?? save.balance) points at \(venue.venueName).",
                                 from: presenter,
-                                highlight: venue.venueId, earned: awarded.points
+                                highlight: venue.venueId, earned: awarded.points,
+                                extra: moveAction
                             )
                         } else if alreadySaved != nil {
                             AlertPresenter.showSuccess(title: "Already saved", message: savedWhere, from: presenter)
+                        } else if let moveAction {
+                            AlertPresenter.showAlert(title: savedWhere, message: nil, actions: [moveAction, (title: "OK", style: .cancel, handler: {})], from: presenter)
                         } else {
                             AlertPresenter.showSuccess(savedWhere, from: presenter)
                         }
                     case .failure:
                         // The place is saved either way — don't surface a reward hiccup as an error
-                        AlertPresenter.showSuccess(savedWhere, from: presenter)
+                        if let moveAction {
+                            AlertPresenter.showAlert(title: savedWhere, message: nil, actions: [moveAction, (title: "OK", style: .cancel, handler: {})], from: presenter)
+                        } else {
+                            AlertPresenter.showSuccess(savedWhere, from: presenter)
+                        }
                     }
                 }
             }
@@ -600,11 +635,46 @@ final class StickerRewardCoordinator: NSObject {
     /// screen) or OK, which carries on with `onOK` (Wes, 2026-10-30: saving a
     /// store from its QR code earns points too, so it gets the button as well)
     private func showWithMyRewards(title: String, message: String, from presenter: UIViewController, onOK: (() -> Void)? = nil,
-                                   highlight venueId: String? = nil, earned: Int? = nil) {
-        AlertPresenter.showAlert(title: title, message: message, actions: [
-            (title: "My Rewards", style: .default, handler: { [weak self] in self?.openStoreRewards(highlight: venueId, earned: earned) }),
-            (title: "OK", style: .cancel, handler: { onOK?() })
-        ], from: presenter)
+                                   highlight venueId: String? = nil, earned: Int? = nil,
+                                   extra: (title: String, style: UIAlertAction.Style, handler: () -> Void)? = nil) {
+        var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
+            (title: "My Rewards", style: .default, handler: { [weak self] in self?.openStoreRewards(highlight: venueId, earned: earned) })
+        ]
+        if let extra { actions.append(extra) }
+        actions.append((title: "OK", style: .cancel, handler: { onOK?() }))
+        AlertPresenter.showAlert(title: title, message: message, actions: actions, from: presenter)
+    }
+
+    /// "Move to another list": the just-saved store goes to the circle they pick
+    private func offerMove(_ place: Place, among circles: [Circle]) {
+        guard let presenter else { return }
+        let picker = CirclePickerViewController(circles: circles)
+        picker.pickerTitle = CirclePickerCopy.pairedTitle
+        picker.forMove = true
+        picker.placeName = place.name
+        picker.placeAddress = place.address
+        picker.onCircleSelected = { [weak self] target in
+            guard let presenter = self?.presenter else { return }
+            let loading = AlertPresenter.showLoading(message: "Moving…", from: presenter)
+            PlaceService.shared.movePlaceToCircle(placeId: place.id, targetCircleId: target.id) { result in
+                DispatchQueue.main.async {
+                    loading.dismiss(animated: true) {
+                        switch result {
+                        case .success:
+                            NotificationCenter.default.post(name: .refreshCircles, object: nil)
+                            AlertPresenter.showSuccess("Moved to \(target.name).", from: presenter)
+                        case .failure(let error):
+                            AlertPresenter.showError(error, from: presenter)
+                        }
+                    }
+                }
+            }
+        }
+        let nav = UINavigationController(rootViewController: picker)
+        nav.modalPresentationStyle = .pageSheet
+        nav.sheetPresentationController?.detents = [.medium(), .large()]
+        nav.sheetPresentationController?.prefersGrabberVisible = true
+        presenter.present(nav, animated: true)
     }
 
     /// The circle a store is saved in, scrolled to the store and flashed

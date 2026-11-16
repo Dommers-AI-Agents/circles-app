@@ -4,6 +4,10 @@ import Foundation
 /// purpose of selecting a circle? Why is that the first action?"). Pure.
 enum CirclePickerCopy {
 
+    /// The sheet's title wherever someone new might meet the word (Wes,
+    /// 2026-11-16: "circle" is always paired with "list")
+    static let pairedTitle = "Pick a circle · a list of places"
+
     /// The one line above the list
     static func headline(forMove: Bool) -> String {
         forMove ? "Where should it live now?" : "Where should this place live?"
@@ -12,12 +16,12 @@ enum CirclePickerCopy {
     /// The why, in two sentences
     static func explanation(forMove: Bool, circleCount: Int) -> String {
         if forMove {
-            return "A place lives in one circle at a time. Pick the circle it belongs in now; everything else about it stays the same."
+            return "Circles are your lists of places. A place lives in one at a time: pick the circle it belongs in now; everything else about it stays the same."
         }
         if circleCount == 0 {
-            return "Circles are the lists your places live in — a city, a trip, date nights, coffee spots. Start your first one and this place goes in it."
+            return "Circles are your lists of places — a city, a trip, date nights, coffee spots. Start your first one and this place goes in it."
         }
-        return "Circles are the lists your places live in — a city, a trip, date nights, coffee spots. Pick the one this place belongs in, or start a new one. You can move it later."
+        return "Circles are your lists of places — a city, a trip, date nights, coffee spots. Pick the one this place belongs in, or start a new one. You can move it later."
     }
 
     /// The ⓘ: a little more

@@ -9,10 +9,11 @@ struct AddPlaceCircleCopyTests {
         #expect(AddPlaceCircleCopy.subtitle(circleDetail: "97 places · Connections", remembered: false) == "97 places · Connections")
         #expect(AddPlaceCircleCopy.subtitle(circleDetail: "97 places · Connections", remembered: true) == "97 places · Connections · the one you used last, tap to change")
         #expect(AddPlaceCircleCopy.sectionLabel(remembered: true) == "Circle · the one you used last")
+        #expect(AddPlaceCircleCopy.sectionLabel(remembered: false) == "Circle · a list of places")
     }
 
     @Test func saveSaysWhere() {
-        #expect(AddPlaceCircleCopy.saveTitle(circleName: nil) == "Choose a circle to save")
+        #expect(AddPlaceCircleCopy.saveTitle(circleName: nil) == "Choose a circle (a list) to save")
         #expect(AddPlaceCircleCopy.saveTitle(circleName: "Charlotte NC") == "Save to Charlotte NC")
         #expect(AddPlaceCircleCopy.saveTitle(circleName: "Entertainment, Recreation, Sightseeing") == "Save to Entertainment, Recrea…")
     }

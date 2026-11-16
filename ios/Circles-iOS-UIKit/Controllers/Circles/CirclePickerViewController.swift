@@ -17,7 +17,9 @@ class CirclePickerViewController: BaseViewController {
     /// make one used to show a button that only closed the sheet)
     var onCreateNewCircle: (() -> Void)?
     /// Sheet title; callers adding a specific place can say so.
-    var pickerTitle = "Select Circle"
+    var pickerTitle = CirclePickerCopy.pairedTitle
+    /// Moving a place that is already saved: the header asks where it lives now
+    var forMove = false
     /// When set, a card above the list shows the place being added
     /// (name + address), so the sheet says what it's for.
     var placeName: String?
@@ -113,8 +115,8 @@ class CirclePickerViewController: BaseViewController {
     /// first (Wes, 2026-11-09)
     private func makePlaceHeader() -> UIView? {
         guard let name = placeName, !name.isEmpty else {
-            return CirclePickerHeaderView.make(headline: CirclePickerCopy.headline(forMove: false),
-                                               explanation: CirclePickerCopy.explanation(forMove: false, circleCount: circles.count),
+            return CirclePickerHeaderView.make(headline: CirclePickerCopy.headline(forMove: forMove),
+                                               explanation: CirclePickerCopy.explanation(forMove: forMove, circleCount: circles.count),
                                                width: view.bounds.width)
         }
         let icon = UIImageView(image: UIImage(systemName: "mappin.circle.fill"))
@@ -136,7 +138,7 @@ class CirclePickerViewController: BaseViewController {
         addressLabel.isHidden = (placeAddress ?? "").isEmpty
 
         let promptLabel = UILabel()
-        promptLabel.text = CirclePickerCopy.explanation(forMove: false, circleCount: circles.count)
+        promptLabel.text = CirclePickerCopy.explanation(forMove: forMove, circleCount: circles.count)
         promptLabel.font = .systemFont(ofSize: 14)
         promptLabel.textColor = Constants.Colors.secondaryLabel
         promptLabel.numberOfLines = 0

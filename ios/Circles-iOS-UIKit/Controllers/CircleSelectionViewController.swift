@@ -116,7 +116,7 @@ class CircleSelectionViewController: BaseViewController {
     // MARK: - Setup
 
     private func makeNavigationItem(_ item: UINavigationItem) -> UINavigationItem {
-        item.title = customTitle ?? (placeToMove != nil ? "Move to Circle" : "Select Circle")
+        item.title = customTitle ?? (placeToMove != nil ? "Move to Circle" : CirclePickerCopy.pairedTitle)
         item.largeTitleDisplayMode = .never
         item.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .close, target: self, action: #selector(cancelTapped))
         return item
@@ -142,10 +142,7 @@ class CircleSelectionViewController: BaseViewController {
         }
         
         // Why a circle (Wes, 2026-11-09): moving a place, or picking one for it
-        tableView.tableHeaderView = CirclePickerHeaderView.make(
-            headline: CirclePickerCopy.headline(forMove: placeToMove != nil),
-            explanation: CirclePickerCopy.explanation(forMove: placeToMove != nil, circleCount: 1),
-            width: view.bounds.width)
+        refreshHeader(withSearch: false)
 
         NSLayoutConstraint.activate([
             tableView.topAnchor.constraint(equalTo: top),
@@ -163,6 +160,23 @@ class CircleSelectionViewController: BaseViewController {
         ])
     }
     
+    /// The explainer (why a circle), with the search bar above it once there are enough circles
+    private func refreshHeader(withSearch: Bool) {
+        let width = view.bounds.width
+        let explainer = CirclePickerHeaderView.make(
+            headline: CirclePickerCopy.headline(forMove: placeToMove != nil),
+            explanation: CirclePickerCopy.explanation(forMove: placeToMove != nil, circleCount: max(circles.count, 1)),
+            width: width)
+        guard withSearch else { tableView.tableHeaderView = explainer; return }
+        let searchHeight: CGFloat = 52
+        searchBar.frame = CGRect(x: 0, y: 0, width: width, height: searchHeight)
+        explainer.frame.origin.y = searchHeight
+        let container = UIView(frame: CGRect(x: 0, y: 0, width: width, height: searchHeight + explainer.frame.height))
+        container.addSubview(searchBar)
+        container.addSubview(explainer)
+        tableView.tableHeaderView = container
+    }
+
     // MARK: - Data Loading
     
     private func loadCircles() {
@@ -182,7 +196,8 @@ class CircleSelectionViewController: BaseViewController {
                     // list matches every other circle list in the app.
                     self.circles = allCircles.filter { $0.id != self.excludedCircleId }
                     self.filteredCircles = self.circles
-                    self.tableView.tableHeaderView = CirclePickerRows.showsSearch(circleCount: self.circles.count) ? self.searchBar : nil
+                    // The search bar sits above the explainer; it used to replace it (2026-11-16)
+                    self.refreshHeader(withSearch: CirclePickerRows.showsSearch(circleCount: self.circles.count))
                     // "New Circle" is always offered, so the list shows even with no other circles
                     self.tableView.isHidden = false
                     self.tableView.reloadData()

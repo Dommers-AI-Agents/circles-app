@@ -85,7 +85,7 @@ final class ClipWelcomeViewController: BaseViewController {
         if welcome.earnRate != nil {
             detail.text = "You have \(balance) points at \(name)."
         } else {
-            detail.text = "Save \(name) to one of your circles so it's always on your map."
+            detail.text = "Save \(name) to your map. It goes in your Favorite Local Spots list; move it any time."
         }
         stack.addArrangedSubview(detail)
         stack.setCustomSpacing(20, after: detail)

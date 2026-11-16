@@ -1536,7 +1536,7 @@ class AddPlaceViewController: UIViewController, LegacyCategoryPickerDelegate {
         view.endEditing(true)
 
         let picker = CirclePickerViewController(circles: userCircles)
-        picker.pickerTitle = "Select Circle"
+        picker.pickerTitle = CirclePickerCopy.pairedTitle
         if let name = nameTextField.text?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
             picker.placeName = name
             picker.placeAddress = addressTextView.text?.components(separatedBy: "\n").first { !$0.hasPrefix("📍") }

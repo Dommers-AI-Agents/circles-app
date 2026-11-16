@@ -17,12 +17,12 @@ enum AddPlaceCircleCopy {
 
     /// Section label above the card
     static func sectionLabel(remembered: Bool) -> String {
-        remembered ? "Circle · the one you used last" : "Circle"
+        remembered ? "Circle · the one you used last" : "Circle · a list of places"
     }
 
     /// The Save button: "Save to Charlotte NC", or the step still missing
     static func saveTitle(circleName: String?) -> String {
-        guard let circleName, !circleName.isEmpty else { return "Choose a circle to save" }
+        guard let circleName, !circleName.isEmpty else { return "Choose a circle (a list) to save" }
         let trimmed = circleName.count > 22 ? String(circleName.prefix(21)).trimmingCharacters(in: .whitespaces) + "…" : circleName
         return "Save to \(trimmed)"
     }

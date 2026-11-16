@@ -3,9 +3,12 @@ import MapKit
 
 /// What someone sees after scanning a place or set QR (Scan Actions,
 /// 2026-11-11): who shared it, the places on a map and in a list, all
-/// ticked except the ones they already have, then a circle to save them to.
-/// Every save goes through the server's core save (one venue record, the
-/// duplicate check, FavCoins), and the sharer gets the credit.
+/// ticked except the ones they already have, and where they'll go: Want to
+/// Try (the App Clip's rule), said on the sheet and changeable, never asked
+/// first (Wes, 2026-11-16: "pick a circle" as step one confused Jason). After
+/// the save, "Move to another list". Every save goes through the server's
+/// core save (one venue record, the duplicate check, FavCoins), and the
+/// sharer gets the credit.
 final class ScanPlacesReviewViewController: BaseViewController, UITableViewDataSource, UITableViewDelegate, CreateCircleDelegate {
     override var loadsDataOnViewDidLoad: Bool { false }
     override var showsLoadingIndicator: Bool { false }
@@ -30,6 +33,8 @@ final class ScanPlacesReviewViewController: BaseViewController, UITableViewDataS
         self.places = places
         self.selected = preselected
         self.circles = circles
+        // Where it goes unless they change it; nil only with no circles at all
+        self.circle = ScanSaveTarget.pick(.placeQR, from: circles)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -159,8 +164,9 @@ final class ScanPlacesReviewViewController: BaseViewController, UITableViewDataS
 
     private func refreshFooter() {
         var config = circleButton.configuration
-        config?.title = circle.map { "Save to \($0.name)" } ?? "Choose a Circle"
-        config?.subtitle = circle == nil ? nil : "Change"
+        let words = ScanActionCopy.savingTo(circle?.name)
+        config?.title = words.title
+        config?.subtitle = words.subtitle
         circleButton.configuration = config
         let count = selected.count
         saveButton.setTitle(count <= 1 ? "Save" : "Save \(count) Places", for: .normal)
@@ -220,7 +226,7 @@ final class ScanPlacesReviewViewController: BaseViewController, UITableViewDataS
 
     private func presentCirclePicker(thenSave: Bool) {
         let picker = CirclePickerViewController(circles: circles)
-        picker.pickerTitle = "Save to a Circle"
+        picker.pickerTitle = CirclePickerCopy.pairedTitle
         if places.count == 1 {
             picker.placeName = places[0].name
             picker.placeAddress = places[0].address
@@ -261,9 +267,48 @@ final class ScanPlacesReviewViewController: BaseViewController, UITableViewDataS
     // MARK: - Save
 
     @objc private func saveTapped() {
-        // Always a circle they chose (never a silent default)
+        // The target is on the sheet; only with no circles at all do we ask
         guard circle != nil else { return presentCirclePicker(thenSave: true) }
         save()
+    }
+
+    /// After the save: pick another circle and the just-saved places move there
+    private func offerMove(_ done: ScanActionSaveResult, from circle: Circle) {
+        let placeIds = done.saved.compactMap(\.placeId)
+        guard !placeIds.isEmpty else { return dismiss(animated: true) }
+        let picker = CirclePickerViewController(circles: circles.filter { $0.id != circle.id })
+        picker.pickerTitle = CirclePickerCopy.pairedTitle
+        picker.forMove = true
+        if places.count == 1 {
+            picker.placeName = places[0].name
+            picker.placeAddress = places[0].address
+        }
+        picker.onCircleSelected = { [weak self] target in
+            guard let self else { return }
+            let loading = AlertPresenter.showLoading(message: "Moving…", from: self)
+            let group = DispatchGroup()
+            var failed = 0
+            for placeId in placeIds {
+                group.enter()
+                PlaceService.shared.movePlaceToCircle(placeId: placeId, targetCircleId: target.id) { result in
+                    if case .failure = result { failed += 1 }
+                    group.leave()
+                }
+            }
+            group.notify(queue: .main) {
+                loading.dismiss(animated: true) {
+                    NotificationCenter.default.post(name: .refreshCircles, object: nil)
+                    let moved = placeIds.count - failed
+                    let line = moved == 0 ? "Couldn't move it just now." : (placeIds.count == 1 ? "Moved to \(target.name)." : "Moved \(moved) places to \(target.name).")
+                    AlertPresenter.showAlert(title: line, message: nil, actions: [("Done", .cancel, { [weak self] in self?.dismiss(animated: true) })], from: self)
+                }
+            }
+        }
+        let nav = UINavigationController(rootViewController: picker)
+        nav.modalPresentationStyle = .pageSheet
+        nav.sheetPresentationController?.detents = [.medium(), .large()]
+        nav.sheetPresentationController?.prefersGrabberVisible = true
+        present(nav, animated: true)
     }
 
     private func save() {
@@ -317,8 +362,9 @@ final class ScanPlacesReviewViewController: BaseViewController, UITableViewDataS
             return
         }
         let close: (title: String, style: UIAlertAction.Style, handler: () -> Void) = ("Done", .cancel, { [weak self] in self?.dismiss(animated: true) })
+        let move: (title: String, style: UIAlertAction.Style, handler: () -> Void) = (ScanActionCopy.moveButton, .default, { [weak self] in self?.offerMove(done, from: circle) })
         let actions = done.saved.isEmpty ? [close]
-            : [(done.saved.count == 1 ? "Open It" : "Open \(circle.name)", UIAlertAction.Style.default, openCircle), close]
+            : [(done.saved.count == 1 ? "Open It" : "Open \(circle.name)", UIAlertAction.Style.default, openCircle), move, close]
         AlertPresenter.showAlert(title: words.title, message: words.message.isEmpty ? nil : words.message, actions: actions, from: self)
     }
 

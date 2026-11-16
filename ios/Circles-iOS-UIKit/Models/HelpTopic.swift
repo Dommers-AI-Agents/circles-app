@@ -160,7 +160,7 @@ class HelpContentProvider {
                 title: "Creating a Circle",
                 subtitle: "Start your first collection",
                 content: """
-                Circles are collections of places organized by theme or purpose.
+                Circles are your lists of places, organized by theme or purpose: a city, a trip, date nights, coffee spots.
                 
                 **To create a circle:**
                 1. Tap the **+** button on the Home screen

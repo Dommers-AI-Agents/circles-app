@@ -65,6 +65,16 @@ extension ScreenGuideKind {
 
 /// The words after a save, the creator side's notices. Pure.
 enum ScanActionCopy {
+    /// The sheet's target line before Save (2026-11-16: it saves without
+    /// asking; the list is shown, never silent)
+    static func savingTo(_ circleName: String?) -> (title: String, subtitle: String?) {
+        guard let circleName, !circleName.isEmpty else { return ("Choose a circle (a list) to save to", nil) }
+        return ("Saving to \(circleName)", "Change list")
+    }
+
+    /// The done alert's extra action after a save
+    static let moveButton = "Move to another list"
+
     static func saved(_ result: ScanActionSaveResult, circleName: String?) -> (title: String, message: String) {
         let into = circleName.map { " to \($0)" } ?? ""
         let savedCount = result.saved.count

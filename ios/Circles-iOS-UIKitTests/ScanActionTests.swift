@@ -127,6 +127,12 @@ struct ScanActionCopyTests {
         #expect(ScanActionCopy.saved(full, circleName: nil).message.contains("plan is full"))
     }
 
+    @Test func theSheetSaysWhereItSavesWithoutAsking() {
+        #expect(ScanActionCopy.savingTo("Want to Try") == ("Saving to Want to Try", "Change list"))
+        #expect(ScanActionCopy.savingTo(nil) == ("Choose a circle (a list) to save to", nil))
+        #expect(ScanActionCopy.moveButton == "Move to another list")
+    }
+
     @Test func theCreatorHearsWhatWasLeftOut() {
         #expect(ScanActionCopy.leftOut(privateCount: 0, hiddenCount: 0) == nil)
         #expect(ScanActionCopy.leftOut(privateCount: 2, hiddenCount: 1) == "2 private places left out · 1 place that can't be shared yet left out")

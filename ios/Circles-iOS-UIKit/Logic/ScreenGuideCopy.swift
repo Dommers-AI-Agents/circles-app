@@ -57,7 +57,7 @@ enum ScreenGuideCopy {
                          message: "Your map, your circles and your moments. Share it so friends can follow you and see where you love to go.")]
         case .addPlace:
             return [Stop(title: "Add a place you love",
-                         message: "Search for the spot you can't stop recommending: a coffee shop, a restaurant, a park. Pick it and save it to a circle.")]
+                         message: "Search for the spot you can't stop recommending: a coffee shop, a restaurant, a park. Pick it and save it to a circle (a list of your places).")]
         case .ownPlace:
             let name = placeName ?? "your place"
             return [
@@ -76,7 +76,7 @@ enum ScreenGuideCopy {
                 Stop(title: "Share \(name)",
                      message: "Tap Share at the top. Send a link in a text, or pick Show QR to Save."),
                 Stop(title: "Show QR to Save",
-                     message: "Hold up your phone. Whoever scans it with their Camera sees the place, picks a circle and it's saved to their map. No app yet? It opens right there."),
+                     message: "Hold up your phone. Whoever scans it with their Camera sees the place and one tap saves it to their Want to Try list. No app yet? It opens right there."),
                 Stop(title: "A whole list, too",
                      message: "Open a circle or filter your Home map, then tap Share these places to make one QR for all of them.")
             ]
