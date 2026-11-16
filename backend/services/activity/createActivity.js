@@ -14,6 +14,12 @@ const createActivity = async (type, actorId, targetType, targetId, targetName, m
     
     // Ensure the actorId is a string
     const actorIdStr = String(actorId);
+
+    // A place hidden from the public: only the actor's own Activity tab
+    if (metadata.ownerOnly !== true
+      && await require('./hiddenPlaceGate').isAboutHiddenVenue(targetType, targetId, metadata)) {
+      metadata = { ...metadata, ownerOnly: true };
+    }
     
     const activityData = {
       type,
