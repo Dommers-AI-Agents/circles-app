@@ -5,15 +5,10 @@ class VisitDetectionService: NSObject {
     static let shared = VisitDetectionService()
     
     private let locationManager = CLLocationManager()
-    private var currentVisit: PlaceVisit?
-    private var visitStartTime: Date?
-    private var lastLocation: CLLocation?
-    private var visitTimer: Timer?
     private var locationPermissionCompletion: ((Bool) -> Void)?
     
     // Configuration
     private var minVisitDuration: TimeInterval = 300 // 5 minutes
-    private let visitRadius: CLLocationDistance = 50 // 50 meters
     
     // User preferences
     var isTrackingEnabled: Bool {
@@ -36,10 +31,8 @@ class VisitDetectionService: NSObject {
     private func setupLocationManager() {
         Logger.info("📍 Setting up location manager")
         locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.distanceFilter = 10 // Update every 10 meters
-        locationManager.allowsBackgroundLocationUpdates = true
-        locationManager.pausesLocationUpdatesAutomatically = false
+        // Visits come only from iOS's own visit monitoring (CLVisit), which
+        // needs no GPS stream or background location updates.
         
         // Only ask for location here when the user has actually enabled
         // visit tracking — an unconditional request fired a system dialog at
@@ -144,27 +137,19 @@ class VisitDetectionService: NSObject {
             return
         }
         
-        Logger.info("📍 Starting visit tracking 🚀")
-        Logger.info("📍 - Monitoring significant location changes")
-        Logger.info("📍 - Monitoring visits (iOS CLVisit)")
-        
-        // Start monitoring significant location changes for battery efficiency
-        locationManager.startMonitoringSignificantLocationChanges()
-        
-        // Also start monitoring visits (iOS feature)
+        Logger.info("📍 Starting visit tracking (iOS CLVisit) 🚀")
+        // Visits were once also guessed from significant-location-change
+        // fixes plus a 5-minute timer, which recorded a "visit" every 5
+        // minutes of a drive (Wes, 2026-11-16, I-10). Only iOS's own visit
+        // detection counts now; earlier builds' SLC monitoring is stopped.
+        locationManager.stopMonitoringSignificantLocationChanges()
         locationManager.startMonitoringVisits()
-        
-        // Request initial location to verify it's working
-        locationManager.requestLocation()
     }
     
     func stopTracking() {
         Logger.info("📍 Stopping visit tracking 🛑")
         locationManager.stopMonitoringSignificantLocationChanges()
         locationManager.stopMonitoringVisits()
-        visitTimer?.invalidate()
-        currentVisit = nil
-        visitStartTime = nil
     }
     
     func setTrackingEnabled(_ enabled: Bool) {
@@ -183,76 +168,9 @@ class VisitDetectionService: NSObject {
         minVisitDuration = duration
     }
     
-    // MARK: - Visit Detection Logic
-    
-    private func detectVisit(at location: CLLocation) {
-        guard isTrackingEnabled else { 
-            Logger.debug("📍 Visit detection skipped - tracking disabled")
-            return 
-        }
-        
-        // Check if location should be excluded
-        if shouldExcludeLocation(location) {
-            Logger.info("📍 Visit detection skipped - location is excluded (home/work)")
-            return
-        }
-        
-        Logger.info("📍 Detecting visit at location: \(location.coordinate.latitude), \(location.coordinate.longitude)")
-        
-        // Check if this is a continuation of current visit
-        if let lastLoc = lastLocation,
-           let startTime = visitStartTime,
-           location.distance(from: lastLoc) <= visitRadius {
-            
-            // Still at the same place, check duration
-            let duration = Date().timeIntervalSince(startTime)
-            Logger.debug("📍 Still at same location - duration: \(Int(duration))s")
-            
-            if duration >= minVisitDuration && currentVisit == nil {
-                // Visit duration threshold met, create visit record
-                Logger.info("📍 Visit duration threshold met! Creating visit record")
-                createVisit(at: location, startTime: startTime)
-            }
-            
-        } else {
-            // New location, end current visit if exists
-            if let visit = currentVisit {
-                Logger.info("📍 Location changed - ending current visit")
-                endVisit(visit)
-            }
-            
-            // Start tracking new potential visit
-            visitStartTime = Date()
-            lastLocation = location
-            Logger.info("📍 Started tracking potential visit at new location")
-            
-            // Set timer to check if user stays at this location
-            visitTimer?.invalidate()
-            visitTimer = Timer.scheduledTimer(withTimeInterval: minVisitDuration, repeats: false) { [weak self] _ in
-                Logger.info("📍 Visit timer fired - checking for visit")
-                self?.checkForVisit()
-            }
-        }
-        
-        lastLocation = location
-    }
-    
-    private func checkForVisit() {
-        guard let location = lastLocation,
-              let startTime = visitStartTime else { 
-            Logger.debug("📍 checkForVisit - no location or start time")
-            return 
-        }
-        
-        let duration = Date().timeIntervalSince(startTime)
-        Logger.info("📍 Checking for visit - duration: \(Int(duration))s, threshold: \(Int(minVisitDuration))s")
-        if duration >= minVisitDuration {
-            Logger.info("📍 Creating visit after timer check")
-            createVisit(at: location, startTime: startTime)
-        }
-    }
-    
-    private func createVisit(at location: CLLocation, startTime: Date) {
+    // MARK: - Recording a visit
+
+    private func createVisit(at location: CLLocation, arrival startTime: Date, departure: Date) {
         Logger.info("📍 Creating visit record at \(location.coordinate.latitude), \(location.coordinate.longitude)")
         Logger.info("📍 Location accuracy: \(location.horizontalAccuracy)m")
         
@@ -290,19 +208,19 @@ class VisitDetectionService: NSObject {
             // how rough the visit's fix is. A failed or unsure lookup keeps
             // the address; VisitNamer tries again with the app open.
             guard VisitPlaceSuggestion.looksLikeAddress(geocodedName, address: placeAddress) else {
-                return self.recordVisit(at: location, startTime: startTime, name: geocodedName,
+                return self.recordVisit(at: location, startTime: startTime, departure: departure, name: geocodedName,
                                         address: placeAddress, category: bestPlacemark.areasOfInterest?.first)
             }
             VisitPlaceSuggester.candidates(latitude: location.coordinate.latitude,
                                            longitude: location.coordinate.longitude) { [weak self] candidates in
                 let best = VisitPlaceSuggestion.autoName(from: candidates, accuracy: location.horizontalAccuracy)
-                self?.recordVisit(at: location, startTime: startTime, name: best?.name ?? geocodedName,
+                self?.recordVisit(at: location, startTime: startTime, departure: departure, name: best?.name ?? geocodedName,
                                   address: placeAddress, category: best?.category ?? bestPlacemark.areasOfInterest?.first)
             }
         }
     }
 
-    private func recordVisit(at location: CLLocation, startTime: Date, name placeName: String,
+    private func recordVisit(at location: CLLocation, startTime: Date, departure: Date, name placeName: String,
                              address placeAddress: String, category: String?) {
         do {
             let visit = PlaceVisit(
@@ -314,7 +232,7 @@ class VisitDetectionService: NSObject {
                 longitude: location.coordinate.longitude,
                 category: category,
                 visitedAt: startTime,
-                duration: Int(Date().timeIntervalSince(startTime) / 60), // minutes
+                duration: VisitAcceptance.durationMinutes(arrival: startTime, departure: departure),
                 autoDetected: true,
                 reviewed: false,
                 dismissed: false,
@@ -322,7 +240,6 @@ class VisitDetectionService: NSObject {
             )
             
             Logger.info("📍 Created visit: \(visit.placeName) at \(visit.placeAddress)")
-            self.currentVisit = visit
             
             // Save locally first
             self.saveVisitLocally(visit)
@@ -330,24 +247,6 @@ class VisitDetectionService: NSObject {
             // Then sync to server
             self.syncVisitToServer(visit)
         }
-    }
-    
-    private func endVisit(_ visit: PlaceVisit) {
-        guard let startTime = visitStartTime else { return }
-        
-        // Update visit duration
-        var updatedVisit = visit
-        updatedVisit.duration = Int(Date().timeIntervalSince(startTime) / 60)
-        
-        // Update local storage
-        saveVisitLocally(updatedVisit)
-        
-        // Sync to server
-        syncVisitToServer(updatedVisit)
-        
-        // Reset state
-        currentVisit = nil
-        visitStartTime = nil
     }
     
     private func formatAddress(from placemark: CLPlacemark) -> String {
@@ -655,58 +554,35 @@ extension VisitDetectionService: CLLocationManagerDelegate {
         checkLocationAuthorization()
     }
     
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
-        Logger.info("📍 Location update received: \(location.coordinate.latitude), \(location.coordinate.longitude)")
-        detectVisit(at: location)
-    }
-    
     func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
-        // iOS detected a visit
-        Logger.info("📍 iOS CLVisit detected! Coordinates: \(visit.coordinate.latitude), \(visit.coordinate.longitude)")
-        Logger.info("📍 - Arrival: \(visit.arrivalDate)")
-        Logger.info("📍 - Departure: \(visit.departureDate)")
-        Logger.info("📍 - Accuracy: \(visit.horizontalAccuracy)m")
-        
+        Logger.info("📍 CLVisit: \(visit.coordinate.latitude), \(visit.coordinate.longitude) arrival \(visit.arrivalDate) departure \(visit.departureDate) ±\(Int(visit.horizontalAccuracy))m")
+        guard isTrackingEnabled else { return }
+
         let location = CLLocation(
-            latitude: visit.coordinate.latitude,
-            longitude: visit.coordinate.longitude
+            coordinate: visit.coordinate,
+            altitude: 0,
+            horizontalAccuracy: visit.horizontalAccuracy,
+            verticalAccuracy: -1,
+            timestamp: visit.arrivalDate
         )
-        
-        // Check if location should be excluded
         if shouldExcludeLocation(location) {
             Logger.info("📍 CLVisit skipped - location is excluded (home/work)")
             return
         }
-        
-        // Use iOS visit detection
-        if visit.departureDate == Date.distantFuture {
-            // Arrival at location
-            Logger.info("📍 CLVisit arrival detected")
-            visitStartTime = visit.arrivalDate
-            lastLocation = location
-        } else {
-            // Departure from location
-            Logger.info("📍 CLVisit departure detected")
-            if let startTime = visitStartTime {
-                let duration = visit.departureDate.timeIntervalSince(startTime)
-                Logger.info("📍 Visit duration: \(Int(duration))s")
-                if duration >= minVisitDuration {
-                    Logger.info("📍 CLVisit meets duration threshold - creating visit")
-                    // Create a CLLocation with the visit's accuracy
-                    let locationWithAccuracy = CLLocation(
-                        coordinate: visit.coordinate,
-                        altitude: 0,
-                        horizontalAccuracy: visit.horizontalAccuracy,
-                        verticalAccuracy: -1,
-                        timestamp: visit.arrivalDate
-                    )
-                    createVisit(at: locationWithAccuracy, startTime: startTime)
-                } else {
-                    Logger.info("📍 CLVisit too short (\(Int(duration))s < \(Int(minVisitDuration))s)")
-                }
-            }
+
+        let recorded = getLocalVisits().map {
+            VisitAcceptance.Stay(arrival: $0.visitedAt, latitude: $0.latitude, longitude: $0.longitude)
         }
+        let verdict = VisitAcceptance.verdict(
+            arrival: visit.arrivalDate, departure: visit.departureDate,
+            horizontalAccuracy: visit.horizontalAccuracy, minDuration: minVisitDuration,
+            latitude: visit.coordinate.latitude, longitude: visit.coordinate.longitude,
+            recorded: recorded)
+        guard verdict == .record else {
+            Logger.info("📍 CLVisit not recorded: \(verdict)")
+            return
+        }
+        createVisit(at: location, arrival: visit.arrivalDate, departure: visit.departureDate)
     }
     
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
