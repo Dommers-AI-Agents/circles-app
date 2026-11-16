@@ -114,11 +114,18 @@ module.exports = {
       if (!this.isStarterAge(ctx)) return null;
       const step = starterStep(await this.starterProgress(ctx));
       if (!step || !this.nudgeDue(ctx, step.key, STARTER_REPEAT_MS)) return null;
+      // The follow step names real places and people near them, like the
+      // day 2 and day 5 pushes; its button opens Discover, which lists both
+      let body = step.body;
+      if (step.key === 'starter_follow') {
+        const grow = require('../starterGrow');
+        body = grow.growCopy(await grow.growPicks(ctx.user, { db: this.db }).catch(() => null)) || body;
+      }
       return {
         key: step.key,
         type: 'starter',
         title: step.title,
-        body: step.body,
+        body,
         actionLabel: step.actionLabel,
         ...(step.altActionLabel ? { altActionLabel: step.altActionLabel, altTarget: step.altTarget } : {}),
         skipLabel: 'Later',

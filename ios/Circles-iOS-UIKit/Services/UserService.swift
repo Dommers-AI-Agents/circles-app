@@ -251,7 +251,9 @@ class UserService {
         var body: [String: Any] = [
             "appVersion": info?["CFBundleShortVersionString"] as? String ?? "unknown",
             "build": info?["CFBundleVersion"] as? String ?? "unknown",
-            "platform": "ios"
+            "platform": "ios",
+            // So 6 PM pushes and the daily summary arrive at their 6 PM
+            "timeZone": TimeZone.current.identifier
         ]
 
         // Share a cached location fix when permission was already granted —

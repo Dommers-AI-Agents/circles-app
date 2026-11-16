@@ -72,6 +72,18 @@ exports.completeTutorial = async (req, res, next) => {
   }
 };
 
+/** An IANA zone name the server can use ("America/Phoenix"), else null */
+const validTimeZone = (value) => {
+  if (typeof value !== 'string' || !value || value.length > 64) return null;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value });
+    return value;
+  } catch (error) {
+    return null;
+  }
+};
+exports._validTimeZone = validTimeZone;
+
 // @desc    Record an app open (launch or return to foreground). Powers
 //          "did this user quietly come back" insight that API traffic alone
 //          can't show — first/last open timestamps, a lifetime open counter,
@@ -82,7 +94,7 @@ exports.recordAppOpen = async (req, res, next) => {
   try {
     const userId = normalizeUserId(req.user.uid);
     const now = new Date().toISOString();
-    const { appVersion, build, platform, latitude, longitude } = req.body || {};
+    const { appVersion, build, platform, latitude, longitude, timeZone } = req.body || {};
 
     const updates = {
       lastActive: now,
@@ -100,6 +112,14 @@ exports.recordAppOpen = async (req, res, next) => {
       Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && !(latitude === 0 && longitude === 0);
     if (hasCoords) {
       updates.lastKnownLocation = { latitude, longitude, updatedAt: new Date().toISOString() };
+    }
+
+    // The phone's own time zone, so 6 PM pushes and daily summaries land at
+    // their 6 PM: it used to be set only by saving Notification settings, and
+    // everyone else defaulted to New York (Wes, 2026-11-16: Sunil in Tucson)
+    const zone = validTimeZone(timeZone);
+    if (zone && zone !== (req.user.notificationPreferences || {}).timezone) {
+      updates['notificationPreferences.timezone'] = zone;
     }
 
     await db.collection(COLLECTIONS.USERS).doc(userId).update(updates);
