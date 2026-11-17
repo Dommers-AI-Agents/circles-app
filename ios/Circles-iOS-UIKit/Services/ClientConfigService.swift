@@ -29,6 +29,12 @@ struct ClientConfig: Codable, Equatable {
         var firstFavorite: Bool?
     }
 
+    /// The Activity feed's look (2026-11-16): `alive` off = the compact list
+    /// on every phone, no release. Missing = on.
+    struct ActivityFeed: Codable, Equatable {
+        var alive: Bool?
+    }
+
     /// "Did you know" lines shown while the app waits (Wes, 2026-11-04);
     /// the weekly email's list. Absent offline before the first fetch.
     struct Tip: Codable, Equatable {
@@ -43,6 +49,7 @@ struct ClientConfig: Codable, Equatable {
     var favCoins: FavCoins
     var onboarding: Onboarding?
     var tips: [Tip]?
+    var activityFeed: ActivityFeed?
 
     /// Offline fallback only — the server is the source.
     static let builtIn = ClientConfig(
@@ -53,7 +60,8 @@ struct ClientConfig: Codable, Equatable {
         storeRewardDefaults: StoreRewardDefaults(pointsPerPurchase: 25, pointsForSaving: 25),
         favCoins: FavCoins(firstPlaceAdded: 25, drinkReceived: 1, eventJoined: 1),
         onboarding: Onboarding(firstFavorite: true),
-        tips: nil)
+        tips: nil,
+        activityFeed: ActivityFeed(alive: true))
 }
 
 final class ClientConfigService {

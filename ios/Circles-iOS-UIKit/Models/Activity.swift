@@ -155,6 +155,8 @@ struct ActivityMetadata: Codable {
     let videoTitle: String?  // For video uploads
     let videoThumbnail: String?  // For video uploads
     let videoDuration: Double?  // For video uploads
+    /// The moment's playable clip, so the feed can loop it inline (rows written from 2026-11-16; older rows have none)
+    var videoUrl: String? = nil
     let contentType: String?  // Moment content: "photo" | "video" (photo moments ride the video pipeline)
     let workoutPostId: String?  // Shared workout the row opens
     let workoutDetail: String?  // "6 exercises · 42 min · 2 PRs"

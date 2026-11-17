@@ -21,6 +21,13 @@ test('the app reads limits, amounts and the App Store link from the server confi
   expect(JSON.parse(JSON.stringify(c))).toEqual(c);
 });
 
+test('the lively Activity feed is on unless the env turns it off (2026-11-16)', () => {
+  expect(buildClientConfig().activityFeed).toEqual({ alive: true });
+  process.env.ACTIVITY_FEED_ALIVE = 'false';
+  expect(buildClientConfig().activityFeed).toEqual({ alive: false });
+  delete process.env.ACTIVITY_FEED_ALIVE;
+});
+
 test('the "Did you know" tips are the weekly email\'s list, emoji and text only', () => {
   const tips = require('../../config/weeklyTips');
   const c = buildClientConfig();

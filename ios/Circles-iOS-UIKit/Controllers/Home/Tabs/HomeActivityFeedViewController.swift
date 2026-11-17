@@ -65,6 +65,39 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
     /// cell's gesture opens it once
     private var lastOpened: (id: String, at: Date)?
 
+    // MARK: Lively feed (2026-11-16)
+
+    /// Hero cards and motion on? (the server switch AND this phone's toggle)
+    private var isLively: Bool { ActivityFeedPreference.isLively }
+    /// Rows that already had their entrance, so scrolling back is quiet
+    private var enteredIds: Set<String> = []
+    /// Hero rows that already ran their moment (pin drop, settle, fan)
+    private var choreographedIds: Set<String> = []
+    /// Rows that just arrived live: a bigger entrance and a haptic
+    private var arrivalIds: Set<String> = []
+    /// Rows entering in the same layout pass are staggered
+    private var entranceSlot = 0
+    private var entranceSlotReset = false
+    /// New rows waiting behind the "N new" pill while the viewer is scrolled down
+    private var pendingNewActivities: [Activity] = []
+    private lazy var newActivityPill: UIButton = {
+        let button = UIButton.smallActionButton(title: "New", style: .primary)
+        button.setImage(UIImage(systemName: "arrow.up"), for: .normal)
+        button.tintColor = .white
+        button.semanticContentAttribute = .forceLeftToRight
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 16)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4, bottom: 0, right: 4)
+        button.layer.cornerRadius = 18
+        button.layer.shadowColor = UIColor.black.cgColor
+        button.layer.shadowOpacity = 0.25
+        button.layer.shadowOffset = CGSize(width: 0, height: 3)
+        button.layer.shadowRadius = 6
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isHidden = true
+        button.addTarget(self, action: #selector(showPendingNewActivities), for: .touchUpInside)
+        return button
+    }()
+
     let tableView: UITableView = {
         let tableView = UITableView()
         tableView.backgroundColor = Constants.Colors.background
@@ -120,6 +153,16 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(ActivityFeedCell.self, forCellReuseIdentifier: ActivityFeedCell.identifier)
+        tableView.register(ActivityHeroCell.self, forCellReuseIdentifier: ActivityHeroCell.identifier)
+        tableView.prefetchDataSource = self
+        view.addSubview(newActivityPill)
+        NSLayoutConstraint.activate([
+            newActivityPill.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
+            newActivityPill.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            newActivityPill.heightAnchor.constraint(equalToConstant: 36)
+        ])
+        // The phone's toggle flipped in Settings: the rows change shape at once
+        NotificationCenter.default.addObserver(self, selector: #selector(livelinessChanged), name: ActivityFeedPreference.changed, object: nil)
 
         // Listen for moment deletion to drop its activity rows
         NotificationCenter.default.addObserver(
@@ -148,6 +191,13 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         noteNewActivity()
     }
 
+    @objc private func livelinessChanged() {
+        enteredIds.removeAll()
+        choreographedIds.removeAll()
+        pauseAllClips()
+        tableView.reloadData()
+    }
+
     /// Something new is on the server's feed: merge it now if this tab is the
     /// selected one, otherwise when it next shows.
     func noteNewActivity() {
@@ -174,9 +224,14 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         }
     }
 
-    func tabWillHide() {}
+    func tabWillHide() {
+        pauseAllClips()
+    }
 
     func refreshTab() {
+        // Pull to refresh: every row gets its entrance and its moment again
+        enteredIds.removeAll()
+        choreographedIds.removeAll()
         fetchActivities()
     }
 
@@ -307,33 +362,31 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
                 switch result {
                 case .success(let response):
                     let newActivities = response.activities
-
-                    // Find activities that aren't already in our list
-                    let addedActivities = newActivities.filter { activity in
-                        !self.activities.contains(where: { $0.id == activity.id })
+                    // What changed, and whether the viewer is at the top
+                    // (Logic/ActivityRefreshPlan): new rows slide in at the top,
+                    // or wait behind a pill when they're scrolled down
+                    let held = self.activities + self.pendingNewActivities
+                    let plan = ActivityRefreshPlan.plan(
+                        current: held.map { ($0.id, $0.timestamp) },
+                        fresh: newActivities.map { ($0.id, $0.timestamp) },
+                        atTop: self.isAtTop)
+                    guard case .changed(let addedIds, let removedIds, let atTop) = plan else { return }
+                    let addedActivities = newActivities.filter { addedIds.contains($0.id) }
+                    if !removedIds.isEmpty {
+                        self.activities.removeAll { removedIds.contains($0.id) }
+                        self.pendingNewActivities.removeAll { removedIds.contains($0.id) }
                     }
-
-                    // Prune rows deleted server-side: anything we hold that's
-                    // newer than the oldest fetched activity should have been
-                    // in this newest-first fetch — if it wasn't, it's gone
-                    // (e.g. the actor swiped their activity away).
-                    var removedCount = 0
-                    if let oldestFetched = newActivities.last?.timestamp {
-                        let fetchedIds = Set(newActivities.map { $0.id })
-                        let before = self.activities.count
-                        self.activities.removeAll {
-                            $0.timestamp > oldestFetched && !fetchedIds.contains($0.id)
-                        }
-                        removedCount = before - self.activities.count
-                    }
-
-                    if !addedActivities.isEmpty || removedCount > 0 {
-                        // Insert new activities at the beginning, then go
-                        // through the grouped-feed pipeline — a direct
-                        // insertRows would desync rows from feedItems
-                        self.activities.insert(contentsOf: addedActivities, at: 0)
-                        self.updateActivityFeed()
-                        Logger.info("SSE feed refresh: +\(addedActivities.count) new, -\(removedCount) stale")
+                    Logger.info("SSE feed refresh: +\(addedActivities.count) new, -\(removedIds.count) stale, atTop \(atTop)")
+                    if addedActivities.isEmpty || atTop || !self.isLively {
+                        self.insertAtTop(addedActivities + self.pendingNewActivities, live: true)
+                        self.pendingNewActivities = []
+                        self.setNewActivityPillVisible(false)
+                    } else {
+                        // Scrolled down: hold them, say so
+                        self.pendingNewActivities.insert(contentsOf: addedActivities, at: 0)
+                        self.newActivityPill.setTitle(ActivityRefreshPlan.pillTitle(count: self.pendingNewActivities.count), for: .normal)
+                        self.setNewActivityPillVisible(true)
+                        if !removedIds.isEmpty { self.updateActivityFeed() }
                     }
 
                 case .failure(let error):
@@ -341,6 +394,94 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
                 }
             }
         }
+    }
+
+    private var isAtTop: Bool { tableView.contentOffset.y <= tableView.contentInset.top + 40 }
+
+    /// New rows at the top. Live arrivals slide in (and the first one has its
+    /// moment with a haptic); when grouping folds them into existing rows the
+    /// table reloads instead.
+    private func insertAtTop(_ added: [Activity], live: Bool) {
+        guard !added.isEmpty else { updateActivityFeed(); return }
+        let before = feedItems
+        activities.insert(contentsOf: added, at: 0)
+        resolveMissingActivityActors()
+        regroupActivities()
+        let after = feedItems
+        let inserted = after.count - before.count
+        let samePrefixTail = inserted > 0 && inserted <= after.count
+            && zip(after.dropFirst(inserted), before).allSatisfy { Self.rowKey($0) == Self.rowKey($1) }
+        guard isLively, live, samePrefixTail, isActiveTab, !tableView.isHidden, tableView.window != nil else {
+            updateActivityFeed()
+            return
+        }
+        added.forEach { arrivalIds.insert($0.id) }
+        for row in after.prefix(inserted) { arrivalIds.insert(Self.rowKey(row)) }
+        statusView.message = nil
+        tableView.performBatchUpdates {
+            tableView.insertRows(at: (0..<inserted).map { IndexPath(row: $0, section: 0) }, with: .top)
+        } completion: { [weak self] _ in
+            self?.host?.layoutContentIfNeeded()
+            self?.focusClip()
+        }
+        if ActivityFeedPreference.animates { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+    }
+
+    @objc private func showPendingNewActivities() {
+        let pending = pendingNewActivities
+        pendingNewActivities = []
+        setNewActivityPillVisible(false)
+        tableView.setContentOffset(CGPoint(x: 0, y: -tableView.contentInset.top), animated: false)
+        insertAtTop(pending, live: true)
+    }
+
+    private func setNewActivityPillVisible(_ visible: Bool) {
+        guard newActivityPill.isHidden == visible else { return }
+        if visible {
+            newActivityPill.alpha = 0
+            newActivityPill.isHidden = false
+            view.bringSubviewToFront(newActivityPill)
+            UIView.animate(withDuration: 0.25) { self.newActivityPill.alpha = 1 }
+        } else {
+            UIView.animate(withDuration: 0.2, animations: { self.newActivityPill.alpha = 0 }) { _ in
+                self.newActivityPill.isHidden = true
+            }
+        }
+    }
+
+    /// One key per row, for the entrance and choreography bookkeeping
+    static func rowKey(_ item: FeedItem) -> String {
+        switch item {
+        case .single(let a): return a.id
+        case .group(let g): return "group-" + (g.first?.id ?? "")
+        case .groupChild(let a): return "child-" + a.id
+        }
+    }
+
+    /// Which look a row gets (Logic/ActivityRowStyle)
+    private func style(for item: FeedItem) -> ActivityRowStyle {
+        switch item {
+        case .single(let a), .groupChild(let a): return ActivityRowStyle.style(single: a, enabled: isLively)
+        case .group(let g): return ActivityRowStyle.style(group: g, enabled: isLively)
+        }
+    }
+
+    // MARK: Clips: one loops at a time, the one nearest the middle
+
+    private func focusClip() {
+        guard isActiveTab, !tableView.isHidden else { return pauseAllClips() }
+        let visible = (tableView.indexPathsForVisibleRows ?? []).compactMap { path -> (row: Int, midY: CGFloat, cell: ActivityHeroCell)? in
+            guard let cell = tableView.cellForRow(at: path) as? ActivityHeroCell, cell.hasClip else { return nil }
+            return (path.row, tableView.rectForRow(at: path).midY, cell)
+        }
+        let focused = ActivityClipFocus.focusedRow(rows: visible.map { ($0.row, $0.midY) }, visibleMidY: tableView.bounds.midY)
+        for entry in visible {
+            if entry.row == focused { entry.cell.playClip() } else { entry.cell.pauseClip() }
+        }
+    }
+
+    private func pauseAllClips() {
+        for cell in tableView.visibleCells { (cell as? ActivityHeroCell)?.pauseClip() }
     }
 
     func updateActivityFeed() {
@@ -382,6 +523,7 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         tableView.reloadData()
         host?.layoutContentIfNeeded()
         fillViewportIfNeeded()
+        DispatchQueue.main.async { [weak self] in self?.focusClip() }
     }
 
     /// Patches actorless feed rows from users the app already knows: the
@@ -760,8 +902,22 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        guard let item = feedItem(at: indexPath.row) else {
+            return tableView.dequeueReusableCell(withIdentifier: ActivityFeedCell.identifier, for: indexPath)
+        }
+        // Rows with a picture get the lively card (2026-11-16); the rest, the compact row
+        if case .hero(let hero) = style(for: item) {
+            let cell = tableView.dequeueReusableCell(withIdentifier: ActivityHeroCell.identifier, for: indexPath) as! ActivityHeroCell
+            cell.delegate = self
+            switch item {
+            case .single(let activity), .groupChild(let activity):
+                cell.configure(activity: activity, hero: hero)
+            case .group(let groupActivities):
+                if case .photos(let urls) = hero { cell.configure(group: groupActivities, photos: urls) }
+            }
+            return cell
+        }
         let cell = tableView.dequeueReusableCell(withIdentifier: ActivityFeedCell.identifier, for: indexPath) as! ActivityFeedCell
-        guard let item = feedItem(at: indexPath.row) else { return cell }
 
         cell.delegate = self
         switch item {
@@ -777,6 +933,54 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
             cell.setGroupChildStyle(false)
         }
         return cell
+    }
+
+    func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
+        guard let item = feedItem(at: indexPath.row) else { return 120 }
+        return ActivityRowStyle.estimatedHeight(style(for: item))
+    }
+
+    /// The row's first time on screen: its entrance (staggered with the
+    /// others arriving in the same pass), then a hero card's moment
+    func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+        guard let item = feedItem(at: indexPath.row) else { return }
+        let key = Self.rowKey(item)
+        let hero = cell as? ActivityHeroCell
+        guard isLively, !enteredIds.contains(key) else { return }
+        enteredIds.insert(key)
+        let arriving = arrivalIds.remove(key) != nil
+        if ActivityFeedPreference.animates {
+            if arriving {
+                ActivityChoreography.arrival(cell.contentView)
+            } else {
+                ActivityChoreography.entrance(cell.contentView, delay: Double(entranceSlot) * 0.04)
+                entranceSlot += 1
+                if !entranceSlotReset {
+                    entranceSlotReset = true
+                    DispatchQueue.main.async { [weak self] in self?.entranceSlot = 0; self?.entranceSlotReset = false }
+                }
+            }
+        }
+        if let hero, !choreographedIds.contains(key) {
+            choreographedIds.insert(key)
+            let delay = arriving ? 0.3 : 0.12 + Double(entranceSlot) * 0.04
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak hero, weak self] in
+                guard let hero, hero.currentActivity?.id == self?.singleOrFirst(at: indexPath.row)?.id else { return }
+                hero.runMoment()
+            }
+        }
+    }
+
+    func tableView(_ tableView: UITableView, didEndDisplaying cell: UITableViewCell, forRowAt indexPath: IndexPath) {
+        (cell as? ActivityHeroCell)?.pauseClip()
+    }
+
+    private func singleOrFirst(at row: Int) -> Activity? {
+        switch feedItem(at: row) {
+        case .single(let a), .groupChild(let a): return a
+        case .group(let g): return g.first
+        case .none: return nil
+        }
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -890,6 +1094,10 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
         return configuration
     }
 
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) { focusClip() }
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) { if !decelerate { focusClip() } }
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) { focusClip() }
+
     // Pagination: load the next page near the bottom
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         let offsetY = scrollView.contentOffset.y
@@ -903,6 +1111,26 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
                 fetchActivities(loadMore: true)
             }
         }
+    }
+}
+
+// MARK: - Prefetch: hero pictures before their rows arrive
+
+extension HomeActivityFeedViewController: UITableViewDataSourcePrefetching {
+    func tableView(_ tableView: UITableView, prefetchRowsAt indexPaths: [IndexPath]) {
+        guard isLively else { return }
+        var urls: [String] = []
+        for path in indexPaths {
+            guard let item = feedItem(at: path.row), case .hero(let hero) = style(for: item) else { continue }
+            switch hero {
+            case .checkIn(let photo, _): if let photo { urls.append(photo) }
+            case .placeAdded(let photo, _): urls.append(photo)
+            case .photos(let list): urls.append(contentsOf: list.prefix(3))
+            case .moment(let thumb, _): urls.append(thumb)
+            case .postcard(let image): urls.append(image)
+            }
+        }
+        if !urls.isEmpty { ImageService.shared.preloadImages(from: urls) }
     }
 }
 

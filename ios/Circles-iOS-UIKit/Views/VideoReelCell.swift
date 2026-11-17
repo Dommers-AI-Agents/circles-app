@@ -922,22 +922,8 @@ class VideoReelCell: UICollectionViewCell {
     }
     
     private func showHeartAnimation(at point: CGPoint) {
-        let heartImageView = UIImageView(image: UIImage(systemName: "heart.fill"))
-        heartImageView.tintColor = .systemRed
-        heartImageView.frame = CGRect(x: point.x - 40, y: point.y - 40, width: 80, height: 80)
-        videoContainerView.addSubview(heartImageView)
-        
-        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseOut, animations: {
-            heartImageView.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
-            heartImageView.alpha = 0.8
-        }) { _ in
-            UIView.animate(withDuration: 0.2, animations: {
-                heartImageView.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
-                heartImageView.alpha = 0
-            }) { _ in
-                heartImageView.removeFromSuperview()
-            }
-        }
+        // The one heart burst, shared with the Activity feed (Views/Common/HeartBurstView)
+        HeartBurstView.show(at: point, in: videoContainerView)
     }
     
     private func formatCount(_ count: Int) -> String {

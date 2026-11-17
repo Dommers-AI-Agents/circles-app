@@ -749,6 +749,9 @@ exports.completeVideoUpload = async (req, res) => {
           videoTitle: videoData.title,
           videoThumbnail: thumbnailUrl,
           videoDuration: videoData.duration,
+          // The clip itself, for the Activity feed's inline loop (2026-11-16);
+          // a photo moment has none
+          videoUrl: videoData.contentType === 'photo' ? null : (previewUrl || videoUrl || null),
           placeId: videoData.placeId,
           momentVisibility: videoData.visibility || 'public',
           momentOwnerId: userId,

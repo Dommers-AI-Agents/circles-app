@@ -64,6 +64,8 @@ class SettingsViewController: BaseTableViewController {
         case importPlaces
         case exportData
         case homeShortcuts
+        /// The lively Activity feed, on this phone (2026-11-16)
+        case livelyFeed
 
         var title: String {
             switch self {
@@ -72,6 +74,7 @@ class SettingsViewController: BaseTableViewController {
             case .importPlaces: return "Import Places"
             case .exportData: return "Export My Data"
             case .homeShortcuts: return "Home Screen Shortcuts"
+            case .livelyFeed: return ActivityFeedPreference.rowTitle
             }
         }
     }
@@ -232,6 +235,10 @@ class SettingsViewController: BaseTableViewController {
             guard let self = self, self.isViewLoaded else { return }
             self.tableView.reloadSections(IndexSet(integer: Section.privacy.rawValue), with: .none)
         }
+    }
+
+    @objc private func livelyFeedToggled(_ toggle: UISwitch) {
+        ActivityFeedPreference.livelyOnThisPhone = toggle.isOn
     }
 
     /// Private Profile switch. Going public lets in everyone who was waiting,
@@ -796,6 +803,22 @@ extension SettingsViewController {
                     } else {
                         cell.accessoryView = iconView
                     }
+                case .livelyFeed:
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    config.secondaryText = ActivityFeedPreference.rowDetail
+                    config.secondaryTextProperties.color = .secondaryLabel
+                    config.secondaryTextProperties.numberOfLines = 0
+                    config.image = UIImage(systemName: "sparkles")
+                    config.imageProperties.tintColor = Constants.Colors.primary
+                    cell.contentConfiguration = config
+                    let toggle = UISwitch()
+                    toggle.isOn = ActivityFeedPreference.livelyOnThisPhone
+                    toggle.onTintColor = Constants.Colors.primary
+                    toggle.addTarget(self, action: #selector(livelyFeedToggled(_:)), for: .valueChanged)
+                    cell.accessoryView = toggle
+                    cell.accessoryType = .none
+                    cell.selectionStyle = .none
                 }
             }
             
@@ -1025,6 +1048,8 @@ extension SettingsViewController {
                     showDataExport()
                 case .homeShortcuts:
                     navigationController?.pushViewController(HomeShortcutsViewController(), animated: true)
+                case .livelyFeed:
+                    break
                 }
             }
             

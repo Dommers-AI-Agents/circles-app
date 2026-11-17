@@ -43,6 +43,12 @@ function buildClientConfig() {
     onboarding: {
       firstFavorite: process.env.ONBOARDING_FIRST_FAVORITE !== 'false'
     },
+    // The Activity feed's look (Wes, 2026-11-16): hero cards and motion for
+    // check-ins, places and photos. ACTIVITY_FEED_ALIVE=false puts every
+    // phone back on the compact list at its next launch, no release.
+    activityFeed: {
+      alive: process.env.ACTIVITY_FEED_ALIVE !== 'false'
+    },
     // "Did you know" lines the app shows while it waits (the circle
     // organizer's ~30 s run; Wes, 2026-11-04). Same list as the weekly email.
     tips: TIPS.map(({ emoji, text }) => ({ emoji, text }))

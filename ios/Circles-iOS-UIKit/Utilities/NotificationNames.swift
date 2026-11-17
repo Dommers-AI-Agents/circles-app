@@ -140,6 +140,8 @@ extension Notification.Name {
     /// You posted a moment (userInfo "moment"). Posted once by the upload or
     /// link screen; the home Activity tab merges the new row on it.
     static let momentUploaded = Notification.Name("MomentUploaded")
+    /// The lively Activity feed toggle flipped in Settings (2026-11-16)
+    static let activityFeedPreferenceChanged = Notification.Name("ActivityFeedPreferenceChanged")
     static let navigateToHome = Notification.Name("NavigateToHome")
     static let navigateToPiggyBank = Notification.Name("NavigateToPiggyBank")
     static let newMessagesReceived = Notification.Name("NewMessagesReceived")

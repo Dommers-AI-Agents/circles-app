@@ -46,6 +46,8 @@ const createActivity = async (type, actorId, targetType, targetId, targetName, m
         videoTitle: metadata.videoTitle || null,
         videoThumbnail: metadata.videoThumbnail || null,
         videoDuration: metadata.videoDuration || null,
+        // The clip itself, so the feed can loop it inline (2026-11-16)
+        videoUrl: metadata.videoUrl || null,
         // Moment privacy gating: the feed only shows a video_uploaded/
         // video_liked row to viewers entitled to the moment, judged by their
         // relationship to momentOwnerId.
