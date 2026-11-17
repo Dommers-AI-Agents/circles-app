@@ -212,7 +212,11 @@ const unsubscribeUrl = (userId) => {
   return make(userId, PREFERENCE_KEY);
 };
 
-const pickPhoto = (u) => (u && (u.photoUrl || u.profileImageUrl || u.avatarUrl || u.photoURL)) || null;
+/** The sender's picture as an image an email can show (stock-avatar:/sf-symbol: values are drawn on the phone). */
+const pickPhoto = (u) => {
+  const candidates = u ? [u.profilePicture, u.photoUrl, u.profileImageUrl, u.avatarUrl, u.photoURL] : [];
+  return candidates.find((v) => typeof v === 'string' && /^https:\/\//.test(v)) || null;
+};
 
 /** Scheduled every 15 minutes: send whatever is due. */
 const runDue = async ({ now = new Date(), log = console.log } = {}) => {
@@ -297,6 +301,6 @@ const runDue = async ({ now = new Date(), log = console.log } = {}) => {
 module.exports = {
   queue, cleared, runDue,
   // pure, for tests
-  gate, afterSend, nextForRow, subjectFor, buildEmail, initials,
+  gate, afterSend, nextForRow, subjectFor, buildEmail, initials, pickPhoto,
   PREFERENCE_KEY, FIRST_AFTER, REMINDER_AFTER, DAILY_CAP
 };

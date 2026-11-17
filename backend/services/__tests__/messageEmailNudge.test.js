@@ -76,6 +76,13 @@ describe('the email', () => {
     expect(email.html).toContain('Open messages');
   });
 
+  test("the sender's photo is their profile picture, never a phone-drawn avatar", () => {
+    expect(N.pickPhoto({ profilePicture: 'https://favcircles.com/avatars/woman-1.png' })).toBe('https://favcircles.com/avatars/woman-1.png');
+    expect(N.pickPhoto({ profilePicture: 'stock-avatar:🦊:2' })).toBe(null);
+    expect(N.pickPhoto({ profilePicture: 'sf-symbol:person', photoUrl: 'https://x/p.jpg' })).toBe('https://x/p.jpg');
+    expect(N.pickPhoto(null)).toBe(null);
+  });
+
   test('initials skip emoji', () => {
     expect(N.initials('Melinda 🧜‍♀️')).toBe('M');
     expect(N.initials('Brittany Sgroi')).toBe('BS');

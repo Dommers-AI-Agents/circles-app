@@ -12,6 +12,8 @@ final class NameOnboardingViewController: BaseViewController, UITextFieldDelegat
     var onCompletion: (() -> Void)?
     private var finished = false
     private var photoData: Data?
+    /// A picked avatar (a catalog URL or stock value), instead of a photo
+    private var avatarValue: String?
 
     /// The name is missing or is just the email's local part.
     static var isNeeded: Bool {
@@ -72,7 +74,7 @@ final class NameOnboardingViewController: BaseViewController, UITextFieldDelegat
         subtitle.textAlignment = .center
         subtitle.numberOfLines = 0
         let photoHint = UILabel()
-        photoHint.text = "Add a photo (optional)"
+        photoHint.text = "Add a photo or pick an avatar (optional)"
         photoHint.font = .systemFont(ofSize: 13)
         photoHint.textColor = Constants.Colors.secondaryLabel
         photoHint.textAlignment = .center
@@ -172,7 +174,31 @@ final class NameOnboardingViewController: BaseViewController, UITextFieldDelegat
         return true
     }
 
+    /// Photo or avatar (Wes, 2026-11-17: people who don't want to upload a photo pick one)
     @objc private func pickPhoto() {
+        AlertPresenter.showActionSheet(
+            actions: [
+                (title: "Choose a Photo", style: .default, handler: { [weak self] in self?.presentPhotoPicker() }),
+                (title: "Pick an Avatar", style: .default, handler: { [weak self] in self?.presentAvatarPicker() }),
+                (title: "Cancel", style: .cancel, handler: {})
+            ],
+            from: self,
+            sourceView: photoView
+        )
+    }
+
+    private func presentAvatarPicker() {
+        let picker = StockAvatarPickerViewController()
+        picker.onSelect = { [weak self] value in
+            guard let self else { return }
+            self.avatarValue = value
+            self.photoData = nil
+            self.photoView.image = StockAvatar.image(from: value, diameter: 192)
+        }
+        present(UINavigationController(rootViewController: picker), animated: true)
+    }
+
+    private func presentPhotoPicker() {
         var config = PHPickerConfiguration()
         config.filter = .images
         config.selectionLimit = 1
@@ -190,6 +216,7 @@ final class NameOnboardingViewController: BaseViewController, UITextFieldDelegat
             DispatchQueue.main.async {
                 self?.photoView.image = image
                 self?.photoData = data
+                self?.avatarValue = nil
             }
         }
     }
@@ -207,14 +234,15 @@ final class NameOnboardingViewController: BaseViewController, UITextFieldDelegat
         continueButton.isEnabled = false
         let loading = AlertPresenter.showLoading(from: self)
         UserService.shared.updateUserProfile(displayName: [first, last].filter { !$0.isEmpty }.joined(separator: " "),
-                                             firstName: first, lastName: last, profilePicture: photoData) { [weak self] result in
+                                             firstName: first, lastName: last, profilePicture: photoData,
+                                             profilePictureUrl: photoData == nil ? avatarValue : nil) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     guard let self else { return }
                     switch result {
                     case .success(let user):
                         AuthService.shared.updateCurrentUser(user)
-                        AnalyticsService.shared.logEvent("onboarding_name_set", parameters: ["photo": self.photoData == nil ? "0" : "1"])
+                        AnalyticsService.shared.logEvent("onboarding_name_set", parameters: ["photo": self.photoData != nil ? "1" : (self.avatarValue != nil ? "avatar" : "0")])
                         self.finish()
                     case .failure(let error):
                         self.continueButton.isEnabled = true

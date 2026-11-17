@@ -207,7 +207,12 @@ enum StockAvatar {
     }
 
     /// Renders a stored value; nil when the string isn't a stock avatar.
+    /// Illustrated catalog avatars (favcircles.com/avatars/…) come from the
+    /// app bundle, so they never wait on the network either.
     static func image(from value: String, diameter: CGFloat = 80) -> UIImage? {
+        if let id = ProfileAvatarCatalog.id(from: value) {
+            return UIImage(named: ProfileAvatarCatalog.assetName(for: id))
+        }
         guard value.hasPrefix(scheme) else { return nil }
         let parts = value.dropFirst(scheme.count).components(separatedBy: ":")
         guard let face = parts.first, !face.isEmpty else { return nil }

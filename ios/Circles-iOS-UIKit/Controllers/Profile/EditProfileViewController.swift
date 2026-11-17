@@ -569,7 +569,7 @@ class EditProfileViewController: BaseViewController {
             profileImageData = image.jpegData(compressionQuality: 0.8)
         } else if let avatarName = selectedAvatarName {
             // Stock avatars already carry their scheme; legacy picks don't
-            profileImageUrl = avatarName.hasPrefix(StockAvatar.scheme)
+            profileImageUrl = avatarName.hasPrefix(StockAvatar.scheme) || ProfileAvatarCatalog.id(from: avatarName) != nil
                 ? avatarName
                 : "sf-symbol:\(avatarName)"
         }
