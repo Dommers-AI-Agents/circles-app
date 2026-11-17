@@ -1128,6 +1128,7 @@ extension HomeActivityFeedViewController: UITableViewDataSourcePrefetching {
             case .photos(let list): urls.append(contentsOf: list.prefix(3))
             case .moment(let thumb, _): urls.append(thumb)
             case .postcard(let image): urls.append(image)
+            case .run(let snapshot, _): urls.append(snapshot)
             }
         }
         if !urls.isEmpty { ImageService.shared.preloadImages(from: urls) }

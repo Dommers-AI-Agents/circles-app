@@ -7,12 +7,12 @@ import Foundation
 struct ActivityRowStyleTests {
     private func activity(_ type: ActivityType, photo: String? = nil, lat: Double? = nil, lng: Double? = nil,
                           thumb: String? = nil, clip: String? = nil, contentType: String? = nil, image: String? = nil,
-                          circle: String? = nil, id: String = "a") -> Activity {
+                          circle: String? = nil, runDetail: String? = nil, id: String = "a") -> Activity {
         let json: [String: Any?] = [
             "_id": id, "type": type.rawValue, "actorId": "u1", "targetType": "place", "targetId": "p1", "targetName": "Sal's",
             "circleName": circle, "timestamp": "2026-11-16T15:00:00Z",
             "metadata": ["placePhoto": photo, "latitude": lat, "longitude": lng, "videoThumbnail": thumb,
-                         "videoUrl": clip, "contentType": contentType, "imageUrl": image].compactMapValues { $0 }
+                         "videoUrl": clip, "contentType": contentType, "imageUrl": image, "runDetail": runDetail].compactMapValues { $0 }
         ]
         let data = try! JSONSerialization.data(withJSONObject: json.compactMapValues { $0 })
         let decoder = JSONDecoder()
@@ -34,6 +34,9 @@ struct ActivityRowStyleTests {
         #expect(ActivityRowStyle.style(single: activity(.videoUploaded, thumb: "t.jpg")) == .hero(.moment(thumb: "t.jpg", clip: nil)))
         #expect(ActivityRowStyle.style(single: activity(.postcardSent, image: "card.jpg")) == .hero(.postcard("card.jpg")))
         #expect(ActivityRowStyle.style(single: activity(.placeLiked, photo: "p.jpg")) == .compact)
+        // A posted run: the route map leads, the stats are the chip (2026-11-17)
+        #expect(ActivityRowStyle.style(single: activity(.runShared, photo: "route.png", runDetail: "5.00 mi · 48:59 · 9:48/mi")) == .hero(.run(snapshot: "route.png", detail: "5.00 mi · 48:59 · 9:48/mi")))
+        #expect(ActivityRowStyle.style(single: activity(.runShared)) == .compact)
         // The switch off: today's feed
         #expect(ActivityRowStyle.style(single: activity(.checkIn, photo: "p.jpg"), enabled: false) == .compact)
         // A 0,0 pin is no pin

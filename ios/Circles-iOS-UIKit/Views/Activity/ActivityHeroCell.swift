@@ -156,6 +156,8 @@ final class ActivityHeroCell: UITableViewCell {
         return stack
     }()
     private var quoteTopConstraint: NSLayoutConstraint!
+    /// 24 with chips, 0 without: no empty strip under the name (2026-11-17)
+    private var pillsHeightConstraint: NSLayoutConstraint!
 
     // MARK: Init
 
@@ -192,6 +194,7 @@ final class ActivityHeroCell: UITableViewCell {
 
         let pad = Constants.Spacing.small
         quoteTopConstraint = quoteLabel.topAnchor.constraint(equalTo: timestampLabel.bottomAnchor, constant: 6)
+        pillsHeightConstraint = reactionPills.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
             containerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium),
@@ -238,9 +241,9 @@ final class ActivityHeroCell: UITableViewCell {
             quoteTopConstraint,
             quoteLabel.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
             quoteLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -pad - 2),
-            reactionPills.topAnchor.constraint(equalTo: quoteLabel.bottomAnchor, constant: 6),
+            reactionPills.topAnchor.constraint(equalTo: quoteLabel.bottomAnchor, constant: 4),
             reactionPills.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
-            reactionPills.heightAnchor.constraint(equalToConstant: 24),
+            pillsHeightConstraint,
             reactionPills.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -pad - 2)
         ])
         pinView.isHidden = true
@@ -340,6 +343,7 @@ final class ActivityHeroCell: UITableViewCell {
         commentCountLabel.text = comments > 0 ? "\(comments)" : nil
         commentCountLabel.isHidden = comments == 0
         reactionPills.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        pillsHeightConstraint.constant = summary.isEmpty ? 0 : 24
         let top = summary.prefix(3)
         for reaction in top {
             let pill = ReactionPillView(configuration: ReactionPillConfiguration(emoji: reaction.emoji, count: reaction.count, isUserReaction: reaction.emoji == userReaction))
@@ -398,6 +402,13 @@ final class ActivityHeroCell: UITableViewCell {
         case .postcard(let image):
             photoView.isHidden = false
             load(image, into: photoView)
+        case .run(let snapshot, let detail):
+            // The route map, the way FavRun drew it; the stats as the chip
+            photoView.isHidden = false
+            mediaContainer.backgroundColor = UIColor(red: 0.87, green: 0.42, blue: 0.13, alpha: 1)
+            load(snapshot, into: photoView)
+            chip.text = detail.map { "🏃 \($0)" } ?? "🏃 Went for a run"
+            chip.isHidden = false
         }
         setNeedsLayout()
     }
@@ -458,7 +469,7 @@ final class ActivityHeroCell: UITableViewCell {
                 ActivityChoreography.pinDrop(pinView, ripplesIn: mediaContainer, at: pinView.center)
             }
             ActivityChoreography.slideInChip(chip, delay: 0.3)
-        case .placeAdded, .postcard:
+        case .placeAdded, .postcard, .run:
             ActivityChoreography.settle(photoView)
             ActivityChoreography.slideInChip(chip)
         case .photos:

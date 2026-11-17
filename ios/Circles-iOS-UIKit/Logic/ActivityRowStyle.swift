@@ -24,6 +24,8 @@ enum ActivityRowStyle: Equatable {
         case moment(thumb: String, clip: String?)
         /// A postcard or Fridge Mail picture
         case postcard(String)
+        /// A posted run: its route map, with the distance · time · pace line
+        case run(snapshot: String, detail: String?)
     }
 
     /// Up to this many photos in a stack
@@ -53,6 +55,11 @@ enum ActivityRowStyle: Equatable {
         case .postcardSent, .postcardMailed, .fridgemailSent:
             guard let image = nonEmpty(meta?.imageUrl) else { return .compact }
             return .hero(.postcard(image))
+        case .runShared:
+            // The route snapshot rides in placePhoto (or imageUrl); a run
+            // without one stays the compact row with the runner badge
+            guard let snapshot = nonEmpty(meta?.placePhoto) ?? nonEmpty(meta?.imageUrl) else { return .compact }
+            return .hero(.run(snapshot: snapshot, detail: nonEmpty(meta?.runDetail)))
         default:
             return .compact
         }
