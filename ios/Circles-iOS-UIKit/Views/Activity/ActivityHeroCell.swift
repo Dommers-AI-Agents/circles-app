@@ -371,19 +371,17 @@ final class ActivityHeroCell: UITableViewCell {
 
         switch hero {
         case .checkIn(let photo, let pin):
+            // The place's photo leads (Wes, 2026-11-16: "rather than the
+            // pin map image"); the map stands in only when there is no photo
             chip.text = "Checked in"
             chip.isHidden = false
-            if let pin {
+            if let photo {
+                photoView.isHidden = false
+                load(photo, into: photoView)
+            } else if let pin {
                 mapView.isHidden = false
                 pinView.isHidden = false
                 loadMap(at: CLLocationCoordinate2D(latitude: pin.latitude, longitude: pin.longitude))
-                if let photo {
-                    insetPhotoView.isHidden = false
-                    load(photo, into: insetPhotoView)
-                }
-            } else if let photo {
-                photoView.isHidden = false
-                load(photo, into: photoView)
             }
         case .placeAdded(let photo, let circleName):
             photoView.isHidden = false
@@ -453,11 +451,11 @@ final class ActivityHeroCell: UITableViewCell {
     func runMoment() {
         guard let hero, ActivityFeedPreference.animates else { return }
         switch hero {
-        case .checkIn(_, let pin):
-            if pin != nil {
-                ActivityChoreography.pinDrop(pinView, ripplesIn: mediaContainer, at: pinView.center)
-            } else {
+        case .checkIn(let photo, let pin):
+            if photo != nil {
                 ActivityChoreography.settle(photoView)
+            } else if pin != nil {
+                ActivityChoreography.pinDrop(pinView, ripplesIn: mediaContainer, at: pinView.center)
             }
             ActivityChoreography.slideInChip(chip, delay: 0.3)
         case .placeAdded, .postcard:
