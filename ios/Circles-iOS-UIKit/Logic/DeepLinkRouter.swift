@@ -26,6 +26,9 @@ enum DeepLinkDestination: Equatable {
     /// opener connects in one tap; without it, opening the link sends a request.
     case connectionInvite(userId: String, referralCode: String?, inviteToken: String? = nil)
     case importFlow
+    /// The unread-message email's "Open chat" (`/app/messages/<id>`); bare `/app/messages` = the Messages tab
+    case conversation(id: String)
+    case messages
     case allPlacesMap(focusCategory: String?)
     case notificationSettings
     /// Settings → Follow Requests (private profiles)
@@ -144,6 +147,8 @@ struct DeepLinkRouter {
                 return parts.count >= 3 ? .connectionInvite(userId: parts[2], referralCode: query(url, "code"), inviteToken: query(url, "t")) : nil
             case "import":
                 return .importFlow
+            case "messages":
+                return parts.count >= 3 ? .conversation(id: parts[2]) : .messages
             case "map":
                 return .allPlacesMap(focusCategory: query(url, "focus"))
             default:

@@ -4,8 +4,8 @@
 // someone taps "Don't Allow" or later turns notifications off, so a token on
 // file proves nothing; the app reports the real permission on every launch
 // (users.pushStatus, see deviceTokenController.updatePushStatus). When a push
-// is about something a person would want to know (a message, a new follower,
-// a comment, a tag, a suggestion) and they can't get pushes, it comes by
+// is about something a person would want to know (a new follower, a comment,
+// a tag, a suggestion) and they can't get pushes, it comes by
 // email instead.
 //
 // Not spam, by rule:
@@ -49,15 +49,8 @@ const clip = (s, n) => {
  * push payload ({ type, title, body, data }).
  */
 const EMAIL_TYPES = {
-  new_message: {
-    gapHours: 3,
-    key: (n) => `msg:${(n.data && n.data.conversationId) || (n.data && n.data.senderId) || 'any'}`,
-    // Message text stays out of email on purpose; the name is enough
-    line: (n) => `${clip(String(n.title || '').replace(/^💬\s*/, ''), 60) || 'Someone'} sent you a message`,
-    detail: () => null,
-    url: () => `${BASE}/app/open`,
-    button: 'Read it'
-  },
+  // new_message is not here: every unread message, pushes on or off, is
+  // emailed by services/messageEmailNudge (Wes, 2026-11-17).
   new_follower: {
     gapHours: 0,
     key: (n) => `follow:${(n.data && n.data.fromUserId) || 'any'}`,

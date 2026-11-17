@@ -15,6 +15,7 @@ const { runCategorySweep } = require('../../services/categorySweep');
 const { sendVenueReports } = require('../../services/venueReportsTask');
 const opentableDirectorySync = require('../../services/opentable/directorySync');
 const emailFallback = require('../../services/emailFallback');
+const messageEmailNudge = require('../../services/messageEmailNudge');
 
 const flag = (req, key) => req.query[key] === 'true' || (req.body && req.body[key] === true);
 
@@ -184,6 +185,11 @@ exports.piggyBankResolveClaim = async (req, res) => {
 exports.opentableDirectorySync = scheduledTask({
   name: 'opentable directory sync', log: '🍽️ OpenTable directory sync triggered via API', failure: 'Failed to sync the OpenTable directory',
   run: async () => ({ summary: await opentableDirectorySync.run() })
+});
+
+exports.messageEmails = scheduledTask({
+  name: 'unread message emails', log: '📨 Unread-message emails triggered via API', failure: 'Failed to send unread-message emails',
+  run: async () => ({ summary: await messageEmailNudge.runDue() })
 });
 
 exports.emailFallbackDigests = scheduledTask({

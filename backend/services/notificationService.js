@@ -388,6 +388,11 @@ class NotificationService {
       console.error('❌ Validation errors for message notification:', validationErrors);
     }
 
+    // Still unread an hour from now → an email (services/messageEmailNudge)
+    if (message.conversationId) {
+      require('./messageEmailNudge').queue(recipientId, message.conversationId);
+    }
+
     // Also send push notification
     await this.sendToUser(recipientId, {
       type: 'new_message',

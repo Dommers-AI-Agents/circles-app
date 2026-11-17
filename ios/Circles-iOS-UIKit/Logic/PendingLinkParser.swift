@@ -58,6 +58,9 @@ enum PendingLink: Equatable {
     /// "place-approvals:<globalPlaceId>" / "admin-dashboard:open": admin alerts on a cold start
     case placeApprovals(placeId: String)
     case adminDashboard
+    /// "conversation:<id>" / "messages": the unread-message email opened on a cold start
+    case conversation(id: String)
+    case messages
     /// "tab:<local|widgets>": a shared home tab opened before the app was ready.
     case homeTab(HomeContentSegment)
 
@@ -103,6 +106,7 @@ enum PendingLinkParser {
         case "create-wallet": return .createWallet
         case "add-place", "me": return .openPath(link)
         case "check-in": return .quickCheckIn
+        case "messages": return .messages
         default: break
         }
 
@@ -148,6 +152,7 @@ enum PendingLinkParser {
         case "venue-waitlist": return .venueWaitlist(venueId: payload)
         case "place-approvals": return .placeApprovals(placeId: payload)
         case "admin-dashboard": return .adminDashboard
+        case "conversation": return .conversation(id: payload)
         case "tab": return HomeContentSegment(shareSlug: payload).map(PendingLink.homeTab)
         case "video": return .video(id: payload)
         case "daily-summary": return .dailySummary

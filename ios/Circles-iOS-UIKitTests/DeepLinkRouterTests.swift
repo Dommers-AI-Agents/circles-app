@@ -24,6 +24,9 @@ struct DeepLinkRouterTests {
         #expect(dest("https://api.favcircles.com/app/circle/c1?share=tok") == .circle(id: "c1", shareToken: "tok"))
         #expect(dest("https://api.favcircles.com/app/connect/u1?code=ABC") == .connectionInvite(userId: "u1", referralCode: "ABC"))
         #expect(dest("https://api.favcircles.com/app/import") == .importFlow)
+        // The unread-message email opens the chat, or Messages
+        #expect(dest("https://api.favcircles.com/app/messages/conv1") == .conversation(id: "conv1"))
+        #expect(dest("https://api.favcircles.com/app/messages") == .messages)
         #expect(dest("https://api.favcircles.com/app/map") == .allPlacesMap(focusCategory: nil))
         #expect(dest("https://api.favcircles.com/app/map?focus=coffee") == .allPlacesMap(focusCategory: "coffee"))
         #expect(dest("https://api.favcircles.com/app/unknown") == nil)

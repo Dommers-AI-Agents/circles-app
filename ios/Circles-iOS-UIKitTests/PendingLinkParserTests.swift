@@ -42,6 +42,8 @@ struct PendingLinkParserTests {
         #expect(PendingLinkParser.parse("settings:follow-requests") == .followRequests)
         #expect(PendingLinkParser.parse("check-in:abc123") == .checkIn(placeId: "abc123"))
         #expect(PendingLinkParser.parse("daily-summary:anything") == .dailySummary)
+        #expect(PendingLinkParser.parse("conversation:conv1") == .conversation(id: "conv1"))
+        #expect(PendingLinkParser.parse("messages") == .messages)
     }
 
     @Test func malformedLinksNavigateNowhere() {

@@ -200,6 +200,22 @@ gcloud scheduler jobs create http follow-suggestions \
   --headers="Content-Type=application/json,X-Cloudscheduler=true" \
   --attempt-deadline=600s
 
+# Unread-message emails — every 15 minutes. A message still unread an hour
+# later gets one email, a day later one reminder (services/messageEmailNudge).
+echo -e "${GREEN}Creating unread-message email job...${NC}"
+gcloud scheduler jobs delete message-emails --location=$REGION --quiet 2>/dev/null || true
+gcloud scheduler jobs create http message-emails \
+  --location=$REGION \
+  --schedule="*/15 * * * *" \
+  --uri="${SERVICE_URL}/api/tasks/message-emails" \
+  --http-method=POST \
+  --oidc-service-account-email=circles-scheduler@circles-app-83b67.iam.gserviceaccount.com \
+  --oidc-token-audience="${SERVICE_URL}" \
+  --time-zone=Etc/UTC \
+  --description="Every 15 min: email people about messages unread for an hour (one reminder a day later)" \
+  --headers="Content-Type=application/json" \
+  --attempt-deadline=300s
+
 echo -e "${GREEN}✅ All scheduler jobs created successfully!${NC}"
 echo ""
 echo "View all jobs:"

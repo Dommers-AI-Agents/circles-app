@@ -862,6 +862,14 @@ const markMessagesAsRead = async (req, res) => {
 
     await batch.commit();
 
+    // Read up: no "you have an unread message" email for this chat
+    const unreadLeft = validMessageCount > 0
+      ? Math.max(0, (conversation.unreadCounts?.[userId] || 0) - validMessageCount)
+      : (conversation.unreadCounts?.[userId] || 0);
+    if (unreadLeft === 0) {
+      require('../services/messageEmailNudge').cleared(userId, conversationId);
+    }
+
     res.status(200).json({
       success: true,
       message: `Marked ${validMessageCount} messages as read`

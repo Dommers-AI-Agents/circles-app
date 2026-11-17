@@ -211,7 +211,7 @@ router.use(require('./postcardPublicRoutes'));
 router.use('/order', require('./orderWebRoutes'));
 
 // instead of a 404 JSON blob.
-router.get(['/app/open', '/app/daily-summary', '/daily-summary', '/app/import'], (req, res) => {
+router.get(['/app/open', '/app/daily-summary', '/daily-summary', '/app/import', '/app/messages', '/app/messages/:id'], (req, res) => {
   res.redirect('https://favcircles.com');
 });
 

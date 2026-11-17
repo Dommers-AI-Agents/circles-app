@@ -71,6 +71,7 @@ router.post('/follow-suggestions', verifyCloudScheduler, tasks.followSuggestions
 router.post('/map-digest', verifyCloudScheduler, tasks.mapDigest);
 router.post('/opentable-directory-sync', verifyCloudScheduler, tasks.opentableDirectorySync);
 router.post('/email-fallback-digests', verifyCloudScheduler, tasks.emailFallbackDigests);
+router.post('/message-emails', verifyCloudScheduler, tasks.messageEmails);
 router.post('/sweep-categories', verifyCloudScheduler, tasks.sweepCategories);
 router.post('/top-contributors', verifyCloudScheduler, tasks.topContributors);
 router.post('/special-event/:eventType', verifyCloudScheduler, tasks.specialEvent);

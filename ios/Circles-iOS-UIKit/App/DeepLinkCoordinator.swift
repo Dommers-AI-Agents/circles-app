@@ -176,6 +176,15 @@ final class DeepLinkCoordinator: SceneCoordinator {
         case .connectionInvite(let userId, let referralCode, let inviteToken):
             host?.inviteLinks.stashInviteReferralCode(referralCode)
             host?.inviteLinks.handleConnectionInvite(from: userId, inviteToken: inviteToken)
+        case .conversation(let id):
+            // Unread-message email → that chat
+            guard window?.rootViewController is CirclesTabBarController else {
+                UserDefaults.standard.set("conversation:\(id)", forKey: "pendingDeepLink")
+                return
+            }
+            NotificationCenter.default.post(name: .navigateToConversation, object: id)
+        case .messages:
+            selectTabOrStash(index: 2, pendingKey: "messages")
         case .importFlow:
             // Shared from Help → Importing Your Places; receivers without
             // the app get the website guide via the backend redirect
@@ -489,6 +498,8 @@ final class DeepLinkCoordinator: SceneCoordinator {
             case .venueWaitlist(let venueId): NotificationCenter.default.post(name: .navigateToVenueWaitlist, object: venueId)
             case .placeApprovals(let placeId): NotificationCenter.default.post(name: .navigateToPlaceApprovals, object: placeId)
             case .adminDashboard: NotificationCenter.default.post(name: .navigateToAdminDashboard, object: nil)
+            case .conversation(let id): NotificationCenter.default.post(name: .navigateToConversation, object: id)
+            case .messages: NotificationCenter.default.post(name: .navigateToMessages, object: nil)
             case .homeTab(let segment): self.navigateToHomeTab(segment)
             case .openPath(let path):
                 if let destination = DeepLinkRouter().openPathDestination(path) { self.route(destination) }
