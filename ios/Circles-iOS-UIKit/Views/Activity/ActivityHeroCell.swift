@@ -277,6 +277,7 @@ final class ActivityHeroCell: UITableViewCell {
         currentActivity = activity
         currentGroup = nil
         self.hero = hero
+        activityLabel.numberOfLines = 3
         words(for: activity, name: activity.actor?.displayName, description: activity.formattedDescription)
         if activity.type == .checkIn, let message = activity.metadata?.message, !message.isEmpty {
             quoteLabel.text = "\u{201C}\(message)\u{201D}"
@@ -304,6 +305,7 @@ final class ActivityHeroCell: UITableViewCell {
         currentGroup = activities
         hero = .photos(photos)
         words(for: first, name: first.actor?.displayName, description: activities.groupSummary)
+        activityLabel.numberOfLines = 0 // the whole summary plus the Show all line
         let action = isExpanded ? "Show less ▴" : "Show all \(activities.count) activities ▾"
         let text = NSMutableAttributedString(attributedString: activityLabel.attributedText ?? NSAttributedString())
         text.append(NSAttributedString(string: "\n" + action, attributes: [

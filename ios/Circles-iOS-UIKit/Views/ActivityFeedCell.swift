@@ -279,6 +279,9 @@ class ActivityFeedCell: UITableViewCell {
             placeImageView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: Constants.Spacing.small),
             placeImageView.widthAnchor.constraint(equalToConstant: 48),
             placeImageView.heightAnchor.constraint(equalToConstant: 48),
+            // With the empty strip gone, a one-line row must still hold its pictures
+            placeImageView.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.small),
+            avatarImageView.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.small),
             
             // Timestamp
             timestampLabel.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
