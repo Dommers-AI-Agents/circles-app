@@ -33,7 +33,17 @@ struct ActivityRowStyleTests {
         #expect(ActivityRowStyle.style(single: activity(.videoUploaded, thumb: "t.jpg", clip: "c.mp4", contentType: "photo")) == .hero(.moment(thumb: "t.jpg", clip: nil)))
         #expect(ActivityRowStyle.style(single: activity(.videoUploaded, thumb: "t.jpg")) == .hero(.moment(thumb: "t.jpg", clip: nil)))
         #expect(ActivityRowStyle.style(single: activity(.postcardSent, image: "card.jpg")) == .hero(.postcard("card.jpg")))
-        #expect(ActivityRowStyle.style(single: activity(.placeLiked, photo: "p.jpg")) == .compact)
+        // Likes, comments and circles with a picture are cards too, with a chip saying which (2026-11-17)
+        #expect(ActivityRowStyle.style(single: activity(.placeLiked, photo: "p.jpg")) == .hero(.tagged(photo: "p.jpg", chip: "♥ Liked")))
+        #expect(ActivityRowStyle.style(single: activity(.globalPlaceLiked, photo: "liked.jpg")) == .hero(.tagged(photo: "liked.jpg", chip: "♥ Liked this photo")))
+        #expect(ActivityRowStyle.style(single: activity(.videoLiked, thumb: "t.jpg")) == .hero(.tagged(photo: "t.jpg", chip: "♥ Liked this moment")))
+        #expect(ActivityRowStyle.style(single: activity(.placeCommented, photo: "p.jpg")) == .hero(.tagged(photo: "p.jpg", chip: "💬 Commented")))
+        #expect(ActivityRowStyle.style(single: activity(.circleCreated, photo: "cover.jpg")) == .hero(.tagged(photo: "cover.jpg", chip: "New circle")))
+        #expect(ActivityRowStyle.style(single: activity(.placeLiked)) == .compact)
+        #expect(ActivityRowStyle.style(single: activity(.profileUpdated, photo: "p.jpg")) == .compact)
+        // A row shown under its expanded burst stays compact: the burst's stack has its picture
+        #expect(ActivityRowStyle.style(single: activity(.placeLiked, photo: "p.jpg"), inGroup: true) == .compact)
+        #expect(ActivityRowStyle.style(single: activity(.checkIn, photo: "p.jpg"), inGroup: true) == .compact)
         // A posted run: the route map leads, the stats are the chip (2026-11-17)
         #expect(ActivityRowStyle.style(single: activity(.runShared, photo: "route.png", runDetail: "5.00 mi · 48:59 · 9:48/mi")) == .hero(.run(snapshot: "route.png", detail: "5.00 mi · 48:59 · 9:48/mi")))
         #expect(ActivityRowStyle.style(single: activity(.runShared)) == .compact)
@@ -43,12 +53,15 @@ struct ActivityRowStyleTests {
         #expect(ActivityRowStyle.style(single: activity(.checkIn, lat: 0, lng: 0)) == .compact)
     }
 
-    @Test func aBurstOfPhotosIsAStackAndMixedBurstsStayCompact() {
+    @Test func aBurstWithPicturesIsAStackAndOneWithoutStaysCompact() {
         let photos = [activity(.photoUploaded, photo: "1.jpg", id: "1"), activity(.photoUploaded, photo: "2.jpg", id: "2"), activity(.photoUploaded, photo: "2.jpg", id: "3")]
         #expect(ActivityRowStyle.style(group: photos) == .hero(.photos(["1.jpg", "2.jpg"])))
         let many = (0..<9).map { activity(.photoUploaded, photo: "\($0).jpg", id: "\($0)") }
         if case .hero(.photos(let urls)) = ActivityRowStyle.style(group: many) { #expect(urls.count == ActivityRowStyle.maxStackPhotos) } else { Issue.record("expected a stack") }
-        #expect(ActivityRowStyle.style(group: [activity(.photoUploaded, photo: "1.jpg"), activity(.placeAdded, photo: "p.jpg")]) == .compact)
+        // A mixed burst stacks whatever pictures it has (Wes, 2026-11-17); one with none keeps the summary row
+        #expect(ActivityRowStyle.style(group: [activity(.photoUploaded, photo: "1.jpg"), activity(.placeAdded, photo: "p.jpg")]) == .hero(.photos(["1.jpg", "p.jpg"])))
+        #expect(ActivityRowStyle.style(group: [activity(.placeLiked, photo: "1.jpg", id: "1"), activity(.placeLiked, photo: "2.jpg", id: "2")]) == .hero(.photos(["1.jpg", "2.jpg"])))
+        #expect(ActivityRowStyle.style(group: [activity(.placeLiked, id: "1"), activity(.placeCommented, id: "2")]) == .compact)
         #expect(ActivityRowStyle.style(group: photos, enabled: false) == .compact)
         #expect(ActivityRowStyle.estimatedHeight(.compact) < ActivityRowStyle.estimatedHeight(.hero(.photos(["1.jpg"]))))
     }

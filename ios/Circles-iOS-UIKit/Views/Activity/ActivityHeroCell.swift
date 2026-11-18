@@ -281,6 +281,11 @@ final class ActivityHeroCell: UITableViewCell {
         if activity.type == .checkIn, let message = activity.metadata?.message, !message.isEmpty {
             quoteLabel.text = "\u{201C}\(message)\u{201D}"
             quoteLabel.isHidden = false
+        } else if [.placeCommented, .commentAdded, .circleCommented, .commentLiked].contains(activity.type),
+                  let comment = activity.metadata?.comment, !comment.isEmpty {
+            // The words of the comment, the way the compact row quotes them
+            quoteLabel.text = "\u{201C}\(comment)\u{201D}"
+            quoteLabel.isHidden = false
         } else {
             quoteLabel.text = nil
             quoteLabel.isHidden = true
@@ -291,13 +296,19 @@ final class ActivityHeroCell: UITableViewCell {
         showMedia(hero)
     }
 
-    /// A burst of photos by one person: the stack of them
-    func configure(group activities: [Activity], photos: [String]) {
+    /// A burst by one person: the stack of its pictures, with the same
+    /// "Show all N ▾ / Show less ▴" line the compact summary row has
+    func configure(group activities: [Activity], photos: [String], isExpanded: Bool) {
         guard let first = activities.first else { return }
         currentActivity = first
         currentGroup = activities
         hero = .photos(photos)
         words(for: first, name: first.actor?.displayName, description: activities.groupSummary)
+        let action = isExpanded ? "Show less ▴" : "Show all \(activities.count) activities ▾"
+        let text = NSMutableAttributedString(attributedString: activityLabel.attributedText ?? NSAttributedString())
+        text.append(NSAttributedString(string: "\n" + action, attributes: [
+            .font: UIFont.systemFont(ofSize: 14, weight: .semibold), .foregroundColor: Constants.Colors.primary]))
+        activityLabel.attributedText = text
         quoteLabel.text = nil
         quoteLabel.isHidden = true
         quoteTopConstraint.constant = 0
@@ -409,6 +420,12 @@ final class ActivityHeroCell: UITableViewCell {
             load(snapshot, into: photoView)
             chip.text = detail.map { "🏃 \($0)" } ?? "🏃 Went for a run"
             chip.isHidden = false
+        case .tagged(let photo, let label):
+            // A like, a comment, a circle: the picture, the chip says which
+            photoView.isHidden = false
+            load(photo, into: photoView)
+            chip.text = label
+            chip.isHidden = false
         }
         setNeedsLayout()
     }
@@ -469,7 +486,7 @@ final class ActivityHeroCell: UITableViewCell {
                 ActivityChoreography.pinDrop(pinView, ripplesIn: mediaContainer, at: pinView.center)
             }
             ActivityChoreography.slideInChip(chip, delay: 0.3)
-        case .placeAdded, .postcard, .run:
+        case .placeAdded, .postcard, .run, .tagged:
             ActivityChoreography.settle(photoView)
             ActivityChoreography.slideInChip(chip)
         case .photos:

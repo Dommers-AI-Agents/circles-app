@@ -461,7 +461,8 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
     /// Which look a row gets (Logic/ActivityRowStyle)
     private func style(for item: FeedItem) -> ActivityRowStyle {
         switch item {
-        case .single(let a), .groupChild(let a): return ActivityRowStyle.style(single: a, enabled: isLively)
+        case .single(let a): return ActivityRowStyle.style(single: a, enabled: isLively)
+        case .groupChild(let a): return ActivityRowStyle.style(single: a, enabled: isLively, inGroup: true)
         case .group(let g): return ActivityRowStyle.style(group: g, enabled: isLively)
         }
     }
@@ -913,7 +914,10 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
             case .single(let activity), .groupChild(let activity):
                 cell.configure(activity: activity, hero: hero)
             case .group(let groupActivities):
-                if case .photos(let urls) = hero { cell.configure(group: groupActivities, photos: urls) }
+                if case .photos(let urls) = hero {
+                    cell.configure(group: groupActivities, photos: urls,
+                                   isExpanded: expandedGroupKeys.contains(groupActivities[0].id))
+                }
             }
             return cell
         }
@@ -1129,6 +1133,7 @@ extension HomeActivityFeedViewController: UITableViewDataSourcePrefetching {
             case .moment(let thumb, _): urls.append(thumb)
             case .postcard(let image): urls.append(image)
             case .run(let snapshot, _): urls.append(snapshot)
+            case .tagged(let photo, _): urls.append(photo)
             }
         }
         if !urls.isEmpty { ImageService.shared.preloadImages(from: urls) }

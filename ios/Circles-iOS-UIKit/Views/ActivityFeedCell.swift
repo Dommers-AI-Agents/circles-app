@@ -146,6 +146,12 @@ class ActivityFeedCell: UITableViewCell {
         return label
     }()
     
+    /// 24 with chips, 0 without: no empty strip under the row (2026-11-17,
+    /// the same fix the hero card got)
+    private var reactionPillsHeightConstraint: NSLayoutConstraint!
+    private var commentTopConstraint: NSLayoutConstraint!
+    private var reactionsLabelTopConstraint: NSLayoutConstraint!
+
     // Container for reaction pills
     private let reactionPillsContainer: UIStackView = {
         let stack = UIStackView()
@@ -219,6 +225,9 @@ class ActivityFeedCell: UITableViewCell {
         contentView.addSubview(threadLineView)
         containerLeadingConstraint = containerView.leadingAnchor.constraint(
             equalTo: contentView.leadingAnchor, constant: Constants.Spacing.medium)
+        reactionPillsHeightConstraint = reactionPillsContainer.heightAnchor.constraint(equalToConstant: 0)
+        commentTopConstraint = commentLabel.topAnchor.constraint(equalTo: timestampLabel.bottomAnchor, constant: 0)
+        reactionsLabelTopConstraint = reactionsLabel.topAnchor.constraint(equalTo: commentLabel.bottomAnchor, constant: 0)
         NSLayoutConstraint.activate([
             // Container view
             containerView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 3),
@@ -278,18 +287,18 @@ class ActivityFeedCell: UITableViewCell {
             
             // Comment label (optional)
             commentLabel.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
-            commentLabel.topAnchor.constraint(equalTo: timestampLabel.bottomAnchor, constant: Constants.Spacing.tiny),
+            commentTopConstraint,
             commentLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
             
             // Reactions label (optional)
             reactionsLabel.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
-            reactionsLabel.topAnchor.constraint(equalTo: commentLabel.bottomAnchor, constant: Constants.Spacing.tiny),
+            reactionsLabelTopConstraint,
             reactionsLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -Constants.Spacing.small),
             
             // Reaction pills container
             reactionPillsContainer.leadingAnchor.constraint(equalTo: activityLabel.leadingAnchor),
-            reactionPillsContainer.topAnchor.constraint(equalTo: reactionsLabel.bottomAnchor, constant: Constants.Spacing.tiny),
-            reactionPillsContainer.heightAnchor.constraint(equalToConstant: 24),
+            reactionPillsContainer.topAnchor.constraint(equalTo: reactionsLabel.bottomAnchor),
+            reactionPillsHeightConstraint,
             reactionPillsContainer.bottomAnchor.constraint(lessThanOrEqualTo: containerView.bottomAnchor, constant: -Constants.Spacing.small)
         ])
     }
@@ -300,6 +309,15 @@ class ActivityFeedCell: UITableViewCell {
         // from the layer's alpha channel every frame during scroll.
         containerView.layer.shadowPath = UIBezierPath(
             roundedRect: containerView.bounds, cornerRadius: 12).cgPath
+    }
+
+    /// Hidden lines take no room: the row ends at its last visible line
+    private func settleOptionalLines() {
+        if commentLabel.isHidden { commentLabel.text = nil }
+        commentTopConstraint.constant = commentLabel.isHidden ? 0 : Constants.Spacing.tiny
+        reactionsLabelTopConstraint.constant = reactionsLabel.isHidden ? 0 : Constants.Spacing.tiny
+        let hasPills = !reactionPillsContainer.isHidden && !reactionPillsContainer.arrangedSubviews.isEmpty
+        reactionPillsHeightConstraint.constant = hasPills ? 24 : 0
     }
 
     // MARK: - Configuration
@@ -371,6 +389,14 @@ class ActivityFeedCell: UITableViewCell {
         let shouldShowPlaceImage = (activity.type == .checkIn ||
                                    activity.type == .placeAdded ||
                                    activity.type == .placeLiked ||
+                                   activity.type == .placeCommented ||
+                                   activity.type == .commentAdded ||
+                                   // A photo like carries the liked photo (the
+                                   // server stamps it as placePhoto)
+                                   activity.type == .globalPlaceLiked ||
+                                   activity.type == .commentLiked ||
+                                   activity.type == .venueAnnouncement ||
+                                   activity.type == .venueOffer ||
                                    activity.type == .videoUploaded ||
                                    activity.type == .videoLiked ||
                                    activity.type == .photoUploaded ||
@@ -461,6 +487,7 @@ class ActivityFeedCell: UITableViewCell {
         
         // Update reaction pills and counts
         configureReactions(for: activity)
+        settleOptionalLines()
         
         // Update reaction button state based on user's reaction
         if let userReaction = activity.userReaction {
@@ -582,6 +609,7 @@ class ActivityFeedCell: UITableViewCell {
         }
         commentLabel.isHidden = true
         configureGroupReactions(for: activities)
+        settleOptionalLines()
     }
 
     /// Heart + chips for a group row, from its activities' own reactions
@@ -760,6 +788,7 @@ class ActivityFeedCell: UITableViewCell {
         commentCountLabel.text = nil
         reactionPillsContainer.arrangedSubviews.forEach { $0.removeFromSuperview() }
         reactionPillsContainer.isHidden = true
+        settleOptionalLines()
         currentActivity = nil
         delegate = nil
         

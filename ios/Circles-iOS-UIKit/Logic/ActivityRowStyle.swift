@@ -26,6 +26,10 @@ enum ActivityRowStyle: Equatable {
         case postcard(String)
         /// A posted run: its route map, with the distance · time · pace line
         case run(snapshot: String, detail: String?)
+        /// Anything else with a picture (a like, a comment, a circle): the
+        /// picture with a short chip saying what happened (Wes, 2026-11-17:
+        /// "make this pretty like the rest of the activity posts")
+        case tagged(photo: String, chip: String)
     }
 
     /// Up to this many photos in a stack
@@ -33,8 +37,10 @@ enum ActivityRowStyle: Equatable {
 
     /// The style for one feed row. `enabled` is the server switch AND the
     /// phone's own toggle; off, every row is compact (today's feed).
-    static func style(single activity: Activity, enabled: Bool = true) -> ActivityRowStyle {
-        guard enabled else { return .compact }
+    /// `inGroup`: a row shown under its expanded burst stays compact — the
+    /// burst's stack already shows its pictures.
+    static func style(single activity: Activity, enabled: Bool = true, inGroup: Bool = false) -> ActivityRowStyle {
+        guard enabled, !inGroup else { return .compact }
         let meta = activity.metadata
         switch activity.type {
         case .checkIn:
@@ -61,16 +67,35 @@ enum ActivityRowStyle: Equatable {
             guard let snapshot = nonEmpty(meta?.placePhoto) ?? nonEmpty(meta?.imageUrl) else { return .compact }
             return .hero(.run(snapshot: snapshot, detail: nonEmpty(meta?.runDetail)))
         default:
-            return .compact
+            guard let chip = chip(for: activity.type), let photo = picture(of: activity) else { return .compact }
+            return .hero(.tagged(photo: photo, chip: chip))
         }
     }
 
-    /// A collapsed burst: only an all-photos burst becomes a hero (the stack);
-    /// mixed bursts keep the "added 12 places · Show all" summary row.
+    /// The chip on a `.tagged` card, by what the row says happened; nil for
+    /// rows that never get a card (profile updates, suggestions, workouts…)
+    static func chip(for type: ActivityType) -> String? {
+        switch type {
+        case .placeLiked: return "♥ Liked"
+        case .globalPlaceLiked: return "♥ Liked this photo"
+        case .videoLiked: return "♥ Liked this moment"
+        case .commentLiked: return "♥ Liked a comment"
+        case .circleLiked: return "♥ Liked this circle"
+        case .placeCommented, .commentAdded, .circleCommented: return "💬 Commented"
+        case .circleCreated: return "New circle"
+        case .venueAnnouncement: return "📣 Announcement"
+        case .venueOffer: return "🎁 New offer"
+        default: return nil
+        }
+    }
+
+    /// A collapsed burst: the stack of the pictures its activities carry
+    /// (one per picture, at most `maxStackPhotos`); a burst with no pictures
+    /// keeps the "liked 12 places · Show all" summary row.
     static func style(group activities: [Activity], enabled: Bool = true) -> ActivityRowStyle {
-        guard enabled, !activities.isEmpty, activities.allSatisfy({ $0.type == .photoUploaded }) else { return .compact }
+        guard enabled, !activities.isEmpty else { return .compact }
         var seen = Set<String>()
-        let photos = activities.compactMap { nonEmpty($0.metadata?.placePhoto) }.filter { seen.insert($0).inserted }
+        let photos = activities.compactMap(picture(of:)).filter { seen.insert($0).inserted }
         guard !photos.isEmpty else { return .compact }
         return .hero(.photos(Array(photos.prefix(maxStackPhotos))))
     }
@@ -79,6 +104,12 @@ enum ActivityRowStyle: Equatable {
     static func estimatedHeight(_ style: ActivityRowStyle) -> CGFloat {
         if case .hero = style { return 330 }
         return 120
+    }
+
+    /// The picture a row carries, the same chain the compact thumbnail uses
+    static func picture(of activity: Activity) -> String? {
+        let meta = activity.metadata
+        return nonEmpty(meta?.placePhoto) ?? nonEmpty(meta?.videoThumbnail) ?? nonEmpty(meta?.imageUrl)
     }
 
     private static func nonEmpty(_ text: String?) -> String? {
