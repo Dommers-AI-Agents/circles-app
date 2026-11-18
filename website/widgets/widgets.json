@@ -63,8 +63,8 @@
       "widgets": [
         { "id": "weather", "emoji": "🌤️", "name": "Weather", "tagline": "Right now, the next hours and 10 days.",
           "features": ["The weather where you are, hour by hour and 10 days out", "Save the cities you care about and swipe between them, like the Weather app", "The temperature sits on the app's home screen too", "Live rain radar around US places, like the Weather app"] },
-        { "id": "stocks", "emoji": "📈", "name": "Stocks", "tagline": "Indexes, rates, crypto and the stocks you follow.",
-          "features": ["The Nasdaq, Dow and S&P at a glance, plus your own watchlist", "Named lists you can reorder, with a chart for each day", "The 10-year yield and Bitcoin right on the card"] },
+        { "id": "stocks", "emoji": "📈", "name": "Stocks", "tagline": "Indexes, rates, crypto, futures and the stocks you follow.",
+          "features": ["The Nasdaq, Dow and S&P at a glance, plus your own watchlist", "Futures too: Micro Nasdaq (MNQ), S&P 500 (ES), gold, crude oil and more, always the current contract", "Named lists you can reorder, with a chart for each day", "The 10-year yield and Bitcoin right on the card"] },
         { "id": "quotes", "emoji": "💭", "name": "Quotes", "tagline": "Good lines at the times you pick.",
           "features": ["Pick your topics and how many times a day", "Share a quote with a friend"] },
         { "id": "sleepsounds", "emoji": "🌙", "name": "Sleep Sounds", "tagline": "Rain, ocean, fire: mix and drift off.",
