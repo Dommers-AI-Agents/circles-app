@@ -288,6 +288,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
         // Profile-originated maps have one person by definition.
         connectionFilterButton.isHidden = !(viewMode == .allPlaces && showsConnectionFilter)
+        installConnectionFace()
 
         connectionFilterButton.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
             guard let self = self else { done([]); return }
@@ -406,8 +407,84 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         button.configuration?.attributedTitle = attributed
     }
 
+    /// The filtered person's face, inset at the leading edge of the Connection
+    /// dropdown (Wes, 2026-11-19: the expanded map "should also show a small
+    /// avatar of the person filtered"). Hidden for Everyone / My Connections.
+    private let connectionFaceView: UIImageView = {
+        let view = UIImageView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.contentMode = .scaleAspectFill
+        view.clipsToBounds = true
+        view.layer.cornerRadius = FullScreenMapViewController.connectionFaceDiameter / 2
+        view.layer.borderWidth = 1.5
+        view.layer.borderColor = UIColor.white.withAlphaComponent(0.9).cgColor
+        view.isUserInteractionEnabled = false
+        view.isHidden = true
+        return view
+    }()
+    private static let connectionFaceDiameter: CGFloat = 22
+    /// Which user the face view is currently loading for, so a late photo
+    /// never lands on the next selection.
+    private var connectionFaceUserId: String?
+
+    private func installConnectionFace() {
+        guard connectionFaceView.superview == nil else { return }
+        connectionFilterButton.addSubview(connectionFaceView)
+        NSLayoutConstraint.activate([
+            connectionFaceView.leadingAnchor.constraint(equalTo: connectionFilterButton.leadingAnchor, constant: 5),
+            connectionFaceView.centerYAnchor.constraint(equalTo: connectionFilterButton.centerYAnchor),
+            connectionFaceView.widthAnchor.constraint(equalToConstant: Self.connectionFaceDiameter),
+            connectionFaceView.heightAnchor.constraint(equalToConstant: Self.connectionFaceDiameter)
+        ])
+    }
+
+    private func updateConnectionFace() {
+        // The home page already wears the face in its own chip beside the
+        // embedded map; the expanded map has nothing else saying whose map
+        // it is, so the face lives in its header.
+        let face = isPresentedModally ? MapHeaderFace.user(
+            selectedId: selectedConnectionId,
+            selectedUser: selectedConnectionUser ?? resolvedConnectionUser(),
+            me: AuthService.shared.currentUser
+        ) : nil
+        var config = connectionFilterButton.configuration ?? .plain()
+        guard let face = face else {
+            connectionFaceView.isHidden = true
+            connectionFaceView.image = nil
+            connectionFaceUserId = nil
+            config.contentInsets.leading = 6
+            connectionFilterButton.configuration = config
+            return
+        }
+        connectionFaceView.isHidden = false
+        // Room for the face: leading gap + face + gap before the name.
+        config.contentInsets.leading = 5 + Self.connectionFaceDiameter + 5
+        connectionFilterButton.configuration = config
+        guard connectionFaceUserId != face.id else { return }
+        connectionFaceUserId = face.id
+        // Initials placeholder immediately, the photo when it arrives — and
+        // only if the selection is still this person by then.
+        connectionFaceView.image = AvatarPlaceholder.image(name: face.displayName, seed: face.id, diameter: Self.connectionFaceDiameter)
+        guard let url = face.profilePicture, !url.isEmpty else { return }
+        ImageService.shared.loadProfileImage(for: face.id, from: url) { [weak self] loaded in
+            DispatchQueue.main.async {
+                guard let self = self, let loaded = loaded, self.connectionFaceUserId == face.id else { return }
+                self.connectionFaceView.image = loaded
+            }
+        }
+    }
+
+    /// The selected person's User when only their id was handed over.
+    private func resolvedConnectionUser() -> User? {
+        guard let id = selectedConnectionId, id != HomePlaceFilter.myPlacesOnlyId, id != HomePlaceFilter.myConnectionsOnlyId else { return nil }
+        let currentUserId = AuthService.shared.getUserId() ?? ""
+        return connections.first(where: { IDNormalizer.isSameUser($0.otherUserId(currentUserId: currentUserId), id) })?.connectedUser
+            ?? NetworkManager.shared.followingUsers.first(where: { IDNormalizer.isSameUser($0.id, id) })
+    }
+
     /// The three labels always narrate the current view: "Me · Coffee · Arizona".
     private func updateFilterHeaderTitles() {
+        updateConnectionFace()
         let connectionTitle: String
         switch selectedConnectionId {
         case nil: connectionTitle = "Everyone"
@@ -620,7 +697,12 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
 
     /// The user whose places the map is filtered to; drives the avatar chip
     var selectedConnectionUser: User? {
-        didSet { updateConnectionAvatarChip() }
+        didSet {
+            updateConnectionAvatarChip()
+            // The home page pushes the user into the presented map after its
+            // own selection ran, so the header face follows the user too.
+            if isViewLoaded { updateConnectionFace() }
+        }
     }
 
     private func updateConnectionAvatarChip() {
