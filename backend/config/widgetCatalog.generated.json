@@ -127,7 +127,7 @@
  },
  "stocks": {
   "title": "Stocks",
-  "blurb": "Indexes, rates, crypto and the stocks you follow.",
+  "blurb": "Indexes, rates, crypto, futures and the stocks you follow.",
   "emoji": "📈",
   "page": "https://favcircles.com/widgets/stock-watchlist-app.html"
  },

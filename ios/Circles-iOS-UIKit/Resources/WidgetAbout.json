@@ -220,9 +220,10 @@
  },
  "stocks": {
   "name": "Stocks",
-  "tagline": "Indexes, rates, crypto and the stocks you follow.",
+  "tagline": "Indexes, rates, crypto, futures and the stocks you follow.",
   "features": [
    "The Nasdaq, Dow and S&P at a glance, plus your own watchlist",
+   "Futures too: Micro Nasdaq (MNQ), S&P 500 (ES), gold, crude oil and more, always the current contract",
    "Named lists you can reorder, with a chart for each day",
    "The 10-year yield and Bitcoin right on the card"
   ]
