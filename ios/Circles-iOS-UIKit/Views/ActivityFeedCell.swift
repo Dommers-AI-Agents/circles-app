@@ -413,14 +413,16 @@ class ActivityFeedCell: UITableViewCell {
                                    activity.type == .postcardMailed ||
                                    activity.type == .fridgemailSent ||
                                    // A posted run: the route map snapshot
-                                   activity.type == .runShared) &&
+                                   activity.type == .runShared ||
+                                   // A workout at a gym: the gym's photo
+                                   activity.type == .workoutShared) &&
                                    thumbnailUrl != nil
 
         placeImageView.isHidden = !shouldShowPlaceImage
         placeImageView.contentMode = .scaleAspectFill
         placeImageView.backgroundColor = Constants.Colors.lightGray
-        if activity.type == .workoutShared {
-            // A workout has no photo: the dumbbell, on the Workouts blue
+        if activity.type == .workoutShared && thumbnailUrl == nil {
+            // A workout with no gym check-in: the dumbbell, on the Workouts blue
             currentPlaceImageLoadId = nil
             placeImageView.isHidden = false
             placeImageView.image = UIImage(systemName: "dumbbell.fill",

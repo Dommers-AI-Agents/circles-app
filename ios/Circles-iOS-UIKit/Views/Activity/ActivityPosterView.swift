@@ -87,22 +87,52 @@ final class ActivityPosterView: UIView {
     }
 
     func configure(_ poster: ActivityRowStyle.Poster) {
+        photoLoadId = nil
         symbolView.image = UIImage(systemName: poster.symbol)
+        symbolView.isHidden = false
         titleLabel.text = poster.title
         detailLabel.text = poster.detail
         detailLabel.isHidden = poster.detail == nil
         let (a, b) = Self.colors(poster.tint)
+        wash.startPoint = CGPoint(x: 0, y: 0)
+        wash.endPoint = CGPoint(x: 1, y: 1)
+        wash.locations = nil
         wash.colors = [a.withAlphaComponent(0.92).cgColor, b.withAlphaComponent(0.78).cgColor]
         backgroundColor = a
+    }
+
+    private var photoLoadId: String?
+
+    /// A real picture (a workout's gym) instead of the colour: sharp, no
+    /// symbol, darkened toward the bottom so the white type reads. The
+    /// colour shows until the photo arrives.
+    func showPhoto(url: String) {
+        let loadId = UUID().uuidString
+        photoLoadId = loadId
+        ImageService.shared.loadImageWithKey(from: url, cacheKey: "activity_hero_\(url)") { [weak self] image in
+            DispatchQueue.main.async {
+                guard let self, self.photoLoadId == loadId, let image else { return }
+                self.backdrop.image = image
+                self.backdrop.alpha = 1
+                self.blur.isHidden = true
+                self.symbolView.isHidden = true
+                self.wash.startPoint = CGPoint(x: 0.5, y: 0)
+                self.wash.endPoint = CGPoint(x: 0.5, y: 1)
+                self.wash.locations = [0.35, 1]
+                self.wash.colors = [UIColor.clear.cgColor, UIColor.black.withAlphaComponent(0.72).cgColor]
+            }
+        }
     }
 
     /// The actor's photo under the wash; nil leaves the colour alone
     func setBackdrop(_ image: UIImage?) {
         backdrop.image = image
+        backdrop.alpha = 0.9
         blur.isHidden = image == nil
     }
 
     func reset() {
+        photoLoadId = nil
         backdrop.image = nil
         symbolView.image = nil
         titleLabel.text = nil

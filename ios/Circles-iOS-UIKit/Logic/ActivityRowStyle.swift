@@ -26,6 +26,10 @@ enum ActivityRowStyle: Equatable {
         case postcard(String)
         /// A posted run: its route map, with the distance · time · pace line
         case run(snapshot: String, detail: String?)
+        /// A shared workout at a gym the author checked into: the gym's main
+        /// photo under the workout's name and stats (Wes, 2026-11-19: "This
+        /// image for workouts is boring. Use the ymca main page image instead.")
+        case workout(photo: String, poster: Poster)
         /// Anything else with a picture (a like, a comment, a circle): the
         /// picture with a short chip saying what happened (Wes, 2026-11-17:
         /// "make this pretty like the rest of the activity posts")
@@ -82,6 +86,9 @@ enum ActivityRowStyle: Equatable {
         case .postcardSent, .postcardMailed, .fridgemailSent:
             guard let image = nonEmpty(meta?.imageUrl) else { return .hero(.poster(poster(for: activity))) }
             return .hero(.postcard(image))
+        case .workoutShared:
+            guard let photo = nonEmpty(meta?.placePhoto) else { return .hero(.poster(poster(for: activity))) }
+            return .hero(.workout(photo: photo, poster: poster(for: activity)))
         case .runShared:
             // The route snapshot rides in placePhoto (or imageUrl); a run
             // without one is the runner on FavRun's orange
@@ -157,7 +164,9 @@ enum ActivityRowStyle: Equatable {
         case .reactionAdded:
             return Poster(symbol: "hand.thumbsup.fill", title: name, detail: nil, chip: "Reacted", tint: tint)
         case .workoutShared:
-            return Poster(symbol: "dumbbell.fill", title: name, detail: nonEmpty(meta?.workoutDetail), chip: "🏋️ Workout", tint: tint)
+            // "5 exercises · 54 min · Dowd YMCA" when it knows the gym
+            let line = [nonEmpty(meta?.workoutDetail), nonEmpty(meta?.workoutPlaceName)].compactMap { $0 }.joined(separator: " · ")
+            return Poster(symbol: "dumbbell.fill", title: name, detail: nonEmpty(line), chip: "🏋️ Workout", tint: tint)
         case .runShared:
             return Poster(symbol: "figure.run", title: "Went for a run", detail: nonEmpty(meta?.runDetail), chip: nonEmpty(meta?.runDetail).map { "🏃 \($0)" } ?? "🏃 Run", tint: tint)
         case .postcardSent, .postcardMailed:

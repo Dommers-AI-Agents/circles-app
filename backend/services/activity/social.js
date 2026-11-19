@@ -697,11 +697,15 @@ const trackWorkoutShared = async (userId, { postId, summary, audience, audienceL
   const minutes = Math.round((summary.durationSeconds || 0) / 60);
   if (minutes > 0) parts.push(`${minutes} min`);
   if (summary.prCount > 0) parts.push(`${summary.prCount} PR${summary.prCount === 1 ? '' : 's'}`);
+  // The gym's main photo when the author checked in there (services/workoutPlace)
+  const place = await require('../workoutPlace').workoutPlaceFor(userId, summary, { audience, audienceListId });
   return createActivity('workout_shared', userId, 'workout', postId, summary.name || 'Workout', {
     workoutPostId: postId,
     workoutAudience: audience,
     audienceListId: audienceListId || null,
-    workoutDetail: parts.join(' · ') || null
+    workoutDetail: parts.join(' · ') || null,
+    placePhoto: place.placePhoto || null,
+    workoutPlaceName: place.placeName || null
   });
 };
 

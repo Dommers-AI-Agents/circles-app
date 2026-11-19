@@ -7,17 +7,30 @@ import Foundation
 struct ActivityRowStyleTests {
     private func activity(_ type: ActivityType, photo: String? = nil, lat: Double? = nil, lng: Double? = nil,
                           thumb: String? = nil, clip: String? = nil, contentType: String? = nil, image: String? = nil,
-                          circle: String? = nil, runDetail: String? = nil, id: String = "a") -> Activity {
+                          circle: String? = nil, runDetail: String? = nil, workoutDetail: String? = nil,
+                          gym: String? = nil, id: String = "a") -> Activity {
         let json: [String: Any?] = [
             "_id": id, "type": type.rawValue, "actorId": "u1", "targetType": "place", "targetId": "p1", "targetName": "Sal's",
             "circleName": circle, "timestamp": "2026-11-16T15:00:00Z",
             "metadata": ["placePhoto": photo, "latitude": lat, "longitude": lng, "videoThumbnail": thumb,
-                         "videoUrl": clip, "contentType": contentType, "imageUrl": image, "runDetail": runDetail].compactMapValues { $0 }
+                         "videoUrl": clip, "contentType": contentType, "imageUrl": image, "runDetail": runDetail,
+                         "workoutDetail": workoutDetail, "workoutPlaceName": gym].compactMapValues { $0 }
         ]
         let data = try! JSONSerialization.data(withJSONObject: json.compactMapValues { $0 })
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try! decoder.decode(Activity.self, from: data)
+    }
+
+    @Test func aWorkoutAtAGymShowsTheGymsPhoto() {
+        let atGym = activity(.workoutShared, photo: "ymca.jpg", workoutDetail: "5 exercises · 54 min", gym: "Dowd YMCA")
+        let poster = ActivityRowStyle.Poster(symbol: "dumbbell.fill", title: "Sal's", detail: "5 exercises · 54 min · Dowd YMCA",
+                                             chip: "🏋️ Workout", tint: .workout)
+        #expect(ActivityRowStyle.style(single: atGym) == .hero(.workout(photo: "ymca.jpg", poster: poster)))
+        // No check-in nearby: the blue Workouts card, as before
+        let home = activity(.workoutShared, workoutDetail: "5 exercises · 54 min")
+        #expect(ActivityRowStyle.style(single: home) == .hero(.poster(.init(symbol: "dumbbell.fill", title: "Sal's",
+                                                                            detail: "5 exercises · 54 min", chip: "🏋️ Workout", tint: .workout))))
     }
 
     @Test func rowsWithPicturesBecomeHeroCards() {

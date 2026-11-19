@@ -1131,6 +1131,7 @@ extension HomeActivityFeedViewController: UITableViewDataSourcePrefetching {
             case .moment(let thumb, _): urls.append(thumb)
             case .postcard(let image): urls.append(image)
             case .run(let snapshot, _): urls.append(snapshot)
+            case .workout(let photo, _): urls.append(photo)
             case .tagged(let photo, _): urls.append(photo)
             case .placeMap, .poster: break
             }

@@ -426,6 +426,14 @@ final class ActivityHeroCell: UITableViewCell {
             load(snapshot, into: photoView)
             chip.text = detail.map { "🏃 \($0)" } ?? "🏃 Went for a run"
             chip.isHidden = false
+        case .workout(let photo, let poster):
+            // The workout's card over the gym's photo, sharp, darkened at
+            // the bottom so the name and stats read
+            posterView.isHidden = false
+            posterView.configure(poster)
+            posterView.showPhoto(url: photo)
+            chip.text = poster.chip
+            chip.isHidden = poster.chip == nil
         case .tagged(let photo, let label):
             // A like, a comment, a circle: the picture, the chip says which
             photoView.isHidden = false
@@ -514,7 +522,7 @@ final class ActivityHeroCell: UITableViewCell {
         case .placeMap:
             ActivityChoreography.pinDrop(pinView, ripplesIn: mediaContainer, at: pinView.center)
             ActivityChoreography.slideInChip(chip, delay: 0.3)
-        case .poster:
+        case .poster, .workout:
             ActivityChoreography.settle(posterView)
             ActivityChoreography.slideInChip(chip)
         case .photos:

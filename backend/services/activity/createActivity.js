@@ -80,6 +80,8 @@ const createActivity = async (type, actorId, targetType, targetId, targetName, m
         workoutPostId: metadata.workoutPostId || null,
         workoutAudience: metadata.workoutAudience || null,
         workoutDetail: metadata.workoutDetail || null,
+        // The gym it was at (its photo rides in placePhoto; services/workoutPlace)
+        workoutPlaceName: metadata.workoutPlaceName || null,
         // Posted runs (FavRun): the run the row opens, its audience and
         // the "3.10 mi · 26:40 · 8:36/mi" line
         runId: metadata.runId || null,

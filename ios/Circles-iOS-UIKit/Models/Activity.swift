@@ -160,6 +160,8 @@ struct ActivityMetadata: Codable {
     let contentType: String?  // Moment content: "photo" | "video" (photo moments ride the video pipeline)
     let workoutPostId: String?  // Shared workout the row opens
     let workoutDetail: String?  // "6 exercises · 42 min · 2 PRs"
+    /// The gym the author checked into for this workout; its photo rides in placePhoto (rows from 2026-11-19)
+    var workoutPlaceName: String? = nil
     let runId: String?  // Posted run the row opens
     let runDetail: String?  // "3.10 mi · 26:40 · 8:36/mi"
     let imageUrl: String?  // Postcard / Fridge Mail picture
