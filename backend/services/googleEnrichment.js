@@ -136,6 +136,20 @@ const PIN_RADIUS_METERS = 50;
 
 const plainName = (name) => String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
+// A shop INSIDE a bigger place carries that place's name after its own:
+// "Pharmacy Farmacrimi Terminal 1 Airport Rome Fiumicino (FCO)" for a save
+// named "Fiumicino Airport Terminal 1" (2026-11-19, Matti's Rome trip) shares
+// every word of it. Google's listing of the place itself starts with the
+// place's own name, so a listing that starts with a word the saved name
+// doesn't have is a different venue unless the names are the same.
+const LEAD_SKIP = new Set(['the', 'a', 'an', 'la', 'le', 'il', 'el', 'los', 'las']);
+const nameWords = (name) => String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .split(/[^a-z0-9]+/).filter(Boolean).map((w) => (w.length > 3 && /[^siu]s$/.test(w) ? w.slice(0, -1) : w));
+const startsWithAnotherName = (placeName, candidateName) => {
+  const first = nameWords(candidateName).find((w) => !LEAD_SKIP.has(w));
+  return !!first && !nameWords(placeName).includes(first);
+};
+
 /**
  * Whether a Find Place candidate is the named venue: the same name (or the
  * same distinctive words, services/venueNameMatch) and, when Google says
@@ -153,6 +167,7 @@ const addressKey = (address) => {
 
 function isSameVenueListing(placeName, location, candidate, address = null) {
   if (!candidate || !candidate.name) return false;
+  if (plainName(placeName) !== plainName(candidate.name) && startsWithAnotherName(placeName, candidate.name)) return false;
   const { namesLikelySameVenue, sharedWords, leadingWord } = require('./venueNameMatch');
   const lead = leadingWord(placeName);
   const nameOverlaps = () => namesLikelySameVenue(placeName, candidate.name)

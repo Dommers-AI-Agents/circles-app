@@ -56,6 +56,16 @@ describe('a save without a Google id from the app', () => {
     expect(isSameVenueListing('RA Sushi Bar Restaurant', at, listing('RA Sushi Bar Restaurant', 32.25, -110.85))).toBe(false);
   });
 
+  it('never a shop inside the place, named after it', () => {
+    // Matti's Rome trip (2026-11-19): the pharmacy in Terminal 1 has every word of the terminal's name
+    expect(isSameVenueListing('Fiumicino Airport Terminal 1', at, listing('Pharmacy Farmacrimi Terminal 1 Airport Rome Fiumicino (FCO)', 32.32541, -110.92891))).toBe(false);
+    expect(isSameVenueListing('Terminal 1', at, listing('Starbucks Terminal 1', 32.32541, -110.92891))).toBe(false);
+    // The place's own listing still matches, with a leading "The" or Google's extra words after
+    expect(isSameVenueListing('Roman Forum', at, listing('Roman Forum'))).toBe(true);
+    expect(isSameVenueListing('Uptown Yolk Cafe', at, listing('The Uptown Yolk Cafe'))).toBe(true);
+    expect(isSameVenueListing('Charlotte Douglas Airport', at, listing('Charlotte Douglas International Airport'))).toBe(true);
+  });
+
   it('trusts the same door when the pin is a block off', () => {
     const far = { name: "Federici's on 10th", formatted_address: '705 10th Ave, Belmar, NJ 07719, USA', geometry: { location: { lat: 32.3284, lng: -110.9289 } } };
     expect(isSameVenueListing("Federici's On 10th", at, far, '705 Tenth Ave, Belmar, NJ 07719, USA')).toBe(true);
