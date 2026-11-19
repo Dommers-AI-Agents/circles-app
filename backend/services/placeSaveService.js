@@ -347,9 +347,12 @@ async function savePlace(user, body) {
     // nearby (Wes, 2026-11-14: RA Sushi Bar, added from Apple Maps, had no
     // rating, hours or photo). enrichFromGoogle: false opts out.
     const hasCoordinates = Array.isArray(placeData.location?.coordinates) && placeData.location.coordinates.length === 2;
-    if (body.enrichFromGoogle !== false && hasCoordinates && !placeData.googlePlaceId && !body.globalPlaceId) {
-      await require('./googleEnrichment').enrichSaveFromGoogle(placeData, { mustMatchName: body.enrichFromGoogle !== true });
-    }
+    const enrichBare = async () => {
+      if (body.enrichFromGoogle !== false && hasCoordinates && !placeData.googlePlaceId && !body.globalPlaceId) {
+        await require('./googleEnrichment').enrichSaveFromGoogle(placeData, { mustMatchName: body.enrichFromGoogle !== true });
+      }
+    };
+    await enrichBare();
 
     // Second duplicate gate, post-enrichment: a share-extension save arrives
     // without googlePlaceId, so the name+address check above misses the same
@@ -379,6 +382,15 @@ async function savePlace(user, body) {
         || await isVerifiedVenueOwner(user.uid, null, placeData.googlePlaceId);
       if (!exempt) {
         await anchorVenueFieldsToSource(placeData);
+        // The app's Google id was a street address and was dropped: look the
+        // place itself up by name, as for any save without a Google id. Older
+        // apps (1.4.x) send the address's id for many real places, so without
+        // this they all landed in Approve places (Matti's Rome saves, 2026-11-18:
+        // Roman Forum, Spanish Steps…).
+        if (!placeData.googlePlaceId) {
+          await enrichBare();
+          if (placeData.googlePlaceId) await anchorVenueFieldsToSource(placeData);
+        }
       }
     }
 
