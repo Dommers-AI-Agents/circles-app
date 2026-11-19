@@ -82,6 +82,7 @@ final class ActivityHeroCell: UITableViewCell {
     }()
     private let stackView = PhotoStackView()
     private let clipView = ActivityClipView()
+    private let posterView = ActivityPosterView()
     /// "Saved to Brunch" / "Checked in"
     private let chip: PaddedPillLabel = {
         let label = PaddedPillLabel()
@@ -173,14 +174,14 @@ final class ActivityHeroCell: UITableViewCell {
     private func build() {
         contentView.addSubview(containerView)
         containerView.addSubview(mediaContainer)
-        for view in [mapView, photoView, clipView, stackView, insetPhotoView, pinView, chip] as [UIView] {
+        for view in [mapView, photoView, clipView, stackView, posterView, insetPhotoView, pinView, chip] as [UIView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             mediaContainer.addSubview(view)
         }
         // The full-bleed media views follow the container by constraint: a
         // manual frame set in layoutSubviews ran before the container had
         // its size (the photo stack came up blank, 2026-11-16)
-        for view in [mapView, photoView, clipView, stackView] as [UIView] {
+        for view in [mapView, photoView, clipView, stackView, posterView] as [UIView] {
             NSLayoutConstraint.activate([
                 view.topAnchor.constraint(equalTo: mediaContainer.topAnchor),
                 view.leadingAnchor.constraint(equalTo: mediaContainer.leadingAnchor),
@@ -299,11 +300,11 @@ final class ActivityHeroCell: UITableViewCell {
 
     /// A burst by one person: the stack of its pictures, with the same
     /// "Show all N ▾ / Show less ▴" line the compact summary row has
-    func configure(group activities: [Activity], photos: [String], isExpanded: Bool) {
+    func configure(group activities: [Activity], hero: ActivityRowStyle.Hero, isExpanded: Bool) {
         guard let first = activities.first else { return }
         currentActivity = first
         currentGroup = activities
-        hero = .photos(photos)
+        self.hero = hero
         words(for: first, name: first.actor?.displayName, description: activities.groupSummary)
         activityLabel.numberOfLines = 0 // the whole summary plus the Show all line
         let action = isExpanded ? "Show less ▴" : "Show all \(activities.count) activities ▾"
@@ -319,7 +320,7 @@ final class ActivityHeroCell: UITableViewCell {
         configureReactions(userReaction: mine, summary: summary, total: summary.reduce(0) { $0 + $1.count }, comments: 0)
         commentButton.isHidden = true
         commentCountLabel.isHidden = true
-        showMedia(.photos(photos))
+        showMedia(hero)
     }
 
     private func words(for activity: Activity, name: String?, description: String) {
@@ -339,6 +340,7 @@ final class ActivityHeroCell: UITableViewCell {
                 DispatchQueue.main.async {
                     guard let self, self.avatarLoadId == loadId, let image else { return }
                     self.avatarImageView.image = image
+                    if !self.posterView.isHidden { self.posterView.setBackdrop(image) }
                 }
             }
         }
@@ -382,8 +384,10 @@ final class ActivityHeroCell: UITableViewCell {
         [mapView, photoView, insetPhotoView, pinView, chip].forEach { $0.isHidden = true }
         stackView.isHidden = true
         clipView.isHidden = true
+        posterView.isHidden = true
         clipView.stop()
         stackView.reset()
+        posterView.reset()
         mediaContainer.backgroundColor = Constants.Colors.lightGray
 
         switch hero {
@@ -428,6 +432,22 @@ final class ActivityHeroCell: UITableViewCell {
             load(photo, into: photoView)
             chip.text = label
             chip.isHidden = false
+        case .placeMap(let pin, let label):
+            // No picture yet, but a pin: the block, the way a check-in shows it
+            mapView.isHidden = false
+            pinView.isHidden = false
+            loadMap(at: CLLocationCoordinate2D(latitude: pin.latitude, longitude: pin.longitude))
+            chip.text = label
+            chip.isHidden = false
+        case .poster(let poster):
+            posterView.isHidden = false
+            posterView.configure(poster)
+            // The actor's photo as the wash: the one already on the avatar,
+            // else whatever the avatar load brings
+            let avatar = avatarImageView.image
+            posterView.setBackdrop(avatar?.isSymbolImage == true ? nil : avatar)
+            chip.text = poster.chip
+            chip.isHidden = poster.chip == nil
         }
         setNeedsLayout()
     }
@@ -490,6 +510,12 @@ final class ActivityHeroCell: UITableViewCell {
             ActivityChoreography.slideInChip(chip, delay: 0.3)
         case .placeAdded, .postcard, .run, .tagged:
             ActivityChoreography.settle(photoView)
+            ActivityChoreography.slideInChip(chip)
+        case .placeMap:
+            ActivityChoreography.pinDrop(pinView, ripplesIn: mediaContainer, at: pinView.center)
+            ActivityChoreography.slideInChip(chip, delay: 0.3)
+        case .poster:
+            ActivityChoreography.settle(posterView)
             ActivityChoreography.slideInChip(chip)
         case .photos:
             stackView.fanOpen()
@@ -572,12 +598,15 @@ final class ActivityHeroCell: UITableViewCell {
         mapCoordinate = nil
         clipView.stop()
         stackView.reset()
+        posterView.reset()
         ActivityChoreography.clearRipples(in: mediaContainer)
         for view in [mapView, photoView, insetPhotoView] { view.image = nil }
         pinView.transform = .identity
         pinView.alpha = 1
         photoView.transform = .identity
         photoView.alpha = 1
+        posterView.transform = .identity
+        posterView.alpha = 1
         chip.transform = .identity
         chip.alpha = 1
         containerView.transform = .identity

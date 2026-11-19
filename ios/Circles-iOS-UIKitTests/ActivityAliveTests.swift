@@ -24,9 +24,11 @@ struct ActivityRowStyleTests {
         let pin = ActivityRowStyle.Coordinate(latitude: 35.2, longitude: -80.8)
         #expect(ActivityRowStyle.style(single: activity(.checkIn, photo: "p.jpg", lat: 35.2, lng: -80.8)) == .hero(.checkIn(photo: "p.jpg", pin: pin)))
         #expect(ActivityRowStyle.style(single: activity(.checkIn, lat: 35.2, lng: -80.8)) == .hero(.checkIn(photo: nil, pin: pin)))
-        #expect(ActivityRowStyle.style(single: activity(.checkIn)) == .compact)
+        // A check-in with neither photo nor pin: a poster, never the bare row (2026-11-19)
+        #expect(ActivityRowStyle.style(single: activity(.checkIn)) == .hero(.poster(.init(symbol: "mappin.and.ellipse", title: "Sal's", detail: nil, chip: "Checked in", tint: .brand))))
         #expect(ActivityRowStyle.style(single: activity(.placeAdded, photo: "p.jpg", circle: "Brunch")) == .hero(.placeAdded(photo: "p.jpg", circleName: "Brunch")))
-        #expect(ActivityRowStyle.style(single: activity(.placeAdded)) == .compact)
+        #expect(ActivityRowStyle.style(single: activity(.placeAdded, lat: 35.2, lng: -80.8, circle: "Brunch")) == .hero(.placeMap(pin: pin, chip: "Saved to Brunch")))
+        #expect(ActivityRowStyle.style(single: activity(.placeAdded, circle: "Brunch")) == .hero(.poster(.init(symbol: "mappin.circle.fill", title: "Sal's", detail: nil, chip: "Saved to Brunch", tint: .brand))))
         #expect(ActivityRowStyle.style(single: activity(.photoUploaded, photo: "p.jpg")) == .hero(.photos(["p.jpg"])))
         #expect(ActivityRowStyle.style(single: activity(.videoUploaded, thumb: "t.jpg", clip: "c.mp4")) == .hero(.moment(thumb: "t.jpg", clip: "c.mp4")))
         // A photo moment never loops; an older row has no clip
@@ -39,18 +41,29 @@ struct ActivityRowStyleTests {
         #expect(ActivityRowStyle.style(single: activity(.videoLiked, thumb: "t.jpg")) == .hero(.tagged(photo: "t.jpg", chip: "♥ Liked this moment")))
         #expect(ActivityRowStyle.style(single: activity(.placeCommented, photo: "p.jpg")) == .hero(.tagged(photo: "p.jpg", chip: "💬 Commented")))
         #expect(ActivityRowStyle.style(single: activity(.circleCreated, photo: "cover.jpg")) == .hero(.tagged(photo: "cover.jpg", chip: "New circle")))
-        #expect(ActivityRowStyle.style(single: activity(.placeLiked)) == .compact)
-        #expect(ActivityRowStyle.style(single: activity(.profileUpdated, photo: "p.jpg")) == .compact)
+        #expect(ActivityRowStyle.style(single: activity(.placeLiked, lat: 35.2, lng: -80.8)) == .hero(.placeMap(pin: pin, chip: "♥ Liked")))
+        #expect(ActivityRowStyle.style(single: activity(.placeLiked)) == .hero(.poster(.init(symbol: "heart.fill", title: "Sal's", detail: nil, chip: "♥ Liked", tint: .like))))
+        #expect(ActivityRowStyle.style(single: activity(.profileUpdated, photo: "p.jpg")) == .hero(.poster(.init(symbol: "person.crop.circle.badge.checkmark", title: "Updated their profile", detail: nil, chip: nil, tint: .people))))
         // A row shown under its expanded burst stays compact: the burst's stack has its picture
         #expect(ActivityRowStyle.style(single: activity(.placeLiked, photo: "p.jpg"), inGroup: true) == .compact)
         #expect(ActivityRowStyle.style(single: activity(.checkIn, photo: "p.jpg"), inGroup: true) == .compact)
         // A posted run: the route map leads, the stats are the chip (2026-11-17)
         #expect(ActivityRowStyle.style(single: activity(.runShared, photo: "route.png", runDetail: "5.00 mi · 48:59 · 9:48/mi")) == .hero(.run(snapshot: "route.png", detail: "5.00 mi · 48:59 · 9:48/mi")))
-        #expect(ActivityRowStyle.style(single: activity(.runShared)) == .compact)
+        #expect(ActivityRowStyle.style(single: activity(.runShared, runDetail: "3.10 mi")) == .hero(.poster(.init(symbol: "figure.run", title: "Went for a run", detail: "3.10 mi", chip: "🏃 3.10 mi", tint: .run))))
         // The switch off: today's feed
         #expect(ActivityRowStyle.style(single: activity(.checkIn, photo: "p.jpg"), enabled: false) == .compact)
         // A 0,0 pin is no pin
-        #expect(ActivityRowStyle.style(single: activity(.checkIn, lat: 0, lng: 0)) == .compact)
+        if case .hero(.poster) = ActivityRowStyle.style(single: activity(.checkIn, lat: 0, lng: 0)) {} else { Issue.record("expected a poster") }
+    }
+
+    /// Wes, 2026-11-19: "I want every activity to have a full pretty card" —
+    /// every kind the app knows, with nothing in its metadata, is a card
+    @Test func everyKindOfActivityIsACard() {
+        for type in ActivityType.allCases {
+            let style = ActivityRowStyle.style(single: activity(type))
+            if case .hero = style {} else { Issue.record("\(type) is not a card: \(style)") }
+            #expect(ActivityRowStyle.style(single: activity(type), enabled: false) == .compact)
+        }
     }
 
     @Test func aBurstWithPicturesIsAStackAndOneWithoutStaysCompact() {
@@ -61,7 +74,9 @@ struct ActivityRowStyleTests {
         // A mixed burst stacks whatever pictures it has (Wes, 2026-11-17); one with none keeps the summary row
         #expect(ActivityRowStyle.style(group: [activity(.photoUploaded, photo: "1.jpg"), activity(.placeAdded, photo: "p.jpg")]) == .hero(.photos(["1.jpg", "p.jpg"])))
         #expect(ActivityRowStyle.style(group: [activity(.placeLiked, photo: "1.jpg", id: "1"), activity(.placeLiked, photo: "2.jpg", id: "2")]) == .hero(.photos(["1.jpg", "2.jpg"])))
-        #expect(ActivityRowStyle.style(group: [activity(.placeLiked, id: "1"), activity(.placeCommented, id: "2")]) == .compact)
+        // A burst with no pictures is a poster carrying its summary
+        #expect(ActivityRowStyle.style(group: [activity(.placeLiked, id: "1"), activity(.placeCommented, id: "2")])
+                == .hero(.poster(.init(symbol: "square.stack.fill", title: "Liked Sal's and commented on Sal's", detail: nil, chip: "2 activities", tint: .like))))
         #expect(ActivityRowStyle.style(group: photos, enabled: false) == .compact)
         #expect(ActivityRowStyle.estimatedHeight(.compact) < ActivityRowStyle.estimatedHeight(.hero(.photos(["1.jpg"]))))
     }

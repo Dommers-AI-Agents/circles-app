@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - Activity Type
-enum ActivityType: String, Codable {
+enum ActivityType: String, Codable, CaseIterable {
     case placeAdded = "place_added"
     case placeLiked = "place_liked"
     case placeCommented = "place_commented"
