@@ -8,6 +8,7 @@ const { makeViewerContext } = require('../services/viewerContext');
 const { getInnerCircleGrantorLists } = require('../utils/networkAccess');
 const { fetchUsersById } = require('../services/userLookup');
 const { withCurrentCircle, withCurrentReactors } = require('../services/activityFeedOverlay');
+const { fillVenues } = require('../services/activityVenueFill');
 const db = getFirestore();
 
 /** Existing docs for these ids, read by reference in chunks of 100. */
@@ -356,7 +357,9 @@ exports.getNetworkActivities = async (req, res, next) => {
       circlesById: circlesMap,
       settingsByActor
     });
-    const filteredActivities = visibleActivities.slice(0, limitCount);
+    // A place row without a picture or a pin gets its venue's, as the venue
+    // record has them now (Wes, 2026-11-19: every activity gets a full card)
+    const filteredActivities = await fillVenues(visibleActivities.slice(0, limitCount));
 
     // More to show if the window held more than a page after filtering, or
     // the store held more than the window.

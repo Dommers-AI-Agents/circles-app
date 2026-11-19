@@ -12,7 +12,7 @@ jest.mock('../../config/firebase', () => ({
 }));
 
 const { getNetworkActivities } = require('../activityController');
-const { withCurrentCircle } = require('../../services/activityFeedOverlay');
+const { withCurrentCircle, withCurrentVenue } = require('../../services/activityFeedOverlay');
 
 const res = () => {
   const r = {};
@@ -30,7 +30,7 @@ const run = async () => {
 };
 
 beforeEach(async () => {
-  for (const name of ['users', 'circles', 'activities', 'activityReactions', 'connections']) mockDb.rows(name).clear();
+  for (const name of ['users', 'circles', 'activities', 'activityReactions', 'connections', 'places', 'globalPlaces']) mockDb.rows(name).clear();
   await put('users', 'viewer', { displayName: 'Viewer', following: ['alex'] });
   await put('users', 'alex', { displayName: 'Alex', profilePicture: 'https://x/alex.jpg' });
   await put('users', 'rae', { displayName: 'Rae Now', profilePicture: 'https://x/rae-new.jpg' });
@@ -46,6 +46,15 @@ beforeEach(async () => {
     circleId: 'c1', circleName: 'Food', timestamp: '2026-10-21T10:00:00.000Z',
     metadata: { placePhoto: 'https://x/place.jpg', placePrivacy: 'public' }
   });
+  // Written before the venue had a picture: the feed fills it from the venue record now
+  await put('activities', 'a3', {
+    type: 'place_added', actorId: 'alex', targetType: 'place', targetId: 'p3', targetName: 'Sky Harbor',
+    circleId: 'c1', circleName: 'Food', timestamp: '2026-10-22T10:00:00.000Z',
+    metadata: { placePhoto: null, placePrivacy: 'public' }
+  });
+  await put('places', 'p3', { name: 'Sky Harbor', addedBy: 'alex', privacy: 'public', globalPlaceId: 'g3', photos: [] });
+  await put('globalPlaces', 'g3', { name: 'Sky Harbor', coverPhotoUrl: 'https://x/venue-cover.jpg', category: 'airport',
+    location: { type: 'Point', coordinates: [-112.01, 33.43] } });
   await put('activityReactions', 'r1', { activityId: 'a1', userId: 'rae', emoji: '🔥', userName: 'Rae Then', userPhoto: 'https://x/rae-old.jpg' });
   await put('activityReactions', 'r2', { activityId: 'a1', userId: 'gone', emoji: '🔥', userName: 'Deleted Person', userPhoto: null });
 });
@@ -75,4 +84,28 @@ test('a deleted circle keeps the stored name', () => {
   const row = { targetType: 'circle', targetId: 'c9', circleId: 'c9', circleName: 'Old', targetName: 'Old', metadata: { placePhoto: 'a' } };
   expect(withCurrentCircle(row, new Map([['c9', { name: 'New', deletedAt: '2026-10-01' }]]))).toBe(row);
   expect(withCurrentCircle(row, new Map())).toBe(row);
+});
+
+test('a place row without a picture or pin gets its venue\'s photo, location and category (2026-11-19)', async () => {
+  const body = await run();
+  const row = body.activities.find((a) => (a.id || a._id) === 'a3');
+  expect(row.metadata).toMatchObject({ placePhoto: 'https://x/venue-cover.jpg', latitude: 33.43, longitude: -112.01, placeCategory: 'airport' });
+  // A row that already has its picture keeps it
+  const kept = body.activities.find((a) => (a.id || a._id) === 'a2');
+  expect(kept.metadata.placePhoto).toBe('https://x/place.jpg');
+});
+
+test('withCurrentVenue never overwrites a stored value and leaves non-place rows alone', () => {
+  const venuesById = new Map([['g1', { coverPhotoUrl: 'https://x/v.jpg', category: 'cafe', location: { coordinates: [-80.8, 35.2] } }]]);
+  const savesById = new Map([['p1', { globalPlaceId: 'g1', photos: ['https://x/own.jpg'] }]]);
+  const stored = { targetType: 'place', targetId: 'p1', metadata: { placePhoto: 'https://x/mine.jpg', latitude: 1, longitude: 2, placeCategory: 'bar' } };
+  expect(withCurrentVenue(stored, { venuesById, savesById })).toBe(stored);
+  const bare = { targetType: 'place', targetId: 'p1', metadata: {} };
+  expect(withCurrentVenue(bare, { venuesById, savesById }).metadata).toEqual({ placePhoto: 'https://x/own.jpg', latitude: 35.2, longitude: -80.8, placeCategory: 'cafe' });
+  const byVenueId = { targetType: 'global_place', targetId: 'photo9', metadata: { globalPlaceId: 'g1' } };
+  expect(withCurrentVenue(byVenueId, { venuesById, savesById }).metadata.placePhoto).toBe('https://x/v.jpg');
+  const circleRow = { targetType: 'circle', targetId: 'c1', metadata: {} };
+  expect(withCurrentVenue(circleRow, { venuesById, savesById })).toBe(circleRow);
+  const profile = { targetType: 'user', targetId: 'u1', metadata: {} };
+  expect(withCurrentVenue(profile, { venuesById, savesById })).toBe(profile);
 });
