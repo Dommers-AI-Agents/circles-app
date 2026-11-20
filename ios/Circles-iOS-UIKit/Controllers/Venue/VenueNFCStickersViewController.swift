@@ -96,18 +96,19 @@ class VenueNFCStickersViewController: BaseViewController {
 
     // MARK: - Add + write
 
-    /// Window (save the store: tables, tents, the window) or Register (earn
-    /// points: the counter only), then its name (Wes, 2026-11-05)
+    /// Window (save the store: tables, tents, the window) or Points (earn
+    /// points: the counter, or a Favvy figure), then its name (Wes, 2026-11-05;
+    /// "Register" became "Points" 2026-11-20: it carries the window link now)
     @objc private func addTapped() {
         guard NFCStickerSession.isAvailable else { return showError(NFCStickerSession.Failure.unavailable) }
         // One kind: a tap joins FavCircles
         if genericJoin { return askName(register: false) }
         AlertPresenter.showActionSheet(
             title: "Which sticker?",
-            message: "Window stickers open \(venueName)'s card so people can save it (tables, table tents, the window). Register stickers earn points for a purchase, like the register card, so keep them at the counter.",
+            message: "Window stickers open \(venueName)'s card so people can save it (tables, table tents, the window). Points stickers earn points once a day, like the register card, so keep them at the counter (or in a Favvy figure).",
             actions: [
                 ("Window: \u{201C}Love it here? Save us\u{201D}", .default, { [weak self] in self?.askName(register: false) }),
-                ("Register: earn points", .default, { [weak self] in self?.askName(register: true) })
+                ("Points: earn points", .default, { [weak self] in self?.askName(register: true) })
             ],
             from: self,
             sourceView: nil)
@@ -226,7 +227,7 @@ class VenueNFCStickersViewController: BaseViewController {
             AlertPresenter.showInfo(
                 title: "\u{201C}\(sticker?.label ?? tag)\u{201D}",
                 message: sticker?.isRegister == true
-                    ? "This is your register sticker. A tap at the counter earns points at \(venueName), and it counts here."
+                    ? "This is your points sticker. A tap earns points at \(venueName) once a day, and it counts here."
                     : "This is your sticker. Taps open \(venueName)'s card and count here.", from: self)
         case .removedTag:
             AlertPresenter.showInfo(
@@ -249,9 +250,9 @@ class VenueNFCStickersViewController: BaseViewController {
         var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = [
             ("Write another sticker like this", .default, { [weak self] in self?.write(sticker) })
         ]
-        // Register stickers stay rewritable: replacing the register code
-        // changes their link, and a locked one would be dead
-        if sticker.writtenAt != nil && !sticker.isRegister {
+        // Every sticker carries the lasting window link (2026-11-20), so any
+        // written sticker can be locked
+        if sticker.writtenAt != nil {
             actions.append(("Lock a sticker\u{2026}", .default, { [weak self] in self?.lock(sticker) }))
         }
         actions += [
@@ -320,10 +321,10 @@ extension VenueNFCStickersViewController: UITableViewDataSource, UITableViewDele
             written: sticker.writtenAt != nil,
             locked: sticker.locked == true)
         if sticker.needsRewrite == true {
-            config.secondaryText = "Register code changed: tap, then Write another sticker like this, and hold it to this one"
+            config.secondaryText = "Old link: tap, then Write another sticker like this, and hold it to this one"
             config.secondaryTextProperties.color = .systemRed
         } else {
-            config.secondaryText = "\(sticker.isRegister ? "Register" : "Window") \u{00B7} \(taps)"
+            config.secondaryText = "\(sticker.isRegister ? "Points" : "Window") \u{00B7} \(taps)"
             config.secondaryTextProperties.color = .secondaryLabel
         }
         config.image = UIImage(systemName: sticker.locked == true ? "lock.circle"

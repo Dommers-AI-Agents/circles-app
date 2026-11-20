@@ -101,7 +101,9 @@ final class DeepLinkCoordinator: SceneCoordinator {
     /// ?ref=<their id>; the scan it leads to reports it, so the friend's first
     /// purchase pays them both
     private func rememberReferrer(in url: URL, for destination: DeepLinkDestination) {
-        guard case .sticker = destination else { return }
+        guard case .sticker(_, let tag) = destination else { return }
+        // The NFC sticker's tag: a points sticker or Favvy pays the visit (2026-11-20)
+        RewardsService.shared.rememberStickerTag(tag)
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         if let ref = items.first(where: { $0.name == "ref" })?.value, !ref.isEmpty {
             RewardsService.shared.rememberReferrer(ref)

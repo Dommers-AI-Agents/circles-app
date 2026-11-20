@@ -47,16 +47,20 @@ class RewardsService {
     /// "register" | "generic"), for the scan bubble (ScanLoadingCopy).
     /// Remembered per code, so a repeat scan names the store at once; nils
     /// when unknown.
-    func codeInfo(forCode code: String, completion: @escaping (_ name: String?, _ kind: String?) -> Void) {
+    /// With a sticker `tag` the kind can differ from the bare code's (a points
+    /// sticker reads "register"), so it's asked fresh and not remembered.
+    func codeInfo(forCode code: String, tag: String? = nil, completion: @escaping (_ name: String?, _ kind: String?) -> Void) {
         let nameKey = "storeNameForCode." + code.uppercased()
         let kindKey = "storeKindForCode." + code.uppercased()
-        let cachedKind = UserDefaults.standard.string(forKey: kindKey)
+        let cachedKind = tag == nil ? UserDefaults.standard.string(forKey: kindKey) : nil
         if let cached = UserDefaults.standard.string(forKey: nameKey), cachedKind != nil { completion(cached, cachedKind); return }
         struct NameData: Codable { let venueName: String?; let kind: String? }
-        apiService.request(endpoint: "rewards/code-name/\(code.uppercased())", method: .get, requiresAuth: true) {
+        var endpoint = "rewards/code-name/\(code.uppercased())"
+        if let tag, let escaped = tag.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) { endpoint += "?t=\(escaped)" }
+        apiService.request(endpoint: endpoint, method: .get, requiresAuth: true) {
             (result: Result<RewardsEnvelope<NameData>, APIError>) in
             let data = (try? result.get())?.data
-            Self.rememberCode(code, name: data?.venueName, kind: data?.kind)
+            Self.rememberCode(code, name: data?.venueName, kind: tag == nil ? data?.kind : nil)
             completion(data?.venueName, data?.kind ?? cachedKind)
         }
     }
@@ -70,9 +74,12 @@ class RewardsService {
     /// `location`: where the phone is (register scans away from the store
     /// earn nothing); `locationOff`: the customer kept location off (still
     /// earns, marked for the store). Neither = couldn't tell.
-    func scan(code: String, location: CLLocation? = nil, locationOff: Bool = false,
+    /// `tag`: the NFC sticker's tag from the link, when there was one; a
+    /// points sticker or Favvy pays the visit for it (2026-11-20)
+    func scan(code: String, location: CLLocation? = nil, locationOff: Bool = false, tag: String? = nil,
               completion: @escaping (Result<RewardScanData, Error>) -> Void) {
         var body: [String: Any] = ["code": code]
+        if let tag, !tag.isEmpty { body["t"] = tag }
         if let location {
             body["location"] = ["latitude": location.coordinate.latitude, "longitude": location.coordinate.longitude,
                                 "accuracy": max(0, location.horizontalAccuracy)]

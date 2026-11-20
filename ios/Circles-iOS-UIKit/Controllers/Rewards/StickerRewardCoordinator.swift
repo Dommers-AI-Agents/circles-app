@@ -45,6 +45,7 @@ final class StickerRewardCoordinator: NSObject {
         // "Checking rewards…", no store page — straight into the app. The
         // server still counts the scan (quietly), and answers 'generic' too.
         if GenericJoinCode.matches(code) {
+            _ = RewardsService.shared.takeStickerTag() // not a store: no sticker points
             RewardsService.shared.scan(code: code) { _ in }
             Task { @MainActor [weak self] in self?.startGettingStarted() }
             return
@@ -63,16 +64,20 @@ final class StickerRewardCoordinator: NSObject {
         // the store's name (a quick lookup alongside the scan; remembered
         // for repeat scans). ScanLoadingCopy has the words.
         let loading = AlertPresenter.showLoading(message: ScanLoadingCopy.initial, from: presenter)
-        RewardsService.shared.codeInfo(forCode: code) { name, kind in
+        // The tapped sticker's tag, taken once for this scan (and its retry)
+        let tag = RewardsService.shared.takeStickerTag()
+        RewardsService.shared.codeInfo(forCode: code, tag: tag) { name, kind in
             guard name != nil || kind != nil else { return }
             DispatchQueue.main.async { loading.message = ScanLoadingCopy.message(kind: kind, name: name) }
         }
 
-        scanWithRetry(code: code, place: place) { [weak self] result in
+        scanWithRetry(code: code, tag: tag, place: place) { [weak self] result in
             DispatchQueue.main.async {
                 if case .success(let scan) = result {
                     let generic = scan.kind == "generic" || scan.venue.genericJoin == true
-                    RewardsService.rememberCode(code, name: generic ? nil : scan.venue.venueName, kind: generic ? "generic" : scan.kind)
+                    // A sticker tag can change the kind (points), so only a bare code's is remembered
+                    RewardsService.rememberCode(code, name: generic ? nil : scan.venue.venueName,
+                                                kind: generic ? "generic" : (tag == nil ? scan.kind : nil))
                 }
                 loading.dismiss(animated: true) {
                     switch result {
@@ -105,12 +110,12 @@ final class StickerRewardCoordinator: NSObject {
     /// so a second try is safe and answers "already earned today" if the
     /// first one landed (2026-10-30: a scan that succeeded on the server
     /// showed "Can't reach FavCircles" on the phone).
-    private func scanWithRetry(code: String, place: ScanLocationProvider.Result,
+    private func scanWithRetry(code: String, tag: String?, place: ScanLocationProvider.Result,
                                completion: @escaping (Result<RewardScanData, Error>) -> Void) {
-        RewardsService.shared.scan(code: code, location: place.location, locationOff: place.locationOff) { result in
+        RewardsService.shared.scan(code: code, location: place.location, locationOff: place.locationOff, tag: tag) { result in
             if case .failure(let error) = result, Self.isConnectivity(error) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                    RewardsService.shared.scan(code: code, location: place.location, locationOff: place.locationOff, completion: completion)
+                    RewardsService.shared.scan(code: code, location: place.location, locationOff: place.locationOff, tag: tag, completion: completion)
                 }
                 return
             }

@@ -74,6 +74,28 @@ extension RewardsService {
         }
     }
 
+    // MARK: The sticker tag on a store link
+
+    private static let pendingStickerTagKey = "rewards.pendingStickerTag"
+
+    /// A store link arrived (/s/<code>?t=<tag>): keep its tag for the scan it
+    /// leads to, so a points sticker or Favvy (window code + its tag) pays the
+    /// visit (2026-11-20). A link without a tag clears any older one.
+    func rememberStickerTag(_ tag: String?) {
+        if let tag, !tag.isEmpty {
+            UserDefaults.standard.set(tag, forKey: Self.pendingStickerTagKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.pendingStickerTagKey)
+        }
+    }
+
+    /// The remembered tag, cleared on read
+    func takeStickerTag() -> String? {
+        let value = UserDefaults.standard.string(forKey: Self.pendingStickerTagKey)
+        UserDefaults.standard.removeObject(forKey: Self.pendingStickerTagKey)
+        return value
+    }
+
     /// A customer opened a store's NFC sticker in the app: count the tap.
     /// Fire and forget; works signed out too.
     func recordStickerTap(code: String, tag: String) {

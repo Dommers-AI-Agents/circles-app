@@ -91,8 +91,11 @@ final class ClipAPIClient {
 
     /// `atStore`: Apple's location check (nil when it couldn't tell)
     /// `save`: a window code saves the store for them (2026-11-01)
-    func redeemSticker(code: String, token: String, atStore: Bool?, save: Bool = false, ref: String? = nil, coupon: String? = nil) async throws -> ScanResult {
+    /// `tag`: the NFC sticker's tag (?t=). A points sticker or Favvy carries the
+    /// window code plus its tag, and the server pays the visit for it (2026-11-20)
+    func redeemSticker(code: String, token: String, atStore: Bool?, save: Bool = false, ref: String? = nil, coupon: String? = nil, tag: String? = nil) async throws -> ScanResult {
         var body: [String: Any] = ["code": code]
+        if let tag, !tag.isEmpty { body["t"] = tag }
         if let atStore { body["atStore"] = atStore }
         if save { body["save"] = true }
         if let ref { body["ref"] = ref }

@@ -191,9 +191,13 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
                                                           longitude: preview.location?.longitude)
             }
             do {
-                // A store's window code saves the store as it signs them in
+                // A store's window code saves the store as it signs them in;
+                // so does a points sticker or Favvy (window code + its tag),
+                // which also pays the visit (2026-11-20)
+                let saves = preview.isStoreWindow || (invocation.tag != nil && !preview.isGeneric)
                 let result = try await ClipAPIClient.shared.redeemSticker(code: code, token: session.token, atStore: atStore,
-                                                                          save: preview.isStoreWindow, ref: invocation.ref, coupon: invocation.coupon)
+                                                                          save: saves, ref: invocation.ref, coupon: invocation.coupon,
+                                                                          tag: invocation.tag)
                 // Scan handled in-clip — tell the full app not to redeem it again
                 // A save that has to wait for the app goes through its own
                 // save flow, not a welcome sheet as well
