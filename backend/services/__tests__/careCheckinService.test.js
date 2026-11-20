@@ -396,6 +396,29 @@ describe('silence', () => {
     expect((await care.runDue({ now: new Date(later.getTime() + 3600 * 1000) })).silence).toBe(0);
   });
 
+  test('a missed question stays answerable for the rest of the parent\'s day (Sal, 2026-11-20)', async () => {
+    await activePlan();
+    await care.runDue({ now: T_0835_NY });
+    const afterSweep = new Date(T_0835_NY.getTime() + 3 * 3600 * 1000 + 60000);
+    expect((await care.runDue({ now: afterSweep })).silence).toBe(1);
+    const askId = [...asks().keys()][0];
+    expect(asks().get(askId).status).toBe('missed');
+    // Noon, same day: the page still shows the morning question
+    const noon = new Date(afterSweep.getTime() + 30 * 60000);
+    const mine = await care.listPlans(PARENT, { now: noon });
+    expect(mine.asParent[0].openAsk).toEqual(expect.objectContaining({ askId, status: 'missed' }));
+    // The next morning it is gone (never yesterday's question at breakfast)
+    const nextDay = new Date(T_0835_NY.getTime() + 20 * 3600 * 1000);
+    expect((await care.listPlans(PARENT, { now: nextDay })).asParent[0].openAsk).toBeNull();
+    // Answering late works, is marked as late, and raises no further alert
+    notificationService.sendToUser.mockClear();
+    const answered = await care.answerAsk({ userId: PARENT, askId, answer: 'okay' });
+    expect(answered).toMatchObject({ status: 'answered', answeredLate: true, answerText: 'Okay' });
+    expect(notificationService.sendToUser).toHaveBeenCalledWith(CHILD, expect.objectContaining({ type: 'care_answer' }));
+    expect((await care.listPlans(PARENT, { now: noon })).asParent[0].openAsk).toBeNull();
+    expect((await care.runDue({ now: new Date(noon.getTime() + 3600 * 1000) })).silence).toBe(0);
+  });
+
   test('a push the phone never got is reported as undelivered, not as silence', async () => {
     await activePlan();
     notificationService.sendToUser.mockImplementation(async () => ({ success: false, error: 'No device tokens' }));

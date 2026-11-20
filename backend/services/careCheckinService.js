@@ -79,8 +79,16 @@ class CareCheckinService {
 
   // MARK: - Presentation
 
-  presentPlan(plan, { asks = [], viewerId, users = NO_USERS } = {}) {
-    const open = asks.filter((a) => a.status === 'open').sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1));
+  presentPlan(plan, { asks = [], viewerId, users = NO_USERS, now = new Date() } = {}) {
+    // The question the parent can answer: the newest one that isn't answered.
+    // `missed` only means the family was told about the silence (three hours);
+    // the question stays answerable for the rest of the parent's local day —
+    // Sal tapped a morning question at noon and found "Nothing waiting"
+    // (Wes, 2026-11-20). Yesterday's never comes back the next morning.
+    const today = localDateKey(plan.timezone, now);
+    const open = asks
+      .filter((a) => a.status === 'open' || (a.status === 'missed' && a.dateKey === today))
+      .sort((a, b) => (a.askedAt < b.askedAt ? 1 : -1));
     const answered = asks.filter((a) => a.status === 'answered').sort((a, b) => (a.answeredAt < b.answeredAt ? 1 : -1));
     return {
       planId: plan.id,
@@ -147,6 +155,7 @@ class CareCheckinService {
       askedAt: ask.askedAt,
       dueBy: ask.dueBy,
       status: ask.status,
+      answeredLate: ask.answeredLate === true,
       // `answer` is the choice key (older clients render the mood ones);
       // `answerValue`/`answerScore` carry scales and typed answers;
       // `answerText` is always the words to show.
@@ -165,7 +174,7 @@ class CareCheckinService {
 
   // MARK: - Reads
 
-  async listPlans(userId) {
+  async listPlans(userId, { now = new Date() } = {}) {
     const [owned, parenting, watching, pending] = await Promise.all([
       this.plans.where('ownerId', '==', userId).get(),
       this.plans.where('parentId', '==', userId).get(),
@@ -183,7 +192,7 @@ class CareCheckinService {
     const withAsks = await Promise.all(rows.map(async (plan) => {
       // Someone invited or still asking sees the arrangement, never the answers.
       const asks = CareCheckinService.canRead(plan, userId) ? await this.recentAsks(plan.id, 6) : [];
-      return this.presentPlan(plan, { asks, viewerId: userId, users });
+      return this.presentPlan(plan, { asks, viewerId: userId, users, now });
     }));
     withAsks.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     return {
@@ -434,11 +443,13 @@ class CareCheckinService {
       return this.presentAsk(ask);
     }
     const alert = bank.isAlertAnswer(question, resolved);
+    // After the family heard about the silence: the record says so
+    const answeredLate = ask.status === 'missed';
     // Off the Lock Screen, showing what they said for a moment
     this.endAskLiveActivity(ask, { answerText: resolved.answerText }).catch(() => {});
     const patch = {
       status: 'answered', answer: resolved.answer, answerValue: resolved.answerValue, answerScore: resolved.answerScore,
-      answerText: resolved.answerText, alert, note: clean(note, NOTE_MAX), answeredAt: nowIso()
+      answerText: resolved.answerText, alert, note: clean(note, NOTE_MAX), answeredAt: nowIso(), answeredLate
     };
     await this.asks.doc(askId).update(patch);
     const planPatch = { lastAnsweredAt: patch.answeredAt, updatedAt: nowIso() };
