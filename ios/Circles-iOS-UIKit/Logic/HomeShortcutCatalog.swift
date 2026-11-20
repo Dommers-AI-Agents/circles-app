@@ -23,6 +23,7 @@ enum HomeShortcutCatalog {
     static let maxSelected = 4
     static let selectionKey = "homeShortcutSelection"
     static let widgetTypePrefix = "com.favcircles.circles.widget."
+    static let widgetsTabType = "com.favcircles.circles.widgets"
 
     /// What ships selected before the user touches the picker: the three
     /// original static items, in their original order.
@@ -41,7 +42,11 @@ enum HomeShortcutCatalog {
             HomeShortcutOption(id: "check-in", title: "Check In", subtitle: "Let your people know where you are",
                                symbolName: "figure.walk.arrival", pendingLink: "check-in", shortcutType: "com.favcircles.circles.check-in"),
             HomeShortcutOption(id: "add-place", title: "Add a Place", subtitle: "Save somewhere you love",
-                               symbolName: "plus.circle", pendingLink: "add-place", shortcutType: "com.favcircles.circles.add-place")
+                               symbolName: "plus.circle", pendingLink: "add-place", shortcutType: "com.favcircles.circles.add-place"),
+            // The Widgets tab itself (Wes, 2026-11-20: "go directly to widgets
+            // from long press"), ahead of the one-widget rows.
+            HomeShortcutOption(id: "widgets", title: "Widgets", subtitle: "Open the Widgets tab",
+                               symbolName: "square.grid.2x2", pendingLink: "tab:widgets", shortcutType: widgetsTabType)
         ]
         for widget in widgets {
             // The postcard keeps its original type so an icon menu rendered
@@ -94,8 +99,13 @@ enum HomeShortcutCatalog {
     /// A widget page's pin button: adds or removes that widget from the
     /// app-icon menu, the same list Settings edits. `nil` stored = defaults.
     static func pinToggled(widgetId: String, stored: [String]?) -> (selection: [String], outcome: PinOutcome) {
+        pinToggled(optionId: optionId(forWidget: widgetId), stored: stored)
+    }
+
+    /// The same for any catalog option — the Widgets tab's own row is
+    /// "widgets" (Wes, 2026-11-20: a pin for the widgets window).
+    static func pinToggled(optionId id: String, stored: [String]?) -> (selection: [String], outcome: PinOutcome) {
         let current = stored ?? defaultSelection
-        let id = optionId(forWidget: widgetId)
         if current.contains(id) { return (current.filter { $0 != id }, .removed) }
         guard current.count < maxSelected else { return (current, .full) }
         return (current + [id], .added)
@@ -120,6 +130,7 @@ enum HomeShortcutCatalog {
         case "com.favcircles.circles.check-in": return "check-in"
         case "com.favcircles.circles.add-place": return "add-place"
         case "com.favcircles.circles.postcard": return "widget:postcard"
+        case widgetsTabType: return "tab:widgets"
         default:
             guard type.hasPrefix(widgetTypePrefix) else { return nil }
             let id = String(type.dropFirst(widgetTypePrefix.count))

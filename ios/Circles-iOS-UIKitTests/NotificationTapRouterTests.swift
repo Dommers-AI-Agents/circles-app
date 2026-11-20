@@ -47,6 +47,8 @@ struct NotificationTapRouterTests {
         #expect(route(["type": "med_reminder", "medId": "m", "slot": 480]) == .homeWidget(id: "meds"))
         #expect(route(["type": "parking_meter"]) == .homeWidget(id: "parking"))
         #expect(route(["type": "package_expected"]) == .homeWidget(id: "packages"))
+        #expect(route(["type": "lasttime_due"]) == .homeWidget(id: "lasttime"))
+        #expect(route(["type": "return_window"]) == .homeWidget(id: "returnwindow"))
         #expect(route(["type": "starter_follow"]) == .network(showPending: false))
         #expect(route(["type": "starter_map"]) == nil)
         // One push type per question kind (the Lock Screen buttons differ); all open the widget.

@@ -14,7 +14,9 @@ struct HomeShortcutCatalogTests {
 
     @Test func catalogKeepsTheOriginalThreeTypesAndAddsWidgets() {
         let options = HomeShortcutCatalog.options(widgets: widgets)
-        #expect(options.map(\.id) == ["check-in", "add-place", "widget:water", "postcard", "widget:sleepsounds"])
+        #expect(options.map(\.id) == ["check-in", "add-place", "widgets", "widget:water", "postcard", "widget:sleepsounds"])
+        #expect(options.first { $0.id == "widgets" }?.pendingLink == "tab:widgets")
+        #expect(options.first { $0.id == "widgets" }?.shortcutType == "com.favcircles.circles.widgets")
         #expect(options.first { $0.id == "postcard" }?.shortcutType == "com.favcircles.circles.postcard")
         #expect(options.first { $0.id == "widget:sleepsounds" }?.shortcutType == "com.favcircles.circles.widget.sleepsounds")
         #expect(options.first { $0.id == "widget:sleepsounds" }?.pendingLink == "widget:sleepsounds")
@@ -46,6 +48,7 @@ struct HomeShortcutCatalogTests {
     @Test func tappedTypesRouteToPendingLinks() {
         #expect(HomeShortcutCatalog.pendingLink(forShortcutType: "com.favcircles.circles.check-in") == "check-in")
         #expect(HomeShortcutCatalog.pendingLink(forShortcutType: "com.favcircles.circles.postcard") == "widget:postcard")
+        #expect(HomeShortcutCatalog.pendingLink(forShortcutType: "com.favcircles.circles.widgets") == "tab:widgets")
         #expect(HomeShortcutCatalog.pendingLink(forShortcutType: "com.favcircles.circles.widget.heartbeat") == "widget:heartbeat")
         #expect(HomeShortcutCatalog.pendingLink(forShortcutType: "com.favcircles.circles.widget.") == nil)
         #expect(HomeShortcutCatalog.pendingLink(forShortcutType: "com.other.thing") == nil)
@@ -67,6 +70,10 @@ struct HomeShortcutCatalogTests {
         let removed = HomeShortcutCatalog.pinToggled(widgetId: "postcard", stored: added.selection)
         #expect(removed.outcome == .removed)
         #expect(removed.selection == ["check-in", "add-place", "widget:water"])
+        // The Widgets tab pins by its own option id
+        let tab = HomeShortcutCatalog.pinToggled(optionId: "widgets", stored: nil)
+        #expect(tab.outcome == .added && tab.selection == ["check-in", "add-place", "postcard", "widgets"])
+        #expect(HomeShortcutCatalog.pinToggled(optionId: "widgets", stored: tab.selection).outcome == .removed)
     }
 
     @Test func swappingKeepsTheSlot() {

@@ -276,5 +276,35 @@
    "Contacts added together are grouped as an import",
    "Stays on your phone: nothing is uploaded"
   ]
+ },
+ "lasttime": {
+  "name": "Last Time",
+  "tagline": "When did I last…?",
+  "features": [
+   "Haircut, air filter, oil change, called Mom — the things nobody tracks but everybody wonders about",
+   "One tap says \"did it\"; each tile shows how long it has been and turns amber when it is due",
+   "A reminder the morning something comes due, on the schedule you pick",
+   "Every \"did it\" is kept, so you can look back years later"
+  ]
+ },
+ "wifihere": {
+  "name": "Wi-Fi Here",
+  "tagline": "The password for wherever you are.",
+  "features": [
+   "Save the network and password once for the places you go back to — Dad's house, the cabin, your café",
+   "When you are there, the card shows it, with Copy one tap away",
+   "A Wi-Fi QR code any phone's camera scans to join, so guests never ask",
+   "Saved on your account, so a new phone has them too; only you see them"
+  ]
+ },
+ "returnwindow": {
+  "name": "Return Window",
+  "tagline": "Snap the receipt, we count the days.",
+  "features": [
+   "Snap the receipt at the register; the store fills in from where you are and the date from the clock",
+   "Pick 14, 30, 60 or 90 days once per store and it remembers",
+   "A countdown on every open window, and a nudge three days before it closes and on the last morning",
+   "Swipe Returned or Keeping it; receipt photos stay on your phone"
+  ]
  }
 }
