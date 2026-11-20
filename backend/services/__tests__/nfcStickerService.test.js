@@ -55,7 +55,7 @@ test('a tap counts only for a sticker the store made, on the window link', async
   expect(mockUpdates[0].data['nfcStickers.table-7.taps']).toEqual({ inc: 1 });
 
   expect(await svc.recordTap(v, 'WIN123', 'made-up')).toBe(false);
-  expect(await svc.recordTap(v, 'REG456', 'table-7')).toBe(false);
+  expect(await svc.recordTap(v, 'REG456', 'table-7')).toBe(false); // a window sticker never on the register code
   expect(await svc.recordTap(v, 'WIN123', '')).toBe(false);
   expect(mockUpdates).toHaveLength(1);
 });
@@ -76,15 +76,25 @@ test('listStickers is oldest first with links and defaults', () => {
   expect(list[1]).toMatchObject({ taps: 0, locked: false, writes: 0 });
 });
 
-// Wes, 2026-11-05: window AND register stickers
-describe('register stickers', () => {
-  test('a register sticker carries the register link and counts register taps only', async () => {
+// Wes, 2026-11-05: window AND register stickers. 2026-11-20 (Favvy): a
+// register ("Points") sticker carries the window code too; its kind pays
+describe('register (points) stickers', () => {
+  test('a register sticker carries the lasting window link', async () => {
     const made = await svc.createSticker(venue(), 'Counter', 'register');
     expect(made.kind).toBe('register');
-    expect(made.url).toContain('REG456?t=counter');
+    expect(made.url).toBe('https://api.favcircles.com/s/WIN123?t=counter');
+  });
+
+  test('a register sticker works for a store with no register code', async () => {
+    const made = await svc.createSticker({ ...venue(), registerCode: undefined }, 'Favvy', 'register');
+    expect(made.url).toBe('https://api.favcircles.com/s/WIN123?t=favvy');
+  });
+
+  test('its taps count on the window link, and on the register link it was once written with', async () => {
     const v = venue({ counter: { label: 'Counter', kind: 'register' } });
+    expect(await svc.recordTap(v, 'WIN123', 'counter')).toBe(true);
     expect(await svc.recordTap(v, 'REG456', 'counter')).toBe(true);
-    expect(await svc.recordTap(v, 'WIN123', 'counter')).toBe(false);
+    expect(await svc.recordTap(v, 'NOPE00', 'counter')).toBe(false);
   });
 
   test('window stays the default and keeps its window link', async () => {
@@ -93,10 +103,21 @@ describe('register stickers', () => {
     expect(made.url).toContain('WIN123?t=table-7');
   });
 
-  test('a register sticker can\'t be locked, and needs a rewrite after the code is replaced', async () => {
-    const v = venue({ counter: { label: 'Counter', kind: 'register', writtenCode: 'REG456' } });
-    await expect(svc.markWritten(v, 'counter', { locked: true })).rejects.toMatchObject({ status: 400 });
-    expect(svc.listStickers(v)[0].needsRewrite).toBe(false);
-    expect(svc.listStickers({ ...v, registerCode: 'NEW789' })[0].needsRewrite).toBe(true);
+  test('a register sticker can be locked; one written with the old register code needs a rewrite', async () => {
+    await svc.markWritten(venue({ counter: { label: 'Counter', kind: 'register' } }), 'counter', { locked: true });
+    expect(mockUpdates[0].data['nfcStickers.counter.locked']).toBe(true);
+    expect(mockUpdates[0].data['nfcStickers.counter.writtenCode']).toBe('WIN123');
+    const old = venue({ counter: { label: 'Counter', kind: 'register', writtenCode: 'REG456' } });
+    expect(svc.listStickers(old)[0].needsRewrite).toBe(true);
+    const current = venue({ counter: { label: 'Counter', kind: 'register', writtenCode: 'WIN123' } });
+    expect(svc.listStickers({ ...current, registerCode: 'NEW789' })[0].needsRewrite).toBe(false);
+  });
+
+  test('pointsStickerTag names only a register sticker the store made', () => {
+    const v = venue({ favvy: { label: 'Favvy', kind: 'register' }, 'table-7': { label: 'Table 7' } });
+    expect(svc.pointsStickerTag(v, 'Favvy')).toBe('favvy');
+    expect(svc.pointsStickerTag(v, 'table-7')).toBeNull();
+    expect(svc.pointsStickerTag(v, 'made-up')).toBeNull();
+    expect(svc.pointsStickerTag(v, undefined)).toBeNull();
   });
 });

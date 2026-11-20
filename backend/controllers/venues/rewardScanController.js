@@ -18,6 +18,7 @@ const db = getFirestore();
 const { isVenueTeamMember, isBrowsableBy, publicVenueInfo, activeOffers } = require('../../services/venueHelpers.js');
 const { findOwnSaveOfStore } = require('../../services/ownSaveOfVenue');
 const { saveStoreForClip } = require('../../services/clipStoreSave');
+const nfcStickers = require('../../services/nfcStickerService');
 // The store welcome email goes out after the first scan at the store they
 // joined at (once; fire-and-forget, never slows the scan)
 const welcomeAfterScan = (userId, venue, awardedPoints, balance, coupon = null) => {
@@ -86,14 +87,18 @@ const codeNameCache = new Map();
 exports.codeName = async (req, res) => {
   try {
     const code = String(req.params.code || '').trim().toUpperCase();
-    const hit = codeNameCache.get(code);
+    // A points sticker's tag (?t=, 2026-11-20) makes a window code read as rewards
+    const tag = req.query && req.query.t ? String(req.query.t) : '';
+    const cacheKey = tag ? `${code}?t=${tag.toLowerCase()}` : code;
+    const hit = codeNameCache.get(cacheKey);
     if (hit && hit.at > Date.now() - 10 * 60 * 1000) return res.json({ success: true, data: { venueName: hit.name, kind: hit.kind } });
     const venue = await rewardService.findVenueByCode(code);
     if (!venue || venue.active === false) return res.status(404).json({ success: false, error: 'Unknown code' });
     const name = venue.genericJoin ? null : (venue.venueName || venue.placeName || null);
-    const kind = venue.genericJoin ? 'generic' : (venue.kind === 'register' ? 'register' : 'window');
+    const kind = venue.genericJoin ? 'generic'
+      : (venue.kind === 'register' || nfcStickers.pointsStickerTag(venue, tag) ? 'register' : 'window');
     if (codeNameCache.size > 2000) codeNameCache.clear();
-    codeNameCache.set(code, { name, kind, at: Date.now() });
+    codeNameCache.set(cacheKey, { name, kind, at: Date.now() });
     res.json({ success: true, data: { venueName: name, kind } });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Lookup failed' });
@@ -140,7 +145,14 @@ exports.scan = async (req, res) => {
       });
     }
 
-    if (venue.kind === 'window') {
+    // A register ("Points") NFC sticker or a Favvy figure (2026-11-20): the
+    // window link plus that sticker's tag (?t=) pays the visit like a
+    // register card, so the sticker never goes stale and no register code is
+    // needed. A window sticker's tag, or no tag, stays a window scan.
+    const pointsTag = venue.kind === 'window' ? nfcStickers.pointsStickerTag(venue, req.body.t || req.body.tag) : null;
+    const scanKind = pointsTag ? 'register' : venue.kind;
+
+    if (scanKind === 'window') {
       rewardService.incrementVenueStats(venue.venueId, 'scans');
       // The App Clip saves the store as it signs them in: they already said
       // yes on "Love it here? Save us." (Wes, 2026-11-01). Only the clip asks
@@ -215,10 +227,21 @@ exports.scan = async (req, res) => {
     // Loyalty pauses gracefully when the owner's business subscription lapses —
     // never a scary error at the register.
     // Both at once; the app offers to save the store when it isn't saved yet
-    const [{ earns, demo, status: loyalty }, alreadySaved] = await Promise.all([
+    const [{ earns, demo, status: loyalty }, savedBefore] = await Promise.all([
       registerScanEarns(venue),
       userHasSavedVenuePlace(userId, venue)
     ]);
+    let alreadySaved = savedBefore;
+    // From a points sticker the App Clip also saves the store as it signs
+    // them in (save: true, like its window scan), so a newcomer leaves with
+    // the store saved and their first points
+    let saved = false;
+    if (pointsTag && req.body.save === true && !alreadySaved) {
+      const outcome = await saveStoreForClip(req.user, venue)
+        .catch((e) => { console.error('points sticker clip save failed', e.message); return {}; });
+      saved = outcome.saved === true;
+      alreadySaved = saved || outcome.alreadySaved === true;
+    }
     if (!earns) {
       console.warn(`[loyalty-integrity] register scan paused venue=${venue.venueId} reason=${loyalty.reason}`);
       const { rewardPoints, venueBalances } = await rewardService.getBalance(userId, { withEvents: false });
@@ -234,6 +257,7 @@ exports.scan = async (req, res) => {
           loyaltyState: (await loyaltyNeverStarted(venue)) ? 'not_started' : 'paused',
           loyaltyLive: false,
           saveBonusPoints: 0,
+          ...(saved ? { saved: true } : {}),
           alreadySaved,
           balance: rewardPoints,
           venueBalance: (venueBalances.find((v) => v.venueId === venue.venueId) || {}).points || 0,
@@ -290,6 +314,7 @@ exports.scan = async (req, res) => {
         alreadyEarnedToday: visitResult.reason === 'already_today',
         ...(notAtStore ? { notAtStore: true } : {}),
         ...(visitResult.reason === 'removed' ? { removedFromRewards: true } : {}),
+        ...(saved ? { saved: true } : {}),
         alreadySaved,
         balance: rewardPoints,
         venueBalance,

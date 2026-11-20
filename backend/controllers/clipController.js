@@ -66,7 +66,9 @@ exports.getVenuePreview = async (req, res) => {
     // Points only at a store whose rewards are live: a register code pays the
     // visit; a window code pays the save bonus, since the clip saves the
     // store as it signs them in (Wes, 2026-11-01; 10-30 to 11-01 it paid nothing)
-    const isRegister = venue.kind === 'register';
+    // A points sticker or Favvy (window link + its tag, 2026-11-20) earns the
+    // visit like a register card, so the clip shows the earn card
+    const isRegister = venue.kind === 'register' || !!nfcStickers.pointsStickerTag(venue, req.query?.t);
     const loyaltyLive = isRegister ? (await registerScanEarns(venue)).earns : await isVenueLoyaltyActive(venue);
     const offers = loyaltyLive ? rewardProgress.rewardLadder(activeOffers(venue)) : [];
     const scanPoints = !loyaltyLive ? 0
@@ -82,7 +84,7 @@ exports.getVenuePreview = async (req, res) => {
         placeName: venue.placeName || null,
         placeAddress: venue.placeAddress || null,
         category: venue.category || null,
-        kind: venue.kind, // 'window' | 'register'
+        kind: isRegister ? 'register' : 'window', // a points sticker reads as 'register'
         // What THIS code awards (Wes, 2026-10-29): the signup bonus comes
         // only from a window code; a register code gives that visit's points
         // where it earns, else nothing. The clip used to promise 100 for both.
