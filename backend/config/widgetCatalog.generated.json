@@ -160,5 +160,23 @@
   "blurb": "The last 50 people you added to your phone.",
   "emoji": "📇",
   "page": "https://favcircles.com/widgets/recently-added-contacts-iphone.html"
+ },
+ "lasttime": {
+  "title": "Last Time",
+  "blurb": "When did I last…?",
+  "emoji": "⏱️",
+  "page": "https://favcircles.com/widgets/when-did-i-last.html"
+ },
+ "wifihere": {
+  "title": "Wi-Fi Here",
+  "blurb": "The password for wherever you are.",
+  "emoji": "📶",
+  "page": "https://favcircles.com/widgets/wifi-password-for-where-you-are.html"
+ },
+ "returnwindow": {
+  "title": "Return Window",
+  "blurb": "Snap the receipt, we count the days.",
+  "emoji": "🧾",
+  "page": "https://favcircles.com/widgets/return-window-receipt-countdown.html"
  }
 }
