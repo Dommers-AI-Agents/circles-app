@@ -15,13 +15,6 @@ const SALES_KIT = [
     title: 'Conversation',
     items: [
       {
-        title: 'New store setup checklist',
-        sub: 'One page, start to finish: before the visit, the demo, the claim, Manage Store setup, where the codes go, follow-up, and what to say.',
-        url: `${KIT}/store-setup-checklist.pdf`,
-        thumb: `${KIT}/store-setup-checklist.png`,
-        action: 'Open PDF to print'
-      },
-      {
         title: 'Store owner discovery questions',
         sub: '35 pain-point questions, grouped, each with where FavCircles fits. Your Google Doc, so you can edit it.',
         url: 'https://docs.google.com/document/d/1nVhfqFEmQUpp1qWLxh2UN0cg8qAjLJ9ggdBQG85Yzfc/edit',
@@ -58,6 +51,13 @@ const SALES_KIT = [
   {
     title: 'In the store',
     items: [
+      {
+        title: 'Making a new store\'s kit',
+        sub: 'One page, start to finish: 3D print the Totem, write its NFC tag, make the QR label, assemble, print the signs, final check.',
+        url: `${KIT}/store-setup-checklist.pdf`,
+        thumb: `${KIT}/store-setup-checklist.png`,
+        action: 'Open PDF to print'
+      },
       {
         title: 'Window and register stickers for a store',
         sub: "Each store's own codes print from the app: open the store's page, tap ••• → Store Admin, then a code → Share → Print a sign or tent.",

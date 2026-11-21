@@ -1,109 +1,119 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<title>New Store Setup</title>
-<!-- One-page checklist for setting up a new FavCircles store (Wes, 2026-11-21).
+<title>New Store Kit</title>
+<!-- One page: how to make a new store's kit, from the 3D print to the NFC tag and QR label (Wes, 2026-11-21).
      PDF: Chrome headless → website/favcircles.com/kit-8fd2638e871f/store-setup-checklist.pdf (Sales kit). -->
 <style>
   @page { size: Letter; margin: 0.45in 0.5in; }
   :root { --pink: #f4567f; --ink: #1d1b22; --muted: #5d5a66; --line: #e6e2ea; }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 10.2pt/1.36 "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); background: #fff; }
-  header { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 2.5px solid var(--pink); padding-bottom: 6px; margin-bottom: 10px; }
+  body { margin: 0; font: 10pt/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); background: #fff; }
+  header { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 2.5px solid var(--pink); padding-bottom: 6px; margin-bottom: 9px; }
   h1 { font-size: 19pt; margin: 0; letter-spacing: -0.3px; }
   header .tag { color: var(--muted); font-size: 9pt; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 22px; }
   section { break-inside: avoid; }
   h2 { font-size: 11pt; margin: 0 0 4px; display: flex; gap: 7px; align-items: center; }
   h2 .n { background: var(--pink); color: #fff; border-radius: 50%; width: 19px; height: 19px; display: inline-grid; place-items: center; font-size: 9.5pt; flex: none; }
   h2 .when { font-weight: 400; color: var(--muted); font-size: 8.8pt; }
   ul { margin: 0; padding: 0; list-style: none; }
-  li { padding-left: 17px; position: relative; margin: 2.5px 0; }
+  li { padding-left: 17px; position: relative; margin: 2.3px 0; }
   li::before { content: ""; position: absolute; left: 1px; top: 3px; width: 9px; height: 9px; border: 1.3px solid #9a96a3; border-radius: 2px; }
-  b { font-weight: 700; }
   .path { font-weight: 600; color: #b02a52; }
-  .note { color: var(--muted); font-size: 9pt; }
+  code { font: 600 9pt Menlo, monospace; background: #f4f0f3; padding: 0 3px; border-radius: 3px; }
+  .note { color: var(--muted); font-size: 8.8pt; }
   .full { grid-column: 1 / -1; }
   .box { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: #fbf8fa; }
-  .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 22px; }
-  .rules li::before { border: none; content: "•"; top: -1px; left: 4px; color: var(--pink); font-weight: 700; }
-  footer { margin-top: 8px; color: var(--muted); font-size: 8.3pt; display: flex; justify-content: space-between; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 18px; }
+  .plain li::before { border: none; content: "•"; top: -1px; left: 4px; color: var(--pink); font-weight: 700; }
+  footer { margin-top: 7px; color: var(--muted); font-size: 8.3pt; display: flex; justify-content: space-between; }
 </style></head>
 <body>
-<header><h1>Setting up a new FavCircles store</h1><span class="tag">Checklist · tick as you go</span></header>
+<header><h1>Making a new store's kit</h1><span class="tag">Totem · NFC tag · QR label · signs</span></header>
 
 <div class="grid">
-  <section>
-    <h2><span class="n">1</span>Before the visit <span class="when">· in the app, 5 min</span></h2>
-    <ul>
-      <li>Find the store in the app and open its page → <span class="path">••• → Store Admin</span>. If it isn't a FavCircles store yet, this makes it one, with no owner, so the business can still claim it.</li>
-      <li>Print the window sign and a table tent: tap the <b>window code</b> → <span class="path">Share → Print a sign or tent…</span> (print at Actual size).</li>
-      <li>Optional <b>Totem</b> for the counter: <span class="path">Store Admin → NFC stickers → + → Points</span>, hold the phone to the heart. Put the QR label on the base.</li>
-      <li>Bring the starter kit: window sticker, register card, table tents.</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2><span class="n">2</span>At the store <span class="when">· the 2-minute demo</span></h2>
-    <ul>
-      <li>Owner scans the <b>window code</b> with their iPhone camera → their store's card opens (no app needed) → <b>Open</b> → sign in → the store is saved.</li>
-      <li>Show what customers get: their own map of places they love, friends' maps, no strangers' reviews; regulars earn points and come back.</li>
-      <li>Show what the owner gets: loyalty, local reach, online menu and pickup ordering, all run from the phone.</li>
-      <li>Leave the starter kit. The window code is free for every store.</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2><span class="n">3</span>The owner claims it <span class="when">· same day</span></h2>
-    <ul>
-      <li>Owner installs FavCircles, opens their store's page and taps <span class="path">Claim your store</span>.</li>
-      <li>You approve: <span class="path">Settings → Sticker Venues → Claims → Approve</span>. Approval gets the store's codes ready.</li>
-      <li>Add their <b>contact name and email</b> and any <b>managers</b> (Manage Store).</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2><span class="n">4</span>The owner sets up <span class="when">· Manage Store on the store's page</span></h2>
-    <ul>
-      <li><b>Store details</b>, <b>Opening hours</b>, <b>Photos</b> (choose the cover).</li>
-      <li><b>Scan your menu</b>: photograph it or pick a PDF; every item goes on the page.</li>
-      <li><b>Get Business</b>: 3 months free, then $49.99/mo. Turns on rewards and ordering.</li>
-      <li><b>Points per purchase</b> and <b>Points for saving your store</b>: the owner chooses.</li>
-      <li>Optional: <b>Online ordering</b> (pickup), <b>Bring them back</b>, <b>Bring a friend</b>.</li>
-      <li>Watch the <b>Store owner guide</b> (4-minute video).</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2><span class="n">5</span>Put the codes out</h2>
-    <ul>
-      <li><b>Window sticker</b> on the door or window: scan to save the store.</li>
-      <li><b>Register card or Totem</b> at the counter: scan or tap for points, once a day, only at the store.</li>
-      <li><b>Table tents</b> and window-kind <b>NFC stickers</b> on tables.</li>
-      <li>Do a test scan at the register with your phone.</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2><span class="n">6</span>Follow up</h2>
-    <ul>
-      <li>Same day: send the store follow-up email with their store card (ask Claude: "send the follow-up for &lt;store&gt;").</li>
-      <li>After a week: <span class="path">Store Admin</span> for saves, visits and scans; <span class="path">Manage Store → Purchases &amp; redemptions</span>.</li>
-      <li>Not on Business after the visit? Offer a 20-minute demo of Manage Store.</li>
-    </ul>
-  </section>
-
   <section class="full box">
-    <h2 style="margin-bottom:3px">What to say (and not say)</h2>
-    <ul class="rules">
-      <li>Points: "you choose how many". Never quote a maximum or a default.</li>
-      <li>One plan: Business, $49.99/mo after 3 free months.</li>
-      <li>Ordering = online menu + pickup. Never delivery.</li>
-      <li>No texting customers: it isn't offered.</li>
-      <li>Rewards are small giveaways; scans need sign-in and location.</li>
-      <li>Only promise features that exist today.</li>
+    <h2 style="margin-bottom:3px">Have on hand (per store)</h2>
+    <ul class="plain cols">
+      <li>PLA for the ring and base (~102 g)</li>
+      <li>PLA for the heart (~29 g)</li>
+      <li>One 38 mm NTAG213 NFC sticker</li>
+      <li>Avery 8293 round labels (1½ in)</li>
+      <li>Clear tape or laminate for the label</li>
+      <li>Super glue, 4 US quarters, 4 rubber bumpers</li>
+      <li>Two 1 cm pieces of 1.75 mm filament (dowels)</li>
+      <li>Card stock + Letter paper for signs</li>
+      <li>Your iPhone with FavCircles (super-user)</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">1</span>Get the store ready <span class="when">· app, 2 min</span></h2>
+    <ul>
+      <li>Open the store's page → <span class="path">••• → Store Admin</span>. If it isn't a FavCircles store yet, this creates it (no owner, so they can still claim it).</li>
+      <li>Note its <b>window code</b> (shown on Store Admin). You need it for the QR label.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">2</span>3D print the Totem <span class="when">· ~3½ h of printing</span></h2>
+    <ul>
+      <li>Files: <code>Marketing/mascot/totem-print/bambu/</code>. Same files for every store.</li>
+      <li><b>Totem 1</b> (ring + base, 2 h 45 m): open in Bambu Studio → <b>Print</b> → pick the ring/base color slot.</li>
+      <li>Clear the plate, then <b>Totem 2</b> (heart halves, 47 m) in the heart color.</li>
+      <li class="note">Tip: <b>Send</b> both files to the printer first, then start each from Bambu Handy when the plate is clear.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span>Write the NFC tag <span class="when">· app, 1 min</span></h2>
+    <ul>
+      <li><span class="path">Store Admin → NFC stickers → + → Points</span> (older app: "Register"), name it <b>Totem</b>.</li>
+      <li>Hold the top of the iPhone flat on the NFC sticker until it says it's written.</li>
+      <li>Tap it once to test: it should open the store.</li>
+      <li class="note">Lock it (tap its row → Lock) only once the Totem is finished. Locking is permanent.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">4</span>Make the QR label <span class="when">· 5 min</span></h2>
+    <ul>
+      <li>The label must open the same link as the tag: <code>api.favcircles.com/s/&lt;window code&gt;?t=totem</code>.</li>
+      <li>Ask Claude: "make the Totem label for &lt;store&gt;" (runs <code>make-totem.sh &lt;window code&gt;</code>) → <b>sheet.pdf</b>, 20 labels.</li>
+      <li>Print on <b>Avery 8293</b> at <b>Actual size</b> (test on plain paper first).</li>
+      <li>Scan one with the iPhone camera, then cover it with clear tape or laminate.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">5</span>Assemble <span class="when">· 10 min + glue time</span></h2>
+    <ul>
+      <li>Stick the NFC tag to the ceiling of the round pocket in the <b>front heart half</b>.</li>
+      <li>Push the two filament dowels into the holes, glue, and press the heart halves together.</li>
+      <li>Glue the heart's stem into the socket at the bottom of the ring.</li>
+      <li>Glue the ring into the base's slot. Glue two stacks of two quarters into the pockets underneath; add the bumpers.</li>
+      <li>Put the QR label in the round recess on the base.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">6</span>Print the paper signs <span class="when">· app, 5 min</span></h2>
+    <ul>
+      <li><span class="path">Store Admin → window code → Share → Print a sign or tent…</span></li>
+      <li><b>Sign</b> for the window, <b>Table tents</b> (on card stock), <b>Counter card</b>; register code the same way for the register card.</li>
+      <li>Optional extra NFC stickers for tables: <span class="path">NFC stickers → + → Window</span>, one per table.</li>
+    </ul>
+  </section>
+
+  <section class="full">
+    <h2><span class="n">7</span>Final check before it leaves <span class="when">· 2 min</span></h2>
+    <ul class="cols" style="gap:0 18px">
+      <li>Tap the heart: the store's card opens and the tap shows on <span class="path">NFC stickers</span>.</li>
+      <li>Scan the base label with the camera: same store.</li>
+      <li>Lock the Totem's NFC sticker. Pack the Totem, signs, tents and spare labels.</li>
     </ul>
   </section>
 </div>
 
-<footer><span>FavCircles · store setup</span><span>Questions: Wes Sgroi · wesley@favcircles.com · 480-349-2935</span></footer>
+<footer><span>FavCircles · new store kit</span><span>Sales kit → Totem QR labels (generic Join FavCircles) for demos without a store</span></footer>
 </body></html>
