@@ -3,7 +3,7 @@ import AuthenticationServices
 
 // The first screen: the store's photo full screen and one way in. A store's
 // window code doesn't ask again (Wes, 2026-11-01): they said yes on the
-// card's "Love it here? Save us.", so this screen only signs them in and the
+// card's "Love it here? Save us!", so this screen only signs them in and the
 // store is saved as it does. Apple, or their email right here (a known email
 // goes on to its code). A customer the clip already knows skips straight to
 // the result (ClipSuccessViewController).
@@ -191,7 +191,7 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
             // The generic card says "Never forget your favorite places." (Wes, 2026-11-21); the clip picks it up
             hookLabel.attributedText = preview.isGeneric
                 ? ClipTheme.hookText("Never forget", "your favorite places.", size: 40)
-                : ClipTheme.hookText("Love it here?", "Save us.", size: 46)
+                : ClipTheme.hookText("Love it here?", "Save us!", size: 46)
         }
 
         if preview.isGeneric {

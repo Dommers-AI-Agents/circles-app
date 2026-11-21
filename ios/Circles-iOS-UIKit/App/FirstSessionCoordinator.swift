@@ -98,7 +98,7 @@ final class FirstSessionCoordinator: SceneCoordinator {
     private var firstFavoritePlace: Place?
 
     /// Joined in the App Clip, which already saved the store (Wes,
-    /// 2026-11-01: they said yes on "Love it here? Save us." — never ask
+    /// 2026-11-01: they said yes on "Love it here? Save us!" — never ask
     /// again). The store is their first favorite: name when missing → keep
     /// the account safe (Face ID) when they joined with just an email →
     /// "Your place, your people" for that store → location → photos →

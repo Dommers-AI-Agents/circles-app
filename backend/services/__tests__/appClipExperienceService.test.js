@@ -19,7 +19,7 @@ describe('appClipExperienceService copy', () => {
     const register = svc.copyFor({ venueName: 'Test Bakery', earnRate: 25 }, 'register');
     expect(register.hook).toEqual(['Earn 25 points', 'every visit.']);
     const window = svc.copyFor({ venueName: 'Test Bakery' }, 'window');
-    expect(window.hook).toEqual(['Love it here?', 'Save us.']);
+    expect(window.hook).toEqual(['Love it here?', 'Save us!']);
     for (const copy of [register, window]) {
       expect(copy.title).toBe('Test Bakery');
       expect(copy.subtitle).toBe('Stay connected. Catch every moment.');
@@ -69,7 +69,7 @@ describe('appClipExperienceService copy', () => {
     const notLive = svc.copyFor({ venueName: 'Pasta & Provisions', earnRate: 25 }, 'register', { live: false });
     expect(notLive.title).toBe('Pasta & Provisions');
     expect(notLive.subtitle).not.toMatch(/points|earn/i);
-    expect(notLive.hook).toEqual(['Love it here?', 'Save us.']);
+    expect(notLive.hook).toEqual(['Love it here?', 'Save us!']);
     // The night loyalty goes live the fingerprint moves, so the card republishes with the points
     const base = { venueName: 'Pasta & Provisions', earnRate: 25 };
     expect(svc.fingerprintFor(base, 'register', 'C1', null, { live: false }))

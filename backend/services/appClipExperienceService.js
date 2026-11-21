@@ -85,7 +85,7 @@ function copyFor(venue, kind, { live = true } = {}) {
   // itself only in Apple's "Powered by" row. `hook` is the picture's two
   // serif lines, `lead` an optional line under them.
   const subtitle = 'Stay connected. Catch every moment.';
-  const saveUs = ['Love it here?', 'Save us.'];
+  const saveUs = ['Love it here?', 'Save us!'];   // Wes, 2026-11-21: same as the JOINUS card
   // Scan Action QRs (/q/<code>, 2026-11-11): a friend holds up their phone
   // and the scanner saves the place (or the list) they're showing
   if (venue.scanActions) {

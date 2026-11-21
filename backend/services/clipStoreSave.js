@@ -1,7 +1,7 @@
 // backend/services/clipStoreSave.js
 //
 // The App Clip's window scan saves the store (Wes, 2026-11-01): the person
-// already said yes when they tapped Open on "Love it here? Save us.", so the
+// already said yes when they tapped Open on "Love it here? Save us!", so the
 // clip saves it to their Favorite Local Spots the moment they sign in and the
 // app opens on a store that's already on their map. Only the clip asks for
 // this (`save: true` on POST /rewards/scan); an in-app window scan keeps its

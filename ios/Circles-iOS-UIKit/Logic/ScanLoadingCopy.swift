@@ -2,7 +2,7 @@ import Foundation
 
 /// The bubble while a scanned code is being redeemed. It says what the scan
 /// is for, not "Checking rewards" for everything (Wes, 2026-11-12): a window
-/// sticker ("Love it here? Save us.") sets you up to save the store, the
+/// sticker ("Love it here? Save us!") sets you up to save the store, the
 /// JOINUS card sets you up to join, and only a register card is about
 /// rewards. The kind and name come from the quick code lookup; until it
 /// answers, the words commit to nothing.

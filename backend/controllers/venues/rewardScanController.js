@@ -155,7 +155,7 @@ exports.scan = async (req, res) => {
     if (scanKind === 'window') {
       rewardService.incrementVenueStats(venue.venueId, 'scans');
       // The App Clip saves the store as it signs them in: they already said
-      // yes on "Love it here? Save us." (Wes, 2026-11-01). Only the clip asks
+      // yes on "Love it here? Save us!" (Wes, 2026-11-01). Only the clip asks
       // (`save: true`); an in-app window scan keeps its circle picker.
       const clipSave = req.body.save === true;
       const savedDoc = await findOwnSaveOfStore({ userId, venue });
