@@ -38,7 +38,7 @@ final class ClipSignupViewController: UIViewController, UITextFieldDelegate {
     init(code: String?, preview: VenuePreview, knownEmail: String? = nil, onSignedIn: @escaping (ClipAuthResponse) -> Void) {
         self.code = code
         self.hook = preview.isGeneric
-            ? ClipTheme.hookText("The Road less traveled", "is yours. Save it.", size: 40)
+            ? ClipTheme.hookText("Love it here?", "Save us!", size: 40)
             : ClipTheme.hookText("Welcome in.", "Save \(preview.venueName).", size: 40)
         self.knownEmail = knownEmail
         self.onSignedIn = onSignedIn

@@ -33,16 +33,16 @@ describe('appClipExperienceService copy', () => {
     expect([meta.format, meta.width, meta.height]).toEqual(['jpeg', 1800, 1200]);
   });
 
-  test('the generic join card says what FavCircles is for, never its name, and no line repeats another', async () => {
+  test('the generic join card: "Love it here? Save us!" in the picture, "Never forget your favorite places. Join us on FavCircles." under it (Wes, 2026-11-21)', async () => {
     for (const kind of svc.KINDS) {
       const copy = svc.copyFor({ venueName: 'FavCircles', genericJoin: true }, kind);
-      expect(copy.title).toBe('What\u2019s your favorite place?');
-      // The App Clip's default card words, not a store's "Save us" (2026-11-07)
-      expect(copy.subtitle).toBe('Every great place has a story. Remember yours.');
-      expect(copy.hook).toEqual(['The Road less', 'traveled is yours.', 'Save it.']);
+      expect(copy.title).toBe('Join us on FavCircles');
+      expect(copy.subtitle).toBe('Never forget your favorite places.');
+      expect(copy.hook).toEqual(['Love it here?', 'Save us!']);
       expect(copy.title.length).toBeLessThanOrEqual(svc.TITLE_MAX);
       expect(copy.subtitle.length).toBeLessThanOrEqual(svc.SUBTITLE_MAX);
-      expect([copy.title, copy.subtitle, ...copy.hook, copy.lead].join(' ')).not.toMatch(/FavCircles/);
+      // The name is in the title only; the picture and the subtitle say what it does
+      expect([copy.subtitle, ...copy.hook, copy.lead].join(' ')).not.toMatch(/FavCircles/);
     }
     const jpeg = await svc.headerImagePNG({ venueName: 'FavCircles', genericJoin: true }, 'window', null);
     const meta = await require('sharp')(jpeg).metadata();

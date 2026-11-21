@@ -96,16 +96,17 @@ function copyFor(venue, kind, { live = true } = {}) {
       lead: null
     };
   }
-  // The generic "Join FavCircles" code (coasters, anything not one store's)
-  // Not one store's, so not "Save us": the App Clip's default card words
-  // (Wes, 2026-11-07: NFC stickers on any collateral, coasters, flyers)
+  // The generic "Join FavCircles" code (coasters, anything not one store's;
+  // Wes, 2026-11-07: NFC stickers on any collateral, coasters, flyers)
   if (venue.genericJoin) {
-    // The title is also the camera's pill right after a scan (Wes, 2026-11-07:
-    // "Build your map" said nothing): a question, and the subtitle says why
+    // Wes, 2026-11-21: the picture says the stores' line, "Love it here? Save
+    // us!"; the words under it are his sentence "Never forget your favorite
+    // places. Join us on FavCircles." split to Apple's 30/56-character title
+    // and subtitle. The title is also the camera's pill right after a scan.
     return {
-      title: 'What\u2019s your favorite place?',
-      subtitle: 'Every great place has a story. Remember yours.',
-      hook: ['The Road less', 'traveled is yours.', 'Save it.'],
+      title: 'Join us on FavCircles',
+      subtitle: 'Never forget your favorite places.',
+      hook: ['Love it here?', 'Save us!'],
       lead: null
     };
   }
