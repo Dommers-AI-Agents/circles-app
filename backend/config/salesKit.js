@@ -63,6 +63,13 @@ const SALES_KIT = [
         action: 'Open PDF to print'
       },
       {
+        title: 'Totem QR labels (Join FavCircles)',
+        sub: 'Round 1.5 in labels for the totem base, link favcircles.com/s/JOINUS. Avery 8293 or Presta 94506 sheets, print at Actual size; try one on plain paper first. The heart\'s NFC tag is written from the app: Settings → Sticker Venues → FavCircles → NFC stickers → +.',
+        url: `${KIT}/totem-qr-labels.pdf`,
+        thumb: `${KIT}/totem-qr-labels.png`,
+        action: 'Open PDF to print'
+      },
+      {
         title: 'Coaster stickers',
         sub: 'Avery 94102 sheets. Print at actual size; try one on plain paper first.',
         url: `${KIT}/coasters.pdf`,
