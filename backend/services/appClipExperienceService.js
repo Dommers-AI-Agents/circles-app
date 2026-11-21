@@ -40,22 +40,25 @@ const SERIF = "Gelasio, Georgia, 'DejaVu Serif', serif";
 
 // Apple's required businessCategory for an advanced experience, from the
 // store's own category. Food is the common case; anything unknown is a shop.
+// Whole words only (2026-11-21: "Catawba River Outfitters" matched /cat/ and
+// Apple refused the card; "Carolina" would be a car shop, "dinner" an inn).
+// Values are Apple's own list: PET_SERVICES, never PETS.
 const BUSINESS_CATEGORY = [
-  [/restaurant|cafe|coffee|bar|pub|bakery|food|drink|brew|winery|pizza|diner|tavern|grill|deli|dessert|ice ?cream|tea/i, 'FOOD_AND_DRINK'],
-  [/grocery|market/i, 'GROCERY'],
-  [/gym|fitness|yoga|pilates|crossfit|climb/i, 'FITNESS'],
-  [/hotel|inn|lodg|travel|resort|hostel/i, 'HOTEL_AND_TRAVEL'],
-  [/salon|spa|beauty|barber|nail|tattoo/i, 'BEAUTY'],
-  [/health|medical|clinic|dental|pharmacy|doctor|vet/i, 'HEALTH_AND_MEDICAL'],
-  [/pet|dog|cat|groom/i, 'PETS'],
-  [/entertainment|theater|theatre|cinema|museum|arcade|bowling|golf|park/i, 'ENTERTAINMENT'],
-  [/music|record|concert|venue/i, 'MUSIC'],
-  [/book/i, 'BOOKS'],
-  [/bike|bicycle/i, 'BIKES'],
-  [/auto|car|tire|mechanic/i, 'AUTOMOTIVE'],
-  [/gas|fuel/i, 'GAS'],
-  [/education|school|tutor|class/i, 'EDUCATION'],
-  [/service|repair|clean|law|account|agency|office/i, 'PROFESSIONAL_SERVICES']
+  [/\b(restaurant|cafe|coffee|bar|pub|bakery|food|drink|brew|brewery|brewing|winery|pizza|pizzeria|diner|tavern|grill|deli|dessert|ice ?cream|tea|steak|steakhouse|kitchen|bistro|eatery|taco|sushi|bbq|barbecue)s?\b/i, 'FOOD_AND_DRINK'],
+  [/\b(grocery|groceries|market)s?\b/i, 'GROCERY'],
+  [/\b(gym|fitness|yoga|pilates|crossfit|climb|climbing)s?\b/i, 'FITNESS'],
+  [/\b(hotel|inn|lodge|lodging|travel|resort|hostel)s?\b/i, 'HOTEL_AND_TRAVEL'],
+  [/\b(salon|spa|beauty|barber|barbershop|nail|tattoo)s?\b/i, 'BEAUTY'],
+  [/\b(health|medical|clinic|dental|dentist|pharmacy|doctor|vet|veterinary)s?\b/i, 'HEALTH_AND_MEDICAL'],
+  [/\b(pet|dog|cat|groomer|grooming)s?\b/i, 'PET_SERVICES'],
+  [/\b(entertainment|theater|theatre|cinema|museum|arcade|bowling|golf|park)s?\b/i, 'ENTERTAINMENT'],
+  [/\b(music|record|concert|venue)s?\b/i, 'MUSIC'],
+  [/\b(book|bookstore|bookshop)s?\b/i, 'BOOKS'],
+  [/\b(bike|bicycle|cycle|cycling)s?\b/i, 'BIKES'],
+  [/\b(auto|automotive|car|tire|mechanic)s?\b/i, 'AUTOMOTIVE'],
+  [/\b(gas|fuel)s?\b/i, 'GAS'],
+  [/\b(education|school|tutor|tutoring|class)s?\b/i, 'EDUCATION'],
+  [/\b(service|repair|cleaner|cleaning|law|lawyer|accountant|accounting|agency|office)s?\b/i, 'PROFESSIONAL_SERVICES']
 ];
 function businessCategoryFor(venue) {
   const text = [venue.category, venue.placeName, venue.venueName].filter(Boolean).join(' ');

@@ -63,6 +63,13 @@ describe('appClipExperienceService copy', () => {
     expect(svc.businessCategoryFor({ category: 'gym' })).toBe('FITNESS');
     expect(svc.businessCategoryFor({ category: 'other', venueName: 'Main Street Books' })).toBe('BOOKS');
     expect(svc.businessCategoryFor({ category: 'other', venueName: 'Acme' })).toBe('SHOPPING');
+    // Whole words and Apple's own values (2026-11-21: "Catawba" is not a cat, and PETS is not a category)
+    expect(svc.businessCategoryFor({ category: 'other', venueName: 'Catawba River Outfitters' })).toBe('SHOPPING');
+    expect(svc.businessCategoryFor({ category: 'other', venueName: 'Carolina Candle Co' })).toBe('SHOPPING');
+    expect(svc.businessCategoryFor({ category: 'other', venueName: 'Happy Paws Dog Grooming' })).toBe('PET_SERVICES');
+    expect(svc.businessCategoryFor({ category: 'other', venueName: 'Barber & Sons Steakhouse' })).toBe('FOOD_AND_DRINK');
+    expect(svc.businessCategoryFor({ category: 'other', venueName: 'Uptown Barbershop' })).toBe('BEAUTY');
+    expect(svc.businessCategoryFor({ category: 'other', venueName: 'Blue Ridge Brewing' })).toBe('FOOD_AND_DRINK');
   });
 
   test('a register card before loyalty is live is the store\'s own card without the points promise', () => {
