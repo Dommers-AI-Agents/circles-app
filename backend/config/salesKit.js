@@ -15,6 +15,13 @@ const SALES_KIT = [
     title: 'Conversation',
     items: [
       {
+        title: 'New store setup checklist',
+        sub: 'One page, start to finish: before the visit, the demo, the claim, Manage Store setup, where the codes go, follow-up, and what to say.',
+        url: `${KIT}/store-setup-checklist.pdf`,
+        thumb: `${KIT}/store-setup-checklist.png`,
+        action: 'Open PDF to print'
+      },
+      {
         title: 'Store owner discovery questions',
         sub: '35 pain-point questions, grouped, each with where FavCircles fits. Your Google Doc, so you can edit it.',
         url: 'https://docs.google.com/document/d/1nVhfqFEmQUpp1qWLxh2UN0cg8qAjLJ9ggdBQG85Yzfc/edit',
