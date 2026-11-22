@@ -86,6 +86,23 @@ const SALES_KIT = [
     ]
   },
   {
+    title: 'AI assistants',
+    items: [
+      {
+        title: 'FavCircles in Claude: walkthrough',
+        sub: 'Connect Claude, then try it as a new customer (testingAI) and as a store owner (testingAI Store): sign up, save places, map links, claim and set up a store. Test logins: ~/.config/favcircles-test-accounts.txt on your Mac.',
+        url: `${KIT}/ai-assistant-walkthrough.html`,
+        action: 'Open walkthrough'
+      },
+      {
+        title: 'What store owners see',
+        sub: 'The "set up your store by chatting with Claude" section on the Store Owners page, and the full Claude connect guide.',
+        url: 'https://favcircles.com/store-owners.html#ai',
+        action: 'Open page'
+      }
+    ]
+  },
+  {
     title: 'Videos',
     items: [
       {

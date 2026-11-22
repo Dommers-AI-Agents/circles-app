@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>AI Assistant Walkthrough</title>
+<!-- Admin-only walkthrough of FavCircles inside Claude (Wes, 2026-11-22). Linked from the admin dashboard's Sales kit. -->
+<style>
+  :root { --pink: #f4567f; --ink: #1d1b22; --muted: #5d5a66; --line: #e6e2ea; --soft: #fbf8fa; --code: #f4f0f3; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #f1ecef; --muted: #a8a0ac; --line: #34303a; --soft: #221f26; --code: #2b2730; } body { background: #17151a; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.55 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); background: #fff; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px max(16px, env(safe-area-inset-left)) 48px; }
+  h1 { font-size: 1.9rem; margin: 0 0 4px; letter-spacing: -0.3px; }
+  .sub { color: var(--muted); margin: 0 0 22px; }
+  h2 { font-size: 1.2rem; margin: 30px 0 8px; padding-top: 14px; border-top: 2px solid var(--pink); }
+  h3 { font-size: 1rem; margin: 18px 0 6px; }
+  ol, ul { padding-left: 1.3rem; margin: 6px 0; }
+  li { margin: 5px 0; }
+  .ask { display: block; background: var(--soft); border: 1px solid var(--line); border-left: 3px solid var(--pink); border-radius: 8px; padding: 7px 11px; margin: 6px 0; font-style: italic; }
+  .check { color: var(--muted); font-size: 0.93rem; }
+  code { font: 600 0.88em Menlo, monospace; background: var(--code); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+  td, th { border-bottom: 1px solid var(--line); padding: 7px 6px; text-align: left; vertical-align: top; }
+  .wrap { overflow-x: auto; }
+  a { color: var(--pink); }
+</style></head>
+<body><main>
+<h1>FavCircles in Claude: walkthrough</h1>
+<p class="sub">Try FavCircles the way a new customer or store owner would, by chatting with Claude. About 15 minutes.</p>
+
+<h2>1. Connect Claude (once)</h2>
+<ol>
+  <li>In Claude (claude.ai, the desktop app or the phone app): <b>Settings → Connectors → Add custom connector</b>.</li>
+  <li>Name <b>FavCircles</b>, URL <code>https://mcp.favcircles.com/mcp</code>, then <b>Connect</b>.</li>
+  <li>On the FavCircles page, sign in with one of the test accounts below, or tap <b>Create an account</b> to try sign-up yourself.</li>
+</ol>
+<p class="check">Test accounts (hidden from everyone, can't be found or followed): <b>testingAI</b> and <b>testingAI Store</b>. Their emails and passwords are on your Mac in <code>~/.config/favcircles-test-accounts.txt</code>. To switch accounts, remove the connector in Claude and add it again.</p>
+<p class="check">Heads-up: a brand-new account automatically follows you, your dad and Brittany (same as the app), so creating one sends you a New Follower notification.</p>
+
+<h2>2. Before connecting: "what is this?"</h2>
+<p>These work even without an account:</p>
+<span class="ask">What is FavCircles?</span>
+<span class="ask">How do I get started with FavCircles?</span>
+<span class="ask">What widgets does FavCircles have?</span>
+<span class="ask">Why should my coffee shop join FavCircles?</span>
+<p class="check">Check: the store answer says 3 months free, then $49.99/month.</p>
+
+<h2>3. As a new user (testingAI)</h2>
+<span class="ask">Who am I signed in as on FavCircles?</span>
+<span class="ask">Make me a private circle called Date Night.</span>
+<span class="ask">Find a few good cocktail bars in South End Charlotte and add two of them to Date Night with a note.</span>
+<span class="ask">Show me my Date Night circle.</span>
+<span class="ask">Open it on my map.</span>
+<p class="check">Check: each place and the circle come back with a link. Tap one on your iPhone: it should open in FavCircles. Notes are private ("only you see it").</p>
+<p class="check">Already there: a private "Charlotte coffee" circle with 4 places, from the first test run.</p>
+
+<h2>4. As a store owner (testingAI Store)</h2>
+<span class="ask">Do I have any stores on FavCircles?</span>
+<span class="ask">Set up my store. What's left to do?</span>
+<span class="ask">Write a two-sentence description for my café and add it.</span>
+<span class="ask">Show my store dashboard.</span>
+<span class="ask">Post a special: $2 off lattes before 10am.</span>
+<p class="check">Check: the checklist counts up as steps get done. The special should come back with the FavCircles Business upgrade offer (this test store is on the free plan).</p>
+<p class="check">The store is a fake, hidden test café: "testingAI Test Café (TEST - do not approve)". It isn't in search, the map or Locals.</p>
+<h3>Claiming a new store</h3>
+<span class="ask">Claim my store: &lt;name, street address, city&gt;</span>
+<p class="check">Only try this with a clearly fake business: a claim notifies you for review, just like the app. Don't approve a fake claim against a real business.</p>
+
+<h2>5. Where each assistant stands</h2>
+<div class="wrap"><table>
+  <tr><th>Assistant</th><th>Status</th></tr>
+  <tr><td><b>Claude</b></td><td>Works today as a custom connector (paid Claude plans). Directory listing needs a Claude Team/Enterprise account to submit.</td></tr>
+  <tr><td><b>ChatGPT</b></td><td>Server is ready; the app directory submission is still to do (<code>mcp-server/CHATGPT_APP_SUBMISSION.md</code>).</td></tr>
+  <tr><td><b>Grok</b></td><td>Paid Grok plans can add it at grok.com/connectors → New → Custom with the same URL. Not tested yet.</td></tr>
+  <tr><td><b>Meta Muse</b></td><td>Needs a submission to Meta's connector catalog (<code>mcp-server/GROK_AND_MUSE.md</code>).</td></tr>
+</table></div>
+
+<h2>6. Public pages</h2>
+<ul>
+  <li><a href="https://favcircles.com/store-owners.html#ai">Store owners page → "set up your store by chatting with Claude"</a></li>
+  <li><a href="https://favcircles.com/connect-claude.html">Connect FavCircles to Claude (full guide)</a></li>
+  <li><a href="https://favcircles.com/llms.txt">llms.txt</a>: what AI assistants read about FavCircles</li>
+</ul>
+</main></body></html>
