@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mascot Body Options</title>
+<style>
+  :root { --bg: #f7f6fb; --paper: #fff; --ink: #1f1d2b; --muted: #5d5a70; --line: #e4e1f0; --brand: #667eea; --brand2: #764ba2; --good: #2f855a; --warn: #b7791f; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #14131c; --paper: #1d1b28; --ink: #ecebf5; --muted: #a6a3bb; --line: #322f44; --good: #6fd39b; --warn: #f0c060; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { background: linear-gradient(135deg, var(--brand), var(--brand2)); color: #fff; padding: 36px 16px 30px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+  header .wrap { padding: 0; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 700; opacity: .85; }
+  h1 { margin: 6px 0 8px; font-size: 32px; }
+  header p { margin: 0; opacity: .92; max-width: 760px; }
+  .intro { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 16px 20px; margin: 24px 0; }
+  .intro p { margin: 0; }
+  .options { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 20px; }
+  .opt { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
+  .opt img { display: block; width: 100%; height: auto; background: #f7f7f7; cursor: zoom-in; border-bottom: 1px solid var(--line); }
+  .opt .body { padding: 16px 18px 18px; }
+  .opt h2 { margin: 0 0 2px; font-size: 20px; }
+  .opt .tag { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .opt p { margin: 0 0 10px; font-size: 15px; }
+  .pc { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; }
+  .pc h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 4px; }
+  .pc .pro h3 { color: var(--good); }
+  .pc .con h3 { color: var(--warn); }
+  .pc ul { margin: 0; padding-left: 18px; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: #efeafe; color: #5b3fc4; margin-left: 6px; vertical-align: 3px; }
+  .rec { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: 16px; padding: 18px 20px; margin: 24px 0; }
+  .rec h2 { margin: 0 0 8px; font-size: 20px; }
+  .rec p { margin: 0 0 8px; }
+  footer { color: var(--muted); font-size: 13px; padding: 4px 0 40px; }
+  footer a { color: var(--brand); }
+  .lightbox { position: fixed; inset: 0; background: rgba(10,8,20,.85); display: none; align-items: center; justify-content: center; padding: 20px; cursor: zoom-out; z-index: 10; }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: 100%; max-height: 100%; border-radius: 12px; background: #f7f7f7; }
+  @media (max-width: 760px) { h1 { font-size: 26px; } .options { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="eyebrow">FavCircles · Register mascot</div>
+    <h1>Five body options</h1>
+    <p>Every option keeps the same system: a TAP badge with the NFC tag on the front, and the same peg on top, so any city's accessory fits any body. All shown wearing Charlotte's crown.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="intro"><p>Colors here are suggestions; any body can print in any color. Eyes and smiles are engraved, so they show as shadows (a dab of dark paint makes them pop). Click a picture to enlarge.</p></div>
+
+  <div class="options">
+    <article class="opt">
+      <img src="renders/option-egg.png" alt="Egg buddy with crown">
+      <div class="body">
+        <h2>1. Fav, the egg buddy <span class="badge">Current</span></h2>
+        <div class="tag">Purple · round, friendly, simplest to print</div>
+        <p>A soft character with a big round belly badge. Not tied to any one thing, so it can become whatever FavCircles needs.</p>
+        <div class="pc">
+          <div class="pro"><h3>Pros</h3><ul><li>Cutest and most "toy-like"</li><li>Prints with no supports</li><li>Accessories stand out</li></ul></div>
+          <div class="con"><h3>Cons</h3><ul><li>Doesn't say "places" or "rewards" by itself</li></ul></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="opt">
+      <img src="renders/option-pin.png" alt="Map pin buddy with crown">
+      <div class="body">
+        <h2>2. Pinny, the map pin <a class="badge" href="pinny.html" style="text-decoration:none">Character version →</a></h2>
+        <div class="tag">Red · the badge is the pin's hole</div>
+        <p>A map pin on a little stand. FavCircles is about saving places, and the pin is the universal symbol for a saved place.</p>
+        <div class="pc">
+          <div class="pro"><h3>Pros</h3><ul><li>Says "places" instantly</li><li>Badge as the pin hole is a clever fit</li><li>Matches the map pins in the app</li></ul></div>
+          <div class="con"><h3>Cons</h3><ul><li>Pin-on-stand is less of a "character"</li><li>Narrow waist is the weak point if dropped</li></ul></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="opt">
+      <img src="renders/option-coin.png" alt="Coin buddy with crown">
+      <div class="body">
+        <h2>3. Coiny, the FavCoin</h2>
+        <div class="tag">Gold · a coin standing on its edge</div>
+        <p>A chunky gold coin with feet. The whole figure is a circle (FavCircles) and a coin (FavCoins and rewards).</p>
+        <div class="pc">
+          <div class="pro"><h3>Pros</h3><ul><li>Says "rewards" at the register</li><li>Circle shape echoes the brand</li><li>Very stable, quick to print</li></ul></div>
+          <div class="con"><h3>Cons</h3><ul><li>Small face, less expressive</li><li>Flatter, less 3D charm</li></ul></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="opt">
+      <img src="renders/option-cactus.png" alt="Cactus in a pot with crown">
+      <div class="body">
+        <h2>4. Cactus in a pot</h2>
+        <div class="tag">Green + terracotta · badge on the pot</div>
+        <p>The cactus from FavCoins and the Cactus blockchain, as a little potted character with a face and arms.</p>
+        <div class="pc">
+          <div class="pro"><h3>Pros</h3><ul><li>Ties into your existing 🌵 branding</li><li>Reads as decor; owners will like it on a counter</li><li>Lots of personality</li></ul></div>
+          <div class="con"><h3>Cons</h3><ul><li>Tallest option (about 115 mm with crown)</li><li>Arms need supports or careful printing</li><li>Two colors = two prints or a filament swap</li></ul></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="opt">
+      <img src="renders/option-shop.png" alt="Little shop with striped awning and crown">
+      <div class="body">
+        <h2>5. Little shop</h2>
+        <div class="tag">Purple + white awning · round-window eyes</div>
+        <p>A tiny storefront with a striped awning. A nod to the stores themselves: "this shop is on FavCircles."</p>
+        <div class="pc">
+          <div class="pro"><h3>Pros</h3><ul><li>Clearly about local stores</li><li>Easy to add the store's name on the awning or roof</li></ul></div>
+          <div class="con"><h3>Cons</h3><ul><li>Boxy, least "mascot"-like</li><li>Awning overhang needs supports</li></ul></div>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <div class="rec">
+    <h2>My take</h2>
+    <p><strong>Best character: Fav (1) or the cactus (4).</strong> People will remember a cute face and want to tap it. The cactus is the one with the most built-in brand story.</p>
+    <p><strong>Best at saying what FavCircles is: Pinny (2).</strong> If the mascot also has to explain the app to someone who's never heard of it, the map pin does that.</p>
+    <p>A good test: print two (say Fav and Pinny), put them in two stores for a week, and see which one people mention or photograph.</p>
+  </div>
+
+  <footer>Source: <code>mascot-options.scad</code> (uses the crown and badge from <code>fav-buddy.scad</code>). Concept renders, not test-printed. <a href="fav-buddy.html">← Fav design sheet</a></footer>
+</main>
+
+<div class="lightbox" id="lb"><img alt=""></div>
+<script>
+  var lb = document.getElementById('lb'), lbImg = lb.querySelector('img');
+  document.querySelectorAll('.opt img').forEach(function (img) {
+    img.addEventListener('click', function () { lbImg.src = img.src; lbImg.alt = img.alt; lb.classList.add('open'); });
+  });
+  lb.addEventListener('click', function () { lb.classList.remove('open'); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') lb.classList.remove('open'); });
+</script>
+</body>
+</html>

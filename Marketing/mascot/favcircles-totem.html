@@ -1,0 +1,332 @@
+<title>FavCircles Totem</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&display=swap">
+<style>
+/* Layout: one object, shown like a product page. Live 3D with finish/view controls, then how it prints on the P1S part by part. Deliberately single-theme (dark studio), matching the object studies page. */
+:root {
+  --bg: #0e0e10;
+  --panel: #161619;
+  --ink: #efece6;
+  --muted: #9a968f;
+  --line: #2a2a2f;
+  --rose: #f0607f;
+  --display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --body: "Geist", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 400 15px/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1200px; margin: 0 auto; padding-block: 28px 80px; display: grid; gap: 64px; }
+header.top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+.mark { font: 500 0.78rem/1 var(--body); letter-spacing: 0.22em; text-transform: uppercase; }
+.mark b { color: var(--rose); font-weight: 600; }
+.small { font-size: 0.8rem; color: var(--muted); letter-spacing: 0.03em; }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(2.6rem, 6vw, 4.6rem); line-height: 0.98; }
+h1 i, h2 i { color: var(--rose); }
+h2 { font-size: clamp(1.9rem, 3.4vw, 2.6rem); line-height: 1.05; }
+p { margin: 0; max-width: 62ch; }
+.muted { color: var(--muted); }
+.label { font: 500 0.7rem/1 var(--body); letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+
+.stage { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+.viewer { position: relative; border-radius: 4px; overflow: hidden; background: #1b1b1f; aspect-ratio: 1 / 1; max-width: 100%; }
+.viewer canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.viewer .hint { position: absolute; left: 14px; bottom: 12px; }
+.side { display: grid; gap: 22px; align-content: start; min-width: 0; }
+.control { display: grid; gap: 10px; }
+.seg { display: flex; flex-wrap: wrap; gap: 8px; }
+.seg button { font: 500 0.82rem/1 var(--body); color: var(--ink); background: transparent; border: 1px solid var(--line); padding: 9px 13px; border-radius: 999px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.seg button:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+.sw { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 1px solid rgba(255,255,255,.25); }
+dl.spec { display: grid; grid-template-columns: 7.5em 1fr; gap: 10px 14px; margin: 0; border-top: 1px solid var(--line); padding-top: 16px; }
+dl.spec dt { color: var(--muted); font-size: 0.85rem; }
+dl.spec dd { margin: 0; font-size: 0.92rem; }
+
+.table-wrap { overflow-x: auto; border-top: 1px solid var(--line); }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 0.92rem; }
+th, td { text-align: left; padding: 14px 12px 14px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 0.7rem/1.2 var(--body); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+td:first-child { font-family: var(--display); font-size: 1.35rem; line-height: 1.1; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+.steps { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.steps li { display: grid; grid-template-columns: 2.2em 1fr; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
+.steps li span { font-family: var(--display); font-size: 1.5rem; line-height: 1; color: var(--rose); }
+.note { border-top: 1px solid var(--line); padding-top: 24px; display: grid; gap: 12px; }
+
+@media (max-width: 900px) { .stage, .split { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <span class="mark"><b>Fav</b>Circles · Counter totem</span>
+    <span class="small">13 cm tall · 4 printed parts · prints on the P1S with no supports</span>
+  </header>
+
+  <section style="display:grid;gap:18px">
+    <h1>The heart is <i>Fav</i>.<br>The ring is <i>Circles</i>.</h1>
+    <p class="muted">The FavCircles symbol, made solid. A rounded rose heart sits inside a ring, held at its tip as if it were set in jewellery, on a sturdy base. One circle on the base is both the tap and the scan: the NFC tag is sealed in the base right under the round QR label, so if a tap doesn't work, people scan the same spot. That leaves the heart free for a painted design. Two small black eyes are optional; leave them off and it's a pure logo.</p>
+  </section>
+
+  <section class="stage" aria-label="Live 3D view">
+    <div class="viewer" id="viewer"><span class="hint small">Drag to turn</span></div>
+    <div class="side">
+      <div class="control"><span class="label">Finish</span><div class="seg" id="finish"></div></div>
+      <div class="control"><span class="label">View</span><div class="seg" id="view"></div></div>
+      <div class="control"><span class="label">Eyes</span><div class="seg" id="eyes"></div></div>
+      <dl class="spec" id="spec"></dl>
+    </div>
+  </section>
+
+  <section style="display:grid;gap:22px">
+    <div style="display:grid;gap:10px"><span class="label">Printing it on your P1S</span><h2>Four parts, each <i>one color</i></h2>
+      <p class="muted">Each part prints separately in a single filament, so there are no AMS color swaps (the reason the multi-color figure took 12 hours). Every part lies flat on the plate with no supports. Times and weights are from Bambu Studio at 0.16 mm Fine with 3 walls.</p></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Part</th><th>Filament (Gallery finish)</th><th>How it lies on the plate</th><th>Time</th><th>Weight</th></tr></thead>
+        <tbody id="parts"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="split">
+    <div style="display:grid;gap:12px"><span class="label">Assembly</span><h2>About ten minutes, <i>no tools</i></h2>
+      <p class="muted">The heart is printed as two halves because a shape rounded on both sides can't lie flat in one piece without supports. The engraved design on the front half gets filled with a Posca paint pen.</p></div>
+    <ol class="steps">
+      <li><span>1</span><div><b>Write and lock the NFC sticker</b> with the store's Points link, turn the base over and stick it to the ceiling of the round pocket underneath. It sits 1.7 mm under the QR label.</div></li>
+      <li><span>2</span><div><b>Close the heart.</b> Two short pieces of 1.75 mm filament go into the matching holes and line the halves up; a thin line of super glue (or 5-minute epoxy) seals them. Sand the seam lightly if you like.</div></li>
+      <li><span>3</span><div><b>Set the heart in the ring.</b> The heart's tip ends in a printed stem (half on each heart half) that slides into a socket at the bottom of the ring. Add a drop of glue.</div></li>
+      <li><span>4</span><div><b>Seat the ring in the base.</b> It drops into an 8 mm slot. Glue it, add four rubber bumpers underneath, and stick the QR label in its recess, right over the tag.</div></li>
+    </ol>
+  </section>
+
+  <section class="note">
+    <span class="label">Why it works by a register</span>
+    <p class="muted">It's a recognisable logo rather than a toy, so it suits a wine bar as well as a bakery. "Tap or scan the circle" is a one-line instruction staff can say without thinking. A tap presses down on the wide base instead of pushing the top, so it can't tip, and none of the thin parts stick out to snap off.</p>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const BG = 0x1b1b1f;
+
+// ---- dimensions (mm), the same numbers the print model will use ----
+const RING_OUT = 55, RING_IN = 41, RING_D = 18;        // ring: 110 mm across, 14 mm band, 18 mm deep
+const HEART_S = 34, HEART_T = 24;                        // heart: ~68 mm wide, 24 mm thick (two 12 mm halves)
+const BASE_W = 132, BASE_D = 86, BASE_H = 18, SLOT = 8;  // base: ring sits 8 mm deep in a slot
+const RING_Z = -14;                                     // ring sits toward the back of the base; label in front
+const RING_Y = BASE_H - SLOT + RING_OUT;                // ring centre height
+
+// ---- finishes: real Bambu filaments ----
+const FINISHES = {
+  gallery: { name: 'Gallery', ring: { color: 0xf1ede5, roughness: 0.55 }, base: 'wood', heart: 0xf05a78,
+    fil: { ring: 'PLA Matte · Ivory White', heart: 'PLA Basic · Pink', base: 'PLA Wood · walnut tone' } },
+  gold: { name: 'Gold', ring: { color: 0xd9b45f, roughness: 0.28, metalness: 0.85, clearcoat: 0.6 }, base: { color: 0x2c2c30, roughness: 0.7 }, heart: 0xf05a78,
+    fil: { ring: 'PLA Silk+ · Gold', heart: 'PLA Basic · Pink', base: 'PLA Matte · Charcoal' } },
+  noir: { name: 'Noir', ring: { color: 0x2a2a2e, roughness: 0.6 }, base: { color: 0x202024, roughness: 0.7 }, heart: 0xf05a78,
+    fil: { ring: 'PLA Matte · Charcoal', heart: 'PLA Basic · Pink', base: 'PLA Matte · Charcoal' } }
+};
+
+function walnutTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 1024;
+  const g = c.getContext('2d'); g.fillStyle = '#5a3820'; g.fillRect(0, 0, 1024, 1024);
+  for (let i = 0; i < 240; i++) {
+    const y = Math.random() * 1024;
+    g.strokeStyle = `hsla(${24 + Math.random() * 8}, ${40 + Math.random() * 15}%, ${22 + Math.random() * 22}%, ${0.25 + Math.random() * 0.35})`;
+    g.lineWidth = 1 + Math.random() * 5; g.beginPath();
+    for (let x = 0; x <= 1024; x += 16) { const dy = Math.sin(x / 95 + i) * 9 + Math.sin(x / 21 + i * 3) * 2; x === 0 ? g.moveTo(x, y + dy) : g.lineTo(x, y + dy); }
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(0.008, 0.008); t.anisotropy = 8;
+  return t;
+}
+function labelTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(256, 256, 256, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#f0607f'; g.lineWidth = 12; g.beginPath(); g.arc(256, 256, 248, 0, Math.PI * 2); g.stroke();
+  if (window.qrcode) {
+    const q = qrcode(0, 'M'); q.addData('https://api.favcircles.com/s/JOINUS?t=favvy'); q.make();
+    const n = q.getModuleCount(), size = 282, m = size / n, x0 = 256 - size / 2, y0 = 256 - size / 2 - 22;
+    g.fillStyle = '#1d1b22';
+    for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) g.fillRect(x0 + k * m, y0 + r * m, m + 0.5, m + 0.5);
+  }
+  g.fillStyle = '#1d1b22'; g.font = '700 34px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.fillText('TAP OR SCAN', 256, 438);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+
+const walnut = walnutTexture();
+const mats = {
+  ring: new THREE.MeshPhysicalMaterial({ color: 0xf1ede5, roughness: 0.55 }),
+  heart: new THREE.MeshPhysicalMaterial({ color: 0xf05a78, roughness: 0.45, clearcoat: 0.35, clearcoatRoughness: 0.4 }),
+  base: new THREE.MeshPhysicalMaterial({ map: walnut, color: 0xd8c2ae, roughness: 0.55, clearcoat: 0.3 }),
+  eye: new THREE.MeshPhysicalMaterial({ color: 0x0b0b0d, roughness: 0.08, clearcoat: 1 }),
+  pin: new THREE.MeshPhysicalMaterial({ color: 0xb9bcc2, metalness: 1, roughness: 0.3 }),
+  tag: new THREE.MeshStandardMaterial({ color: 0x9aa2ad, roughness: 0.6 }),
+  label: new THREE.MeshStandardMaterial({ map: labelTexture(), roughness: 0.4 }),
+  stone: new THREE.MeshStandardMaterial({ color: 0x8d877f, roughness: 0.9 })
+};
+
+function heartShape(s) {
+  const h = new THREE.Shape();
+  h.moveTo(0, -1.0 * s);
+  h.bezierCurveTo(-0.55 * s, -0.62 * s, -1.05 * s, -0.18 * s, -1.0 * s, 0.33 * s);
+  h.bezierCurveTo(-0.95 * s, 0.86 * s, -0.36 * s, 1.04 * s, 0, 0.6 * s);
+  h.bezierCurveTo(0.36 * s, 1.04 * s, 0.95 * s, 0.86 * s, 1.0 * s, 0.33 * s);
+  h.bezierCurveTo(1.05 * s, -0.18 * s, 0.55 * s, -0.62 * s, 0, -1.0 * s);
+  return h;
+}
+const shadowy = (m) => { m.castShadow = true; m.receiveShadow = true; return m; };
+
+// ---- parts ----
+function ringMesh() {
+  const sh = new THREE.Shape(); sh.absarc(0, 0, RING_OUT - 2.5, 0, Math.PI * 2, false);
+  const hole = new THREE.Path(); hole.absarc(0, 0, RING_IN + 2.5, 0, Math.PI * 2, true); sh.holes.push(hole);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: RING_D - 5, bevelEnabled: true, bevelThickness: 2.5, bevelSize: 2.5, bevelSegments: 6, curveSegments: 160 });
+  g.translate(0, 0, -(RING_D - 5) / 2);
+  return shadowy(new THREE.Mesh(g, mats.ring));
+}
+// one heart half, puffy on the outside, flat where the halves meet (z = 0)
+function heartHalf(front) {
+  const bevel = 9;
+  const g = new THREE.ExtrudeGeometry(heartShape(HEART_S - 6), { depth: 0.01, bevelEnabled: true, bevelThickness: bevel, bevelSize: 6, bevelSegments: 14, curveSegments: 96 });
+  // keep only the side facing outward: squash the inward bevel flat
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const z = p.getZ(i); p.setZ(i, Math.max(z, 0)); }
+  g.computeVertexNormals();
+  const m = shadowy(new THREE.Mesh(g, mats.heart));
+  if (!front) m.rotation.y = Math.PI;
+  return m;
+}
+function heartGroup() {
+  const g = new THREE.Group();
+  const front = heartHalf(true), back = heartHalf(false);
+  g.add(front, back);
+  // NFC sticker inside the front half (shown in the exploded view)
+  const tag = new THREE.Mesh(new THREE.CylinderGeometry(19, 19, 0.6, 64), mats.tag); tag.rotation.x = Math.PI / 2; tag.position.z = 0.6; tag.visible = false;
+  g.add(tag);
+  const eyes = new THREE.Group();
+  for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(2.7, 32, 16), mats.eye); e.scale.set(1, 1.25, 0.7); e.position.set(s * 9.5, 6, 11.2); eyes.add(e); }
+  g.add(eyes);
+  return { group: g, front, back, tag, eyes };
+}
+function baseMesh() {
+  const w = BASE_W / 2, d = BASE_D / 2, r = 26;
+  const sh = new THREE.Shape();
+  sh.moveTo(-w + r, -d); sh.lineTo(w - r, -d); sh.quadraticCurveTo(w, -d, w, -d + r); sh.lineTo(w, d - r); sh.quadraticCurveTo(w, d, w - r, d);
+  sh.lineTo(-w + r, d); sh.quadraticCurveTo(-w, d, -w, d - r); sh.lineTo(-w, -d + r); sh.quadraticCurveTo(-w, -d, -w + r, -d);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: BASE_H - 6, bevelEnabled: true, bevelThickness: 3, bevelSize: 3, bevelSegments: 5, curveSegments: 48 });
+  g.rotateX(-Math.PI / 2); g.translate(0, 3, 0);
+  return shadowy(new THREE.Mesh(g, mats.base));
+}
+
+// ---- scene ----
+const viewerEl = document.getElementById('viewer');
+const canvas = document.createElement('canvas'); viewerEl.prepend(canvas);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.NeutralToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(BG); scene.fog = new THREE.Fog(BG, 520, 1100);
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = 0.6;
+const floor = new THREE.Mesh(new THREE.CircleGeometry(1500, 64), mats.stone); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+const key = new THREE.DirectionalLight(0xfff1e2, 2.4); key.position.set(-180, 330, 230); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048); key.shadow.radius = 6; key.shadow.bias = -0.0004;
+Object.assign(key.shadow.camera, { left: -220, right: 220, top: 220, bottom: -220, near: 10, far: 900 }); scene.add(key);
+const rim = new THREE.DirectionalLight(0xd9e4ff, 1.3); rim.position.set(220, 200, -280); scene.add(rim);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3530, 0.35));
+
+const camera = new THREE.PerspectiveCamera(27, 1, 1, 4000);
+camera.position.set(190, 150, 380);
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, 62, 0); controls.enableDamping = true; controls.enablePan = false;
+controls.minDistance = 260; controls.maxDistance = 760; controls.maxPolarAngle = Math.PI / 2.05;
+controls.autoRotate = !reduceMotion; controls.autoRotateSpeed = 0.5;
+controls.addEventListener('start', () => { controls.autoRotate = false; });
+
+const totem = new THREE.Group(); scene.add(totem);
+const base = baseMesh(); totem.add(base);
+const ring = ringMesh(); totem.add(ring);
+const heart = heartGroup(); totem.add(heart.group);
+const pin = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 20, 24), mats.pin); totem.add(pin);
+const label = new THREE.Mesh(new THREE.CircleGeometry(19, 64), mats.label); label.rotation.x = -Math.PI / 2; totem.add(label);
+const washers = new THREE.Group();
+{ const w = new THREE.Mesh(new THREE.CylinderGeometry(19, 19, 0.6, 64), heart.tag.material); w.position.set(0, 0, 22); washers.add(w); } // NFC tag, under the label
+totem.add(washers);
+
+// heart is centred slightly below the ring centre so its tip sits close to the ring
+const HEART_DY = -4;
+function layout(exploded) {
+  const e = exploded ? 1 : 0;
+  base.position.set(0, -e * 40, 0);
+  washers.position.set(0, -e * 70 + 1, 0); washers.visible = exploded;
+  ring.position.set(0, RING_Y + e * 20, RING_Z);
+  heart.group.position.set(0, RING_Y + HEART_DY + e * 20, RING_Z + e * 70);
+  heart.front.position.z = e * 26; heart.back.position.z = -e * 10;
+  heart.tag.visible = false; heart.tag.position.z = e * 12;
+  heart.eyes.position.z = e * 26;
+  pin.position.set(0, RING_Y - RING_IN - 2 + e * 20 - e * 14, RING_Z + e * 34);
+  pin.visible = true;
+  label.position.set(0, BASE_H + 0.3 - e * 40 + e * 22, 22);
+}
+
+// ---- controls ----
+let state = { finish: 'gallery', exploded: false, eyes: true };
+function applyFinish() {
+  const f = FINISHES[state.finish];
+  mats.ring.setValues({ color: new THREE.Color(f.ring.color), roughness: f.ring.roughness, metalness: f.ring.metalness || 0, clearcoat: f.ring.clearcoat || 0 });
+  if (f.base === 'wood') mats.base.setValues({ map: walnut, color: new THREE.Color(0xd8c2ae), roughness: 0.55 });
+  else mats.base.setValues({ map: null, color: new THREE.Color(f.base.color), roughness: f.base.roughness });
+  mats.ring.needsUpdate = mats.base.needsUpdate = true;
+  document.getElementById('spec').innerHTML = `
+    <dt>Ring</dt><dd>${f.fil.ring}</dd><dt>Heart</dt><dd>${f.fil.heart}</dd><dt>Base</dt><dd>${f.fil.base}</dd>
+    <dt>Size</dt><dd>13 cm tall, 13 × 8.6 cm base</dd><dt>Tap or scan</dt><dd>The 1.5 in QR label on the base (NFC tag under it)</dd>`;
+}
+function seg(id, options, current, onPick) {
+  const el = document.getElementById(id); el.innerHTML = '';
+  options.forEach(([value, text, swatch]) => {
+    const b = document.createElement('button'); b.type = 'button'; b.id = `${id}-${value}`;
+    b.innerHTML = (swatch ? `<span class="sw" style="background:${swatch}"></span>` : '') + text;
+    b.setAttribute('aria-pressed', String(value === current));
+    b.addEventListener('click', () => { onPick(value); [...el.children].forEach((c) => c.setAttribute('aria-pressed', String(c === b))); });
+    el.appendChild(b);
+  });
+}
+seg('finish', [['gallery', 'Gallery', '#f1ede5'], ['gold', 'Gold', '#d9b45f'], ['noir', 'Noir', '#2a2a2e']], state.finish, (v) => { state.finish = v; applyFinish(); });
+seg('view', [['assembled', 'Assembled'], ['exploded', 'Exploded']], 'assembled', (v) => { state.exploded = v === 'exploded'; layout(state.exploded); });
+seg('eyes', [['on', 'With eyes'], ['off', 'Pure symbol']], 'on', (v) => { state.eyes = v === 'on'; heart.eyes.visible = state.eyes; });
+applyFinish(); layout(false);
+
+// ---- print table ----
+const parts = [
+  ['Ring', 'PLA Matte Ivory White', 'Flat, like a donut on the plate', '2 h 44 min with the base (one plate)', '100 g with the base'],
+  ['Heart, front half', 'PLA Basic Pink', 'Flat side down; engraved design on top', '1 h 10 min for both halves (one plate)', '37 g for both'],
+  ['Heart, back half', 'PLA Basic Pink', 'Flat side down (print both halves on one plate)', '—', '—'],
+  ['Base', 'PLA Wood (walnut tone)', 'Right side up: the ring slot and label recess are open pockets on top, the NFC pocket opens underneath', '—', '—']
+];
+document.getElementById('parts').innerHTML = parts.map((r) => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="num">${r[3]}</td><td class="num">${r[4]}</td></tr>`).join('')
+  + `<tr><td>Total</td><td>3 filaments, no swaps</td><td>Two plates, one filament each (sliced, P1S 0.16 mm Fine)</td><td class="num">3 h 32 min</td><td class="num">131 g</td></tr>`;
+
+function resize() { const w = viewerEl.clientWidth, h = viewerEl.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(viewerEl); resize();
+(function loop() { controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+</script>

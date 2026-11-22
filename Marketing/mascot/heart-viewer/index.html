@@ -1,0 +1,261 @@
+<title>Totem Heart Designs</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=Figtree:wght@400;500;600&display=swap">
+<style>
+/* Layout: one big turntable stage, a row of option chips beneath it (design, plastic, paint) */
+:root {
+  --bg: #f6f3f1; --panel: #ffffff; --ink: #24202a; --muted: #6f6874; --line: #e4dee0;
+  --rose: #e2456f; --stage: radial-gradient(120% 90% at 50% 30%, #ffffff 0%, #efe9e6 70%, #e6dfdc 100%);
+  --display: "Fraunces", Georgia, serif; --body: "Figtree", "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #17151a; --panel: #211e25; --ink: #f1ecef; --muted: #a49ca8; --line: #34303a; --rose: #ff6f93;
+  --stage: radial-gradient(120% 90% at 50% 30%, #2c2830 0%, #1c1a20 70%, #161419 100%); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #17151a; --panel: #211e25; --ink: #f1ecef; --muted: #a49ca8; --line: #34303a; --rose: #ff6f93;
+  --stage: radial-gradient(120% 90% at 50% 30%, #2c2830 0%, #1c1a20 70%, #161419 100%); color-scheme: dark }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 400 15px/1.5 var(--body); }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 28px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 18px; }
+header { display: grid; gap: 6px; }
+h1 { font: 400 clamp(1.8rem, 4.5vw, 2.6rem)/1.1 var(--display); margin: 0; text-wrap: balance; }
+h1 i { color: var(--rose); }
+.lede { color: var(--muted); margin: 0; max-width: 62ch; }
+.stage { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; aspect-ratio: 4 / 3; max-height: 72vh; width: 100%; }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.hint { position: absolute; left: 14px; bottom: 12px; font-size: 12px; color: var(--muted); pointer-events: none; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
+.controls { display: grid; gap: 16px 18px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.group { display: grid; gap: 8px; min-width: 0; }
+.group > span { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.group.wide { grid-column: 1 / -1; }
+.chip { font: 500 14px/1 var(--body); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.chip:hover { border-color: var(--muted); }
+.chip:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+.chip[aria-pressed="true"] { border-color: var(--rose); box-shadow: inset 0 0 0 1px var(--rose); }
+.dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.18); flex: none; }
+.note { color: var(--muted); font-size: 13.5px; margin: 0; max-width: 70ch; }
+.note b { color: var(--ink); font-weight: 600; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>The Totem, <i>places you love</i></h1>
+    <p class="lede">Your pick: the dropped pin on a red heart, a Dark Blue ring and base, lettering in gold paint. FAVCIRCLES over the top of the ring, with place icons spaced down both sides, JOIN and US either side of the TAP OR SCAN label, PLACES YOU LOVE along the front. Turn it around (or use Back and Underneath): the heart's back matches its front, place icons circle the back of the ring, the sides of the base show the network (five linked people on the left, a constellation with a heart on the right), the unpainted FavCircles nameplate is on the back, and the numbered maker's mark is underneath. The other hearts and colors are still below. Drag to turn it, pinch or scroll to zoom.</p>
+  </header>
+
+  <div class="stage" id="stage"><div class="loading" id="loading">Loading the Totem…</div><span class="hint">Drag to rotate · scroll to zoom</span></div>
+
+  <div class="controls">
+    <div class="group wide"><span>View</span><div class="chips" id="view"></div></div>
+    <div class="group wide"><span>The map pin</span><div class="chips" id="design-pin"></div></div>
+    <div class="group wide"><span>ChatGPT's designs</span><div class="chips" id="design-gpt"></div></div>
+    <div class="group wide"><span>Claude's designs</span><div class="chips" id="design"></div></div>
+    <div class="group"><span>Heart plastic</span><div class="chips" id="plastic"></div></div>
+    <div class="group"><span>Ring and base plastic</span><div class="chips" id="frame"></div></div>
+    <div class="group"><span>Paint pen</span><div class="chips" id="paint"></div></div>
+  </div>
+  <p class="note" id="about"></p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const GPT = [
+  ['door', 'The Little Door', 'a tall, slightly crooked arched door with a big round knob and two doorstep strokes. It makes people wonder what\'s inside: an invitation without a word.', 'raspberry', 'ivory'],
+  ['wink', 'Wishbone Wink', 'one solid eye, one winking arc and a crooked smile, with the lobes as cheeks. It turns the Totem into a character sharing a joke.', 'orange', 'black'],
+  ['stamp', 'The House Stamp', 'one big pictogram for each store (a coffee cup here; a croissant, a cocktail glass or a book elsewhere) between two stamp marks. It looks commissioned, and the Totems become collectible.', 'marigold', 'brown'],
+  ['orbit', 'Neighborhood Orbit', 'a tilted orbit around a big dot, with a small dot riding the loop. Against the real ring, the Totem becomes a tiny solar system.', 'plum', 'silver'],
+  ['contours', 'The Good Stuff Is Inside', 'three nested heart contours like a topographic map, broken in one place to make a path inward.', 'coral', 'white'],
+  ['bite', 'One Bite Missing', 'a scalloped bite inside one lobe, with two crumbs. The candy-shaped heart becomes a quick joke beside a pastry case.', 'red', 'cream'],
+  ['thread', 'Saved by a Thread', 'a seam down the heart held by three big cross-stitches, like a mended patch: handmade and cherished.', 'dustyrose', 'charcoal'],
+  ['pinky', 'Secret Handshake', 'two chunky mitten hands hooking pinkies across the middle: a pinky promise.', 'vermilion', 'white'],
+  ['disco', 'Counter Disco', 'one big four-point glint and two small ones, like a jewel or wrapped candy. ChatGPT\'s pick for dim bars.', 'cherry', 'white'],
+  ['keep', 'Keep This Place', '"KEEP" in big rounded capitals over a bookmark tab, like a conversation heart with a better word.', 'hotpink', 'black']
+];
+const PINS = [
+  ['pin_heart', 'Pin with a heart', 'the map pin, with a little heart cut through its head: a favorite place. The pin is filled with gold; the heart inside it shows the red plastic.', 'red', 'gold', 'walnut'],
+  ['pin', 'Classic pin', 'the map pin everyone knows from a map app, solid with a round hole in its head.', 'red', 'white', 'jade'],
+  ['pin_drop', 'Pin just dropped', 'the pin as an outline with a dot in its head, and the little shadow it casts on the map, as if it just landed. Wes\'s pick: red heart, gold pin, Dark Blue ring and base.', 'red', 'gold', 'darkblue']
+];
+const DESIGNS = [
+  ...PINS.map(([id, name, about, plastic, paint, frame]) => ({ id, name, plastic, paint, frame, pin: true, about: `<b>${name}:</b> ${about}` })),
+  ...GPT.map(([id, name, about, plastic, paint]) => ({ id, name, plastic, paint, about: `<b>${name}</b> (ChatGPT): ${about}` })),
+  { id: 'logo', name: 'Logo', about: '<b>Logo:</b> a small heart inside a ring, the FavCircles mark repeated on the Totem.' },
+  { id: 'hearts', name: 'Hearts', about: '<b>Hearts:</b> an outline heart with a solid one inside, and four tiny hearts around it.' },
+  { id: 'fav', name: 'fav', about: '<b>fav:</b> the word "fav" in heavy italic, across the middle of the heart.' },
+  { id: 'plain', name: 'Plain', about: '<b>Plain:</b> no engraving, just the glossy puffy heart.' }
+];
+// Wes's filaments (Bambu order 2026-11-22) first, then the earlier ideas
+const MINE = [['red', 'Red (PLA Basic)', 0xc8102e], ['pink', 'Pink (PLA Basic)', 0xf5a3c0], ['jade', 'Jade White (PLA Basic)', 0xf4f3ee],
+  ['black', 'Black (PLA Basic)', 0x1d1d1f], ['darkblue', 'Dark Blue (PLA Matte)', 0x1f3157], ['walnut', 'Black Walnut (PLA Wood)', 0x4a3426],
+  ['goldsilk', 'Gold (PLA Silk+)', 0xc9a44a], ['orange', 'Orange (your spool)', 0xf26b1d], ['green', 'Green (your spool)', 0x2f8f46]];
+const PLASTICS = [...MINE, ['charcoal', 'Charcoal', 0x34333a],
+  ['raspberry', 'Raspberry', 0xc8285e], ['marigold', 'Marigold', 0xf2a51a], ['plum', 'Plum', 0x5e2750], ['coral', 'Coral', 0xf27a62], ['dustyrose', 'Dusty rose', 0xc98d92],
+  ['vermilion', 'Vermilion', 0xe2412e], ['cherry', 'Cherry red', 0xa5142c], ['hotpink', 'Hot pink', 0xff3f8e]];
+const PAINTS = [['white', 'White', 0xf7f5f0], ['ivory', 'Ivory', 0xf2ead4], ['cream', 'Cream', 0xf3e6c4], ['gold', 'Gold', 0xd4ad55], ['silver', 'Silver', 0xc4c8cf], ['black', 'Black', 0x1c1b1f], ['charcoal', 'Charcoal', 0x3b3a40], ['brown', 'Espresso brown', 0x4a2c1e]];
+const FRAMES = MINE;
+const VIEWS = [['totem', 'Front'], ['back', 'Back'], ['under', 'Underneath'], ['heart', 'Heart close-up']];
+const CROWN = [['off', 'Plain sides'], ['on', 'Charlotte crown on the side']];
+const state = { crown: 'off', view: 'totem', design: 'pin_drop', plastic: 'red', paint: 'gold', frame: 'darkblue' };
+
+// ---- binary STL → geometry with smooth normals that keep sharp edges (30°) ----
+function parseSTL(buf) {
+  const dv = new DataView(buf), n = dv.getUint32(80, true);
+  const pos = new Float32Array(n * 9), fn = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const o = 84 + i * 50;
+    for (let k = 0; k < 9; k++) pos[i * 9 + k] = dv.getFloat32(o + 12 + k * 4, true);
+    const ax = pos[i*9+3]-pos[i*9], ay = pos[i*9+4]-pos[i*9+1], az = pos[i*9+5]-pos[i*9+2];
+    const bx = pos[i*9+6]-pos[i*9], by = pos[i*9+7]-pos[i*9+1], bz = pos[i*9+8]-pos[i*9+2];
+    let nx = ay*bz-az*by, ny = az*bx-ax*bz, nz = ax*by-ay*bx; const l = Math.hypot(nx, ny, nz) || 1;
+    fn[i*3] = nx/l; fn[i*3+1] = ny/l; fn[i*3+2] = nz/l;
+  }
+  const key = (x, y, z) => `${Math.round(x*200)},${Math.round(y*200)},${Math.round(z*200)}`;
+  const faces = new Map();
+  for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) {
+    const k = key(pos[i*9+c*3], pos[i*9+c*3+1], pos[i*9+c*3+2]);
+    (faces.get(k) || faces.set(k, []).get(k)).push(i);
+  }
+  const nor = new Float32Array(n * 9), cosT = Math.cos(30 * Math.PI / 180);
+  for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) {
+    const list = faces.get(key(pos[i*9+c*3], pos[i*9+c*3+1], pos[i*9+c*3+2]));
+    let sx = 0, sy = 0, sz = 0;
+    for (const j of list) if (fn[j*3]*fn[i*3] + fn[j*3+1]*fn[i*3+1] + fn[j*3+2]*fn[i*3+2] > cosT) { sx += fn[j*3]; sy += fn[j*3+1]; sz += fn[j*3+2]; }
+    const l = Math.hypot(sx, sy, sz) || 1; nor[i*9+c*3] = sx/l; nor[i*9+c*3+1] = sy/l; nor[i*9+c*3+2] = sz/l;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  return g;
+}
+const cache = {};
+async function geo(name) {
+  if (!cache[name]) cache[name] = fetch(`models/${name}.json`).then(r => { if (!r.ok) throw new Error(name); return r.json(); }).then(j => Uint8Array.from(atob(j.stl), c => c.charCodeAt(0)).buffer).then(parseSTL);
+  return cache[name];
+}
+
+// ---- scene ----
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+stage.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 4 / 3, 1, 3000);
+camera.position.set(110, 120, 300);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.enablePan = false; controls.minDistance = 80;
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb9aaa6, 0.75));
+const key = new THREE.DirectionalLight(0xffffff, 1.0); key.position.set(60, 90, 120); scene.add(key);
+const rim = new THREE.DirectionalLight(0xffffff, 0.45); rim.position.set(-90, 30, -60); scene.add(rim);
+
+const plasticMat = new THREE.MeshPhysicalMaterial({ roughness: 0.42, clearcoat: 0.3, clearcoatRoughness: 0.5, side: THREE.DoubleSide });
+const paintMat = new THREE.MeshStandardMaterial({ roughness: 0.55 });
+const heart = new THREE.Group();
+const front = new THREE.Mesh(undefined, plasticMat), back = new THREE.Mesh(undefined, plasticMat), paint = new THREE.Mesh(undefined, paintMat);
+const paintBack = new THREE.Mesh(undefined, paintMat);
+back.scale.z = -1; paintBack.scale.z = -1; heart.add(front, back, paint, paintBack);
+
+// the whole Totem, in the print model's own frame (z up, front = -y), turned so front faces the camera
+const turn = new THREE.Group(); scene.add(turn);
+const totem = new THREE.Group(); totem.rotation.x = -Math.PI / 2;
+const frameMat = new THREE.MeshPhysicalMaterial({ roughness: 0.5, clearcoat: 0.15 });
+const ringMesh = new THREE.Mesh(undefined, frameMat), baseMesh = new THREE.Mesh(undefined, frameMat), baseText = new THREE.Mesh(undefined, paintMat), ringText = new THREE.Mesh(undefined, paintMat), crownPaint = new THREE.Mesh(undefined, paintMat);
+const labelTex = new THREE.TextureLoader().load('label.png'); labelTex.encoding = THREE.sRGBEncoding; labelTex.anisotropy = 8;
+const label = new THREE.Mesh(new THREE.CircleGeometry(19.05, 96), new THREE.MeshStandardMaterial({ map: labelTex, roughness: 0.45 }));
+label.position.set(0, -20, 18 - 0.5 + 0.06);
+const holder = new THREE.Group(); holder.position.set(0, 14, 65 - 4); holder.rotation.x = Math.PI / 2;
+totem.add(ringMesh, baseMesh, baseText, ringText, crownPaint, label, holder);
+let totemLoaded = false;
+async function setView() {
+  const t = state.view !== 'heart';
+  if (t && !totemLoaded) {
+    document.getElementById('loading').hidden = false;
+    [ringMesh.geometry, baseMesh.geometry, baseText.geometry, ringText.geometry] = await Promise.all([geo('ring'), geo(state.crown === 'on' ? 'base_crown' : 'base'), geo('basetext'), geo('ringtext')]);
+    totemLoaded = true; document.getElementById('loading').hidden = true;
+  }
+  heart.rotation.set(0, 0, 0); turn.rotation.set(0, 0, 0);
+  if (t) {
+    holder.add(heart); turn.add(totem); controls.target.set(0, state.view === 'under' ? 10 : 52, 0); controls.maxDistance = 600;
+    // front faces +z; the back stamp is at -z; the maker's mark is on the bottom
+    if (state.view === 'back') camera.position.set(-70, 90, -280);
+    else if (state.view === 'under') camera.position.set(40, -230, 120);
+    else camera.position.set(110, 120, 300);
+  }
+  else { turn.remove(totem); turn.add(heart); controls.target.set(0, -4, 0); camera.position.set(38, 20, 150); controls.maxDistance = 320; }
+  controls.update();
+}
+
+function setColors() {
+  plasticMat.color.setHex(PLASTICS.find(p => p[0] === state.plastic)[2]).convertSRGBToLinear();
+  const pc = PAINTS.find(p => p[0] === state.paint);
+  paintMat.color.setHex(pc[2]).convertSRGBToLinear();
+  paintMat.metalness = (state.paint === 'gold' || state.paint === 'silver') ? 0.75 : 0;
+  paintMat.roughness = paintMat.metalness ? 0.35 : 0.55;
+  frameMat.color.setHex(FRAMES.find(p => p[0] === state.frame)[2]).convertSRGBToLinear();
+  // Silk+ prints shiny, Matte and Wood print flat
+  const finish = (m, id) => { m.metalness = id === 'goldsilk' ? 0.55 : 0; m.roughness = id === 'goldsilk' ? 0.3 : (id === 'darkblue' || id === 'walnut') ? 0.85 : m === plasticMat ? 0.42 : 0.5; m.clearcoat = (id === 'darkblue' || id === 'walnut') ? 0 : m === plasticMat ? 0.3 : 0.15; };
+  finish(plasticMat, state.plastic); finish(frameMat, state.frame);
+}
+async function show() {
+  const d = state.design;
+  front.geometry = await geo(`body_${d}`);
+  // the back of the heart matches the front for the chosen pin (Wes 2026-11-22)
+  const backMatch = d === 'pin_drop';
+  back.geometry = await geo(backMatch ? 'back_pin_drop' : 'back');
+  paint.visible = d !== 'plain';
+  if (paint.visible) paint.geometry = await geo(`paint_${d}`);
+  paintBack.visible = backMatch;
+  if (backMatch) paintBack.geometry = paint.geometry;
+  document.getElementById('about').innerHTML = DESIGNS.find(x => x.id === d).about;
+  document.getElementById('loading').hidden = true;
+}
+
+function press(k) { document.querySelectorAll(`.chip[data-k="${k}"]`).forEach(c => c.setAttribute('aria-pressed', String(c.dataset.v === state[k]))); }
+function pickDesign() {
+  const d = DESIGNS.find(x => x.id === state.design);
+  if (d.plastic) { state.plastic = d.plastic; state.paint = d.paint; press('plastic'); press('paint'); }
+  if (d.frame) { state.frame = d.frame; press('frame'); }
+  if (d.plastic) setColors();
+  return show();
+}
+function chips(id, items, k, onPick) {
+  const el = document.getElementById(id);
+  for (const [val, label, color] of items) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.id = `${id}-${val}`;
+    if (color !== undefined) { const s = document.createElement('i'); s.className = 'dot'; s.style.background = '#' + color.toString(16).padStart(6, '0'); b.append(s); }
+    b.append(label); b.setAttribute('aria-pressed', String(state[k] === val));
+    b.dataset.k = k; b.dataset.v = val;
+    b.onclick = () => { state[k] = val; press(k); onPick(); };
+    el.append(b);
+  }
+}
+chips('view', VIEWS, 'view', () => setView());
+crownPaint.visible = false;
+chips('design-pin', DESIGNS.filter(d => d.pin).map(d => [d.id, d.name]), 'design', pickDesign);
+chips('design-gpt', DESIGNS.filter(d => d.plastic && !d.pin).map(d => [d.id, d.name]), 'design', pickDesign);
+chips('design', DESIGNS.filter(d => !d.plastic).map(d => [d.id, d.name]), 'design', pickDesign);
+chips('plastic', PLASTICS, 'plastic', setColors);
+chips('paint', PAINTS, 'paint', setColors);
+chips('frame', FRAMES, 'frame', setColors);
+setColors();
+Promise.all([show(), setView()]).then(() => { document.getElementById('loading').hidden = true; }).catch(() => { document.getElementById('loading').textContent = 'The heart model could not load. Reload the page to try again.'; });
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage); resize();
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let idle = 0; controls.addEventListener('start', () => { idle = -1; }); controls.addEventListener('end', () => { idle = performance.now(); });
+renderer.setAnimationLoop((t) => {
+  if (!still && idle >= 0 && t - idle > 2500) turn.rotation.y = Math.sin(t / 2600) * 0.45;
+  controls.update(); renderer.render(scene, camera);
+});
+</script>

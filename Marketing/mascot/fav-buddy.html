@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fav Register Buddy</title>
+<style>
+  :root { --bg: #f7f6fb; --paper: #fff; --ink: #1f1d2b; --muted: #5d5a70; --line: #e4e1f0; --brand: #667eea; --brand2: #764ba2; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #14131c; --paper: #1d1b28; --ink: #ecebf5; --muted: #a6a3bb; --line: #322f44; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { background: linear-gradient(135deg, var(--brand), var(--brand2)); color: #fff; padding: 36px 16px 30px; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+  header .wrap { padding: 0; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 700; opacity: .85; }
+  h1 { margin: 6px 0 8px; font-size: 32px; }
+  header p { margin: 0; opacity: .92; max-width: 700px; }
+  .hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; margin: 24px 0; align-items: start; }
+  figure { margin: 0; background: #f7f7f7; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  figure img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+  figcaption { background: var(--paper); padding: 10px 14px; font-size: 14px; color: var(--muted); border-top: 1px solid var(--line); }
+  figcaption strong { color: var(--ink); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
+  .card h2 { font-size: 18px; margin: 0 0 8px; }
+  .card ul { margin: 0; padding-left: 20px; }
+  .card li { margin-bottom: 4px; }
+  .specs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 4px; }
+  .spec { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  .spec b { display: block; font-size: 20px; }
+  .spec span { font-size: 13px; color: var(--muted); }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 6px; border: 1px solid rgba(0,0,0,.15); }
+  footer { color: var(--muted); font-size: 13px; padding: 10px 0 40px; }
+  code { font-size: 13px; }
+  .lightbox { position: fixed; inset: 0; background: rgba(10,8,20,.85); display: none; align-items: center; justify-content: center; padding: 20px; cursor: zoom-out; z-index: 10; }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: 100%; max-height: 100%; border-radius: 12px; background: #f7f7f7; }
+  @media (max-width: 760px) {
+    .hero, .grid { grid-template-columns: 1fr; }
+    h1 { font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="eyebrow">FavCircles · Register mascot · Charlotte edition</div>
+    <h1>Meet Fav, the tap buddy</h1>
+    <p>One shared body for every city, a city accessory on top, and a TAP badge on the belly that hides the NFC tag. Customers touch their phone to Fav's belly to earn or claim rewards.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <figure>
+      <img src="renders/charlotte-3q.png" alt="Fav with the Charlotte crown, three-quarter view">
+      <figcaption><strong>Charlotte — Queen City crown.</strong> Three-quarter view.</figcaption>
+    </figure>
+    <div style="display:grid; gap:20px;">
+      <figure>
+        <img src="renders/charlotte-exploded.png" alt="Exploded view showing body, crown and badge">
+        <figcaption><strong>Three parts.</strong> Crown plugs onto the head peg; badge glues over the NFC tag.</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <div class="grid">
+    <figure>
+      <img src="renders/charlotte-front.png" alt="Fav front view">
+      <figcaption><strong>Front.</strong> Engraved eyes and smile read in any filament color.</figcaption>
+    </figure>
+    <figure>
+      <img src="renders/body-back.png" alt="Shared body from the back showing the accessory peg">
+      <figcaption><strong>Shared body.</strong> Flat platform and keyed peg for any city's accessory.</figcaption>
+    </figure>
+    <div class="card">
+      <h2>At a glance</h2>
+      <div class="specs">
+        <div class="spec"><b>70 mm</b><span>wide</span></div>
+        <div class="spec"><b>86 mm</b><span>tall with crown</span></div>
+        <div class="spec"><b>34 mm</b><span>TAP badge</span></div>
+        <div class="spec"><b>2.6 mm</b><span>tag to phone</span></div>
+      </div>
+      <p style="margin:14px 0 6px"><strong>Colors</strong></p>
+      <div><span class="swatch" style="background:#7b5cd6"></span>Body — FavCircles purple</div>
+      <div><span class="swatch" style="background:#f2c230"></span>Crown — gold</div>
+      <div><span class="swatch" style="background:#ffffff"></span>Badge — white with purple lettering</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>How it works at the register</h2>
+      <ul>
+        <li>NTAG215 sticker sits behind the belly badge, programmed with the store's register tap link.</li>
+        <li>Customer touches the <strong>top edge</strong> of their phone to the belly.</li>
+        <li>Earn or claim — same as the Register sticker today.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Other cities, same body</h2>
+      <ul>
+        <li>Nashville — cowboy hat</li>
+        <li>Austin — boots or a bat</li>
+        <li>New Orleans — jazz hat</li>
+        <li>Raleigh — acorn cap (City of Oaks)</li>
+        <li>Chicago — deep-dish hat</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Printing</h2>
+      <ul>
+        <li>PLA, 0.2 mm layers (0.12 for badge and crown), 15% infill.</li>
+        <li>Body upright, no supports (arms may want build-plate supports).</li>
+        <li>Badge two-color: swap filament at 1.8 mm.</li>
+        <li>Files: <code>stl/body.stl</code>, <code>stl/crown.stl</code>, <code>stl/badge.stl</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>Renders from <code>fav-buddy.scad</code> (OpenSCAD) — not yet test-printed. Click any image to enlarge. · <a href="mascot-options.html" style="color:var(--brand)">See other body options →</a></footer>
+</main>
+
+<div class="lightbox" id="lb"><img alt=""></div>
+<script>
+  var lb = document.getElementById('lb'), lbImg = lb.querySelector('img');
+  document.querySelectorAll('figure img').forEach(function (img) {
+    img.addEventListener('click', function () { lbImg.src = img.src; lbImg.alt = img.alt; lb.classList.add('open'); });
+  });
+  lb.addEventListener('click', function () { lb.classList.remove('open'); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') lb.classList.remove('open'); });
+</script>
+</body>
+</html>

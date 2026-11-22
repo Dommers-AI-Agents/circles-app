@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mascot Characters</title>
+<style>
+  :root { --bg: #f7f6fb; --paper: #fff; --ink: #1f1d2b; --muted: #5d5a70; --line: #e4e1f0; --brand: #667eea; --brand2: #764ba2; --good: #2f855a; --warn: #b7791f; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #14131c; --paper: #1d1b28; --ink: #ecebf5; --muted: #a6a3bb; --line: #322f44; --good: #6fd39b; --warn: #f0c060; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { background: linear-gradient(135deg, #e5484d, var(--brand2)); color: #fff; padding: 36px 16px 30px; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+  header .wrap { padding: 0; }
+  .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 700; opacity: .85; }
+  h1 { margin: 6px 0 8px; font-size: 32px; }
+  header p { margin: 0; opacity: .92; max-width: 780px; }
+  .note { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 14px 20px; margin: 24px 0; font-size: 15px; }
+  .cast { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+  .ch { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
+  .ch img { display: block; width: 100%; height: auto; background: #f7f7f7; cursor: zoom-in; border-bottom: 1px solid var(--line); }
+  .ch .b { padding: 16px 18px 18px; }
+  .ch h2 { margin: 0; font-size: 21px; }
+  .ch .tag { font-size: 13px; color: var(--muted); margin: 2px 0 10px; }
+  .ch p { margin: 0 0 10px; font-size: 15px; }
+  .ch ul { margin: 0; padding-left: 18px; font-size: 14px; }
+  .ch li { margin-bottom: 3px; }
+  .ch li.pro::marker { content: "+  "; color: var(--good); font-weight: 700; }
+  .ch li.con::marker { content: "–  "; color: var(--warn); font-weight: 700; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: #efeafe; color: #5b3fc4; margin-left: 6px; vertical-align: 3px; text-decoration: none; }
+  section.nfc { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; margin: 28px 0; }
+  section.nfc h2 { margin: 0 0 10px; font-size: 22px; }
+  section.nfc h3 { margin: 18px 0 6px; font-size: 16px; }
+  section.nfc p { margin: 0 0 10px; }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--bg); }
+  .callout { border-left: 4px solid var(--brand); background: var(--bg); border-radius: 10px; padding: 12px 14px; margin: 12px 0; }
+  footer { color: var(--muted); font-size: 13px; padding: 4px 0 40px; }
+  footer a { color: var(--brand); }
+  .lightbox { position: fixed; inset: 0; background: rgba(10,8,20,.85); display: none; align-items: center; justify-content: center; padding: 20px; cursor: zoom-out; z-index: 10; }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: 100%; max-height: 100%; border-radius: 12px; background: #f7f7f7; }
+  @media (max-width: 700px) { h1 { font-size: 26px; } .cast { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="eyebrow">FavCircles · Register mascot</div>
+    <h1>The character lineup</h1>
+    <p>Five characters built the same way as Pinny: the white face is the tap spot (NFC tag 2 mm behind it), the base says "TAP MY FACE", and the same peg on top takes any city's accessory. All shown wearing Charlotte's crown.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="note">Every face prints in three colors (white, dark eyes and smile, pink cheeks or an orange beak) and every body is one color plus the white label, so they all work with the 4-spool AMS. Click any picture to enlarge.</div>
+
+  <div class="cast">
+    <article class="ch">
+      <img src="renders/pinny-3q.png" alt="Pinny the map pin">
+      <div class="b">
+        <h2>Pinny <a class="pill" href="pinny.html">Full design →</a></h2>
+        <div class="tag">The map pin · red</div>
+        <p>A saved place come to life; the pin's hole is its face.</p>
+        <ul><li class="pro">Says "places" the moment you see it</li><li class="pro">Matches the pins in the app</li><li class="con">Narrow waist is the fragile spot</li></ul>
+      </div>
+    </article>
+
+    <article class="ch">
+      <img src="renders/char-heart.png" alt="Favvy the heart">
+      <div class="b">
+        <h2>Favvy</h2>
+        <div class="tag">The heart · pink</div>
+        <p>"Fav" means favorite. A puffy heart for the places you love, cheering with both arms.</p>
+        <ul><li class="pro">The name and the shape match: Fav = ♥</li><li class="pro">Warm and friendly on any counter</li><li class="con">Hearts are common, so it's less unique</li></ul>
+      </div>
+    </article>
+
+    <article class="ch">
+      <img src="renders/char-star.png" alt="Goldie the star">
+      <div class="b">
+        <h2>Goldie</h2>
+        <div class="tag">The reward star · gold, purple crown</div>
+        <p>A gold star, the universal sign of a reward. The side points are its arms and the bottom points are its legs.</p>
+        <ul><li class="pro">Says "rewards" at the register</li><li class="pro">Sturdy, flat-sided, easy to print</li><li class="con">Doesn't say "places"</li></ul>
+      </div>
+    </article>
+
+    <article class="ch">
+      <img src="renders/char-cup.png" alt="Cuppa the coffee cup">
+      <div class="b">
+        <h2>Cuppa</h2>
+        <div class="tag">The coffee cup · teal, on a saucer</div>
+        <p>A happy cup waving with one arm, the handle on the other side, wearing its crown in the coffee.</p>
+        <ul><li class="pro">Perfect for coffee shops and bakeries, your first stores</li><li class="pro">Widest base, hardest to knock over</li><li class="con">Feels wrong in a boutique or a gym; maybe a café edition</li></ul>
+      </div>
+    </article>
+
+    <article class="ch">
+      <img src="renders/char-owl.png" alt="Hoot the owl">
+      <div class="b">
+        <h2>Hoot</h2>
+        <div class="tag">The local-guide owl · brown</div>
+        <p>The wise local who knows all the best spots. The owl's facial disc is the tap face, with big eyes and an orange beak.</p>
+        <ul><li class="pro">Most "mascot"-like; an animal people name and remember</li><li class="pro">Fits the "your friends' favorite spots" story</li><li class="con">Most detail (ear tufts, wings) = longest print</li></ul>
+      </div>
+    </article>
+  </div>
+
+  <section class="nfc">
+    <h2>Which NFC tags to use</h2>
+    <p><strong>Short answer:</strong> genuine NXP <strong>NTAG215</strong> (or NTAG213), round, <strong>30 mm</strong> (not 25 mm), paper or PET stickers, with a <em>non-metal</em> backing. They're the same tags your Register stickers use, just bigger.</p>
+    <div class="tablewrap"><table>
+      <tr><th>What to pick</th><th>Why</th></tr>
+      <tr><td><strong>30 mm round</strong> instead of 25 mm</td><td>Read range depends mostly on the size of the tag's antenna. The face pocket fits a 30 mm tag, and the bigger coil reads from farther away and at sloppier angles.</td></tr>
+      <tr><td><strong>Genuine NXP NTAG213/215</strong></td><td>The chips iPhones read best. Cheap "NTAG215-compatible" clones are the usual cause of tags that work on one phone and not another. Buy from a seller that says NXP.</td></tr>
+      <tr><td><strong>Not</strong> "anti-metal" / ferrite tags</td><td>Those are only for sticking on metal. On plastic they are thicker and no better.</td></tr>
+      <tr><td><strong>Lock the tag</strong> after writing it</td><td>Important: an unlocked tag can be rewritten by anyone with a free NFC app, sending your customers to a different link. Write the store's link, test it, then lock it (permanent lock or password) in NFC Tools.</td></tr>
+      <tr><td>Keep it close and clear</td><td>The face is now 2 mm thick, so the tag sits 2 mm from the phone. No metal, magnets, foil or metallic paint near it; that includes metal-filled filaments (regular and silk PLA are fine).</td></tr>
+    </table></div>
+    <h3>Telling customers where to tap</h3>
+    <p>iPhones read with the <strong>top edge</strong> of the phone, Android phones with the <strong>middle of the back</strong>. "TAP MY FACE" covers both. A small card at the register ("Touch the top of your phone to Pinny's face") helps for the first week.</p>
+    <div class="callout">Test before gluing: put the tag in the pocket, set the face on top, and tap with an iPhone and an Android phone. If it's flaky, try a different tag brand before changing the design.</div>
+  </section>
+
+  <footer>Sources: <code>characters.scad</code> (Favvy, Goldie, Cuppa, Hoot) and <code>pinny.scad</code>. Concept renders, not test-printed; print files for a new character are made once you pick it. <a href="mascot-options.html">← Earlier body options</a></footer>
+</main>
+
+<div class="lightbox" id="lb"><img alt=""></div>
+<script>
+  var lb = document.getElementById('lb'), lbImg = lb.querySelector('img');
+  document.querySelectorAll('.ch img').forEach(function (img) {
+    img.addEventListener('click', function () { lbImg.src = img.src; lbImg.alt = img.alt; lb.classList.add('open'); });
+  });
+  lb.addEventListener('click', function () { lb.classList.remove('open'); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') lb.classList.remove('open'); });
+</script>
+</body>
+</html>

@@ -1,0 +1,475 @@
+<title>Favvy Counter Objects</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&display=swap">
+<style>
+/* Layout: a product-launch gallery. One live object on a stone counter, then the six studies as studio stills, then materials and the build. Deliberately single-theme (dark studio). */
+:root {
+  --bg: #0e0e10;
+  --panel: #161619;
+  --ink: #efece6;
+  --muted: #9a968f;
+  --line: #2a2a2f;
+  --rose: #e2617f;        /* Favvy, used sparingly */
+  --walnut: #6b4429;
+  --display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --body: "Geist", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 400 15px/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1200px; margin: 0 auto; padding-block: 28px 80px; display: grid; gap: 64px; }
+header.top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+.mark { font: 500 0.78rem/1 var(--body); letter-spacing: 0.22em; text-transform: uppercase; }
+.mark b { color: var(--rose); font-weight: 600; }
+.small { font-size: 0.8rem; color: var(--muted); letter-spacing: 0.04em; }
+h1, h2, h3 { font-family: var(--display); font-weight: 400; margin: 0; text-wrap: balance; letter-spacing: -0.005em; }
+h1 { font-size: clamp(2.6rem, 6vw, 4.8rem); line-height: 0.98; }
+h1 i, h2 i { color: var(--rose); }
+h2 { font-size: clamp(1.9rem, 3.6vw, 2.8rem); line-height: 1.05; }
+h3 { font-size: 1.7rem; line-height: 1.1; }
+p { margin: 0; max-width: 62ch; }
+.muted { color: var(--muted); }
+.label { font: 500 0.7rem/1 var(--body); letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+
+.intro { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: end; }
+.intro p { font-size: 1.05rem; }
+
+/* Live object */
+.stage { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 28px; align-items: stretch; }
+.viewer { position: relative; border-radius: 4px; overflow: hidden; background: #1b1b1f; aspect-ratio: 4 / 3; max-width: 100%; }
+.viewer canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.viewer .hint { position: absolute; left: 14px; bottom: 12px; }
+.spec { display: grid; gap: 18px; align-content: start; padding-top: 6px; min-width: 0; }
+.spec dl { display: grid; grid-template-columns: 7.5em 1fr; gap: 10px 14px; margin: 0; border-top: 1px solid var(--line); padding-top: 16px; }
+.spec dt { color: var(--muted); font-size: 0.85rem; }
+.spec dd { margin: 0; font-size: 0.92rem; }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tabs button { font: 500 0.82rem/1 var(--body); color: var(--ink); background: transparent; border: 1px solid var(--line); padding: 9px 13px; border-radius: 999px; cursor: pointer; }
+.tabs button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.tabs button:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+
+/* Stills */
+.stills { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 20px; }
+.still { display: grid; gap: 12px; cursor: pointer; background: none; border: 0; padding: 0; color: inherit; text-align: left; font: inherit; }
+.still .img { aspect-ratio: 1; background: #1b1b1f; border-radius: 3px; overflow: hidden; max-width: 100%; }
+.still img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .6s ease; }
+.still:hover img { transform: scale(1.03); }
+.still:focus-visible { outline: 2px solid var(--rose); outline-offset: 4px; }
+.still .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.still h3 { font-size: 1.45rem; }
+.still p { font-size: 0.9rem; color: var(--muted); }
+
+/* Materials */
+.materials { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.swatch { display: grid; gap: 10px; }
+.swatch .chip { height: 92px; border-radius: 3px; }
+.swatch b { font-weight: 500; }
+
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+.steps { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.steps li { display: grid; grid-template-columns: 2.2em 1fr; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
+.steps li span { font-family: var(--display); font-size: 1.5rem; line-height: 1; color: var(--rose); }
+
+.pick { border-top: 1px solid var(--line); padding-top: 28px; display: grid; gap: 14px; }
+
+@media (prefers-reduced-motion: reduce) { .still img { transition: none; } }
+@media (max-width: 900px) {
+  .intro, .stage, .split { grid-template-columns: 1fr; }
+  .stills { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .materials { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) { .stills { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <span class="mark"><b>Fav</b>Circles · Favvy</span>
+    <span class="small">Counter object studies · 11 cm · walnut, ceramic white, brushed aluminium</span>
+  </header>
+
+  <section class="intro">
+    <h1>Less mascot.<br>More <i>presence</i>.</h1>
+    <p class="muted">Six studies for a Favvy that earns its place beside the register. The Furbo Mini's cup-on-a-stem is the starting point. The character comes from posture, a pair of small lit eyes and the heart hidden in each silhouette, so it reads as a design object first and a friend second. Each one carries the tap tag under a round QR label in the spot your hand already goes to.</p>
+  </section>
+
+  <section class="stage" aria-label="Live 3D view">
+    <div class="viewer" id="viewer"><span class="hint small">Drag to turn</span></div>
+    <div class="spec">
+      <span class="label" id="s-index">Study 01</span>
+      <h2 id="s-name">Halo</h2>
+      <p id="s-line" class="muted"></p>
+      <dl>
+        <dt>Character</dt><dd id="s-char"></dd>
+        <dt>Tap / scan</dt><dd id="s-tap"></dd>
+        <dt>Materials</dt><dd id="s-mat"></dd>
+      </dl>
+      <div class="tabs" id="tabs" role="group" aria-label="Choose a study"></div>
+    </div>
+  </section>
+
+  <section style="display:grid;gap:24px">
+    <div style="display:grid;gap:10px"><span class="label">The six studies</span><h2>Each one greets people <i>differently</i></h2></div>
+    <div class="stills" id="stills"></div>
+  </section>
+
+  <section style="display:grid;gap:24px">
+    <div style="display:grid;gap:10px"><span class="label">Materials</span><h2>A short, warm palette</h2></div>
+    <div class="materials">
+      <div class="swatch"><div class="chip" style="background:linear-gradient(115deg,#4a2c19,#7a5034 40%,#5c3a22 70%,#81573a)"></div><b>Walnut</b><span class="small">Lids, feet, trays. A real 4 in walnut coaster blank or Bambu PLA Wood.</span></div>
+      <div class="swatch"><div class="chip" style="background:linear-gradient(160deg,#f6f4f0,#d9d5ce)"></div><b>Ceramic white</b><span class="small">Matte PLA, lightly sanded. Reads like glazed porcelain.</span></div>
+      <div class="swatch"><div class="chip" style="background:linear-gradient(100deg,#9ea2a8,#e1e3e6 45%,#a9adb3 70%,#d4d6d9)"></div><b>Brushed aluminium</b><span class="small">Stems and stands. Silk silver PLA, or a 19 mm aluminium tube.</span></div>
+      <div class="swatch"><div class="chip" style="background:linear-gradient(160deg,#e2617f,#b8435f)"></div><b>Favvy rose</b><span class="small">Only one accent per object: the eyes, an inlay or a whole totem.</span></div>
+    </div>
+  </section>
+
+  <section class="split">
+    <div style="display:grid;gap:12px"><span class="label">How they're made</span><h2>One color per part, no pauses, <i>no paint</i></h2>
+      <p class="muted">Every study splits into a few single-color prints that lock together with keyed pegs and a drop of glue, so the finished object is one solid piece. The lit eyes are glossy black inserts with tiny rose dots (or a pair of 3 mm LEDs on a coin cell, if you want them to really glow).</p></div>
+    <ol class="steps">
+      <li><span>1</span><div><b>Body</b> printed upside down on its flat top, so the walls lean in as they rise. No supports, about 2 hours in one color.</div></li>
+      <li><span>2</span><div><b>Lid or tray</b>: a walnut blank or wood PLA. A 40 mm recess holds the 38 mm NFC sticker with the 1.5 in QR label over it.</div></li>
+      <li><span>3</span><div><b>Stem and foot</b>, with two 1 in steel washers set in the foot, so a phone tap never tips it.</div></li>
+      <li><span>4</span><div><b>Face</b>: a glossy black visor insert with two rose eye dots, or two small black pins for the quieter studies.</div></li>
+    </ol>
+  </section>
+
+  <section class="pick">
+    <span class="label">Recommendation</span>
+    <h2>Start with <i>Bow</i>, with Halo's lit visor</h2>
+    <p class="muted">Bow leans toward the customer with a walnut tray for a face, a gesture people read instantly as "welcome, tap here". It's the most elegant to look at and the most natural to use, because the phone lands flat on the tag. If you want the quietest, most Furbo-like option, Halo is the safe second.</p>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const BG = 0x1b1b1f;
+
+// ---------------- textures ----------------
+function walnutTexture() {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 1024;
+  const g = c.getContext('2d');
+  g.fillStyle = '#5a3820'; g.fillRect(0, 0, 1024, 1024);
+  for (let i = 0; i < 260; i++) {
+    const x = Math.random() * 1024, w = 1 + Math.random() * 6;
+    const l = 22 + Math.random() * 22;
+    g.strokeStyle = `hsla(${24 + Math.random() * 8}, ${40 + Math.random() * 15}%, ${l}%, ${0.25 + Math.random() * 0.35})`;
+    g.lineWidth = w; g.beginPath();
+    for (let y = 0; y <= 1024; y += 16) {
+      const dx = Math.sin(y / (90 + Math.random() * 4) + i) * 10 + Math.sin(y / 23 + i * 3) * 2;
+      y === 0 ? g.moveTo(x + dx, y) : g.lineTo(x + dx, y);
+    }
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+  return t;
+}
+
+function labelTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(256, 256, 256, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#e2617f'; g.lineWidth = 12; g.beginPath(); g.arc(256, 256, 248, 0, Math.PI * 2); g.stroke();
+  if (window.qrcode) {
+    const q = qrcode(0, 'M'); q.addData('https://api.favcircles.com/s/JOINUS?t=favvy'); q.make();
+    const n = q.getModuleCount(), size = 282, m = size / n, x0 = 256 - size / 2, y0 = 256 - size / 2 - 22;
+    g.fillStyle = '#1d1b22';
+    for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (q.isDark(r, col)) g.fillRect(x0 + col * m, y0 + r * m, m + 0.5, m + 0.5);
+  }
+  g.fillStyle = '#1d1b22'; g.font = '700 34px Helvetica, Arial, sans-serif'; g.textAlign = 'center';
+  g.fillText('TAP OR SCAN', 256, 438);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+
+const walnut = walnutTexture();
+const M = {
+  ceramic: new THREE.MeshPhysicalMaterial({ color: 0xf1eee9, roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.35 }),
+  walnut: new THREE.MeshPhysicalMaterial({ map: walnut, color: 0xd8c2ae, roughness: 0.5, clearcoat: 0.4, clearcoatRoughness: 0.45 }),
+  alu: new THREE.MeshPhysicalMaterial({ color: 0xc8ccd2, metalness: 1, roughness: 0.32 }),
+  visor: new THREE.MeshPhysicalMaterial({ color: 0x08080a, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.03 }),
+  rose: new THREE.MeshPhysicalMaterial({ color: 0xd9587a, roughness: 0.46, clearcoat: 0.5, clearcoatRoughness: 0.3 }),
+  roseMatte: new THREE.MeshPhysicalMaterial({ color: 0xc95471, roughness: 0.62, clearcoat: 0.15 }),
+  eye: new THREE.MeshStandardMaterial({ color: 0xffb3c4, emissive: 0xff6f94, emissiveIntensity: 2.4, roughness: 0.3 }),
+  pin: new THREE.MeshPhysicalMaterial({ color: 0x0c0c0e, roughness: 0.12, clearcoat: 1 }),
+  label: new THREE.MeshStandardMaterial({ map: labelTexture(), roughness: 0.38 }),
+  stone: new THREE.MeshStandardMaterial({ color: 0x8d877f, roughness: 0.9 })
+};
+
+// ---------------- geometry helpers ----------------
+const V = (x, y) => new THREE.Vector2(x, y);
+function smoothProfile(ctrl, n = 80) { return new THREE.SplineCurve(ctrl).getPoints(n); }
+function lathe(points, mat, seg = 128, phiStart = 0, phiLength = Math.PI * 2) {
+  const m = new THREE.Mesh(new THREE.LatheGeometry(points, seg, phiStart, phiLength), mat);
+  m.castShadow = true; m.receiveShadow = true; return m;
+}
+function heartShape(s) {
+  const h = new THREE.Shape();
+  h.moveTo(0, -1.0 * s);
+  h.bezierCurveTo(-0.55 * s, -0.62 * s, -1.05 * s, -0.18 * s, -1.0 * s, 0.33 * s);
+  h.bezierCurveTo(-0.95 * s, 0.86 * s, -0.36 * s, 1.04 * s, 0, 0.6 * s);
+  h.bezierCurveTo(0.36 * s, 1.04 * s, 0.95 * s, 0.86 * s, 1.0 * s, 0.33 * s);
+  h.bezierCurveTo(1.05 * s, -0.18 * s, 0.55 * s, -0.62 * s, 0, -1.0 * s);
+  return h;
+}
+function disc(r, h, mat, round = 0.08) {
+  // a puck with softly rounded edges
+  return lathe([V(0, 0), V(r - round, 0), V(r, round), V(r, h - round), V(r - round, h), V(0, h)], mat);
+}
+function label(r = 1.9) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(r, 64), M.label);
+  m.rotation.x = -Math.PI / 2; m.receiveShadow = true; return m;
+}
+function eyePill(len = 0.2, r = 0.085) {
+  const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, 16), M.eye); return m;
+}
+// place an object on a lathe surface at angle phi (0 = facing the viewer), height y, radius r
+function onSurface(obj, r, y, phi, lift = 0.02) {
+  obj.position.set(Math.sin(phi) * (r + lift), y, Math.cos(phi) * (r + lift));
+  obj.lookAt(Math.sin(phi) * 50, y, Math.cos(phi) * 50);
+  return obj;
+}
+function radiusAt(points, y) {
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i];
+    if ((a.y - y) * (b.y - y) <= 0 && a.y !== b.y) return a.x + (b.x - a.x) * (y - a.y) / (b.y - a.y);
+  }
+  return points[points.length - 1].x;
+}
+
+// The Furbo-like cup, shared by Halo, Crown and Tilt
+const cupPts = smoothProfile([V(1.15, 2.35), V(1.7, 2.75), V(2.7, 3.7), V(3.55, 5.0), V(4.08, 6.6), V(4.3, 8.1), V(4.3, 9.35), V(4.15, 9.7)]);
+function cupBody() {
+  const g = new THREE.Group();
+  g.add(lathe([V(0, 2.35), ...cupPts, V(0, 9.7)], M.ceramic));
+  return g;
+}
+function footAndStem(stemTop = 2.45, footMat = M.walnut) {
+  const g = new THREE.Group();
+  g.add(disc(3.9, 0.55, footMat, 0.14));
+  const stem = lathe([V(0, 0.5), V(0.92, 0.5), V(0.92, stemTop), V(0, stemTop)], M.alu, 64);
+  g.add(stem);
+  return g;
+}
+function visor(points, y0, y1, half) {
+  const seg = points.filter((p) => p.y >= y0 && p.y <= y1).map((p) => V(p.x + 0.025, p.y));
+  return lathe(seg, M.visor, 96, -half, half * 2);
+}
+function litEyes(points, y, spread = 0.17) {
+  const g = new THREE.Group(); const r = radiusAt(points, y);
+  for (const s of [-1, 1]) g.add(onSurface(eyePill(), r, y, s * spread, 0.05));
+  return g;
+}
+
+// ---------------- the six studies ----------------
+const studies = [
+  {
+    name: 'Halo', line: 'The Furbo silhouette, refined. A slim glossy black visor wraps the front, two small rose eyes glow inside it, and a walnut lid carries the tap label.',
+    char: 'Calm and attentive, like a smart speaker that noticed you', tap: 'Phone flat on the walnut lid', mat: 'Ceramic white, walnut, brushed aluminium, glossy black',
+    build() {
+      const g = new THREE.Group();
+      g.add(footAndStem()); g.add(cupBody());
+      g.add(visor(cupPts, 6.55, 7.5, 0.62)); g.add(litEyes(cupPts, 7.02, 0.16));
+      const lid = disc(4.38, 0.5, M.walnut, 0.12); lid.position.y = 9.62; g.add(lid);
+      const l = label(1.9); l.position.y = 10.13; g.add(l);
+      return g;
+    }
+  },
+  {
+    name: 'Crown', line: 'The lid becomes a walnut heart, tip toward the customer. From the front the two lobes rise like ears, and two black pins are the only face.',
+    char: 'Quietly charming; the heart is the face', tap: 'Phone on the heart lid', mat: 'Ceramic white, walnut heart, aluminium, black pins',
+    build() {
+      const g = new THREE.Group();
+      g.add(footAndStem()); g.add(cupBody());
+      const heart = new THREE.Mesh(new THREE.ExtrudeGeometry(heartShape(4.15), { depth: 0.42, bevelEnabled: true, bevelThickness: 0.12, bevelSize: 0.12, bevelSegments: 6, curveSegments: 48 }), M.walnut);
+      heart.material = M.walnut.clone(); heart.material.map = walnut.clone(); heart.material.map.repeat.set(0.12, 0.12); heart.material.map.needsUpdate = true;
+      heart.rotation.x = -Math.PI / 2; heart.rotation.z = Math.PI; heart.position.set(0, 9.6, -0.6); heart.castShadow = true; heart.receiveShadow = true;
+      g.add(heart);
+      const l = label(1.75); l.position.set(0, 10.3, 0.35); g.add(l);
+      const r = radiusAt(cupPts, 7.2);
+      for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.SphereGeometry(0.17, 24, 16), M.pin); onSurface(p, r, 7.2, s * 0.2, -0.05); g.add(p); }
+      return g;
+    }
+  },
+  {
+    name: 'Bow', line: 'An egg-shaped head on a slim stem, leaning toward the customer as if bowing. Its walnut face is a tray, so the phone simply rests there.',
+    char: 'Polite, welcoming, a little curious', tap: 'Phone rests on the tilted walnut tray', mat: 'Ceramic white, walnut tray, aluminium, rose eyes',
+    build() {
+      const g = new THREE.Group();
+      g.add(footAndStem(3.2));
+      const podPts = smoothProfile([V(0.9, 0), V(2.2, 0.6), V(3.35, 2.0), V(3.7, 3.6), V(3.5, 5.0), V(3.0, 5.7)]);
+      const head = new THREE.Group();
+      head.add(lathe([V(0, 0), ...podPts, V(0, 5.7)], M.ceramic));
+      const tray = disc(3.15, 0.42, M.walnut, 0.12); tray.position.y = 5.55; head.add(tray);
+      const lip = lathe([V(2.95, 0), V(3.15, 0), V(3.15, 0.3), V(2.95, 0.3)], M.walnut); lip.position.y = 5.97; head.add(lip);
+      const l = label(1.85); l.position.y = 5.99; head.add(l);
+      const r = radiusAt(podPts, 4.2);
+      for (const s of [-1, 1]) head.add(onSurface(eyePill(0.22, 0.09), r, 4.2, s * 0.2, 0.04));
+      head.position.y = 2.9; head.rotation.x = 0.38;
+      const pivot = new THREE.Group(); pivot.add(head); g.add(pivot);
+      return g;
+    }
+  },
+  {
+    name: 'Totem', line: 'Favvy as a sculpture: a thick rose heart standing in an aluminium cradle, with two polished black eyes and nothing else.',
+    char: 'Bold and graphic; a brand mark you can touch', tap: 'Tap the front of the heart; scan the label on the cradle', mat: 'Matte rose, brushed aluminium, black pins',
+    build() {
+      const g = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.9, 4.4, 1, 1, 1), M.alu); base.position.y = 0.45; base.castShadow = base.receiveShadow = true; g.add(base);
+      const heart = new THREE.Mesh(new THREE.ExtrudeGeometry(heartShape(3.4), { depth: 1.6, bevelEnabled: true, bevelThickness: 0.75, bevelSize: 0.7, bevelSegments: 10, curveSegments: 64 }), M.roseMatte);
+      heart.position.set(0, 4.55, -0.8); heart.castShadow = true; heart.receiveShadow = true; g.add(heart);
+      for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.SphereGeometry(0.2, 24, 16), M.pin); p.position.set(s * 1.05, 5.2, 1.52); g.add(p); }
+      const l = label(1.15); l.position.set(2.55, 0.91, 1.25); g.add(l);
+      return g;
+    }
+  },
+  {
+    name: 'Orb', line: 'A ceramic sphere resting in a walnut ring. Its top is sliced flat into a black glass tap pad, and a soft visor holds two lit eyes.',
+    char: 'Curious and playful, but still elegant', tap: 'Phone on the flat glass top', mat: 'Ceramic white, walnut ring, glossy black, rose eyes',
+    build() {
+      const g = new THREE.Group();
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(2.55, 0.62, 32, 96), M.walnut); ring.rotation.x = Math.PI / 2; ring.position.y = 0.62; ring.castShadow = ring.receiveShadow = true; g.add(ring);
+      const R = 4.1, cut = 0.62;
+      const sphere = new THREE.Mesh(new THREE.SphereGeometry(R, 128, 96, 0, Math.PI * 2, cut, Math.PI - cut), M.ceramic);
+      sphere.position.y = 4.7; sphere.castShadow = sphere.receiveShadow = true; g.add(sphere);
+      const topR = R * Math.sin(cut), topY = 4.7 + R * Math.cos(cut);
+      const pad = new THREE.Mesh(new THREE.CircleGeometry(topR, 96), M.visor); pad.rotation.x = -Math.PI / 2; pad.position.y = topY; g.add(pad);
+      const l = label(1.75); l.position.y = topY + 0.01; g.add(l);
+      const vis = new THREE.Mesh(new THREE.SphereGeometry(R + 0.02, 96, 48, Math.PI / 2 - 0.5, 1.0, 1.36, 0.36), M.visor); vis.position.y = 4.7; g.add(vis);
+      for (const s of [-1, 1]) {
+        const e = eyePill(); const phi = s * 0.16, th = 1.54;
+        e.position.set(Math.sin(phi) * Math.sin(th) * (R + 0.07), 4.7 + Math.cos(th) * (R + 0.07), Math.cos(phi) * Math.sin(th) * (R + 0.07));
+        e.lookAt(e.position.x * 10, 4.7 + (e.position.y - 4.7) * 10, e.position.z * 10); g.add(e);
+      }
+      return g;
+    }
+  },
+  {
+    name: 'Tilt', line: 'Halo with its head cocked, as if asking a question. The lid is lacquered rose, and the slight angle makes people want to look closer.',
+    char: 'Curious and fun, without a single cartoon line', tap: 'Phone on the rose lid', mat: 'Ceramic white, rose lacquer, aluminium, glossy black',
+    build() {
+      const g = new THREE.Group();
+      g.add(footAndStem());
+      const head = new THREE.Group();
+      head.add(cupBody()); head.add(visor(cupPts, 6.55, 7.5, 0.62)); head.add(litEyes(cupPts, 7.02, 0.16));
+      const lid = disc(4.38, 0.5, M.rose, 0.12); lid.position.y = 9.62; head.add(lid);
+      const l = label(1.9); l.position.y = 10.13; head.add(l);
+      head.position.y = -2.35; const pivot = new THREE.Group(); pivot.position.y = 2.35; pivot.add(head); pivot.rotation.z = -0.17; pivot.rotation.x = 0.05;
+      g.add(pivot);
+      return g;
+    }
+  }
+];
+
+// ---------------- scene ----------------
+function makeScene() {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(BG);
+  scene.fog = new THREE.Fog(BG, 26, 52);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(60, 64), M.stone);
+  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+  const key = new THREE.DirectionalLight(0xfff1e2, 2.4); key.position.set(-8, 16, 10); key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048); key.shadow.radius = 6; key.shadow.bias = -0.0004;
+  Object.assign(key.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 50 });
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0xd9e4ff, 1.4); rim.position.set(9, 10, -12); scene.add(rim);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3530, 0.35));
+  return scene;
+}
+function envFor(renderer, scene) {
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.55;
+}
+function setupRenderer(canvas, preserve = false) {
+  const r = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: preserve });
+  r.setPixelRatio(Math.min(devicePixelRatio, 2));
+  r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+  r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = 1.0;
+  r.outputColorSpace = THREE.SRGBColorSpace;
+  return r;
+}
+
+const objects = studies.map((s) => s.build());
+
+// Stills: one offscreen renderer, every study from the same 3/4 camera
+const stillCanvas = document.createElement('canvas');
+const stillR = setupRenderer(stillCanvas, true);
+stillR.setPixelRatio(1); stillR.setSize(900, 900, false);
+const stillScene = makeScene(); envFor(stillR, stillScene);
+const stillCam = new THREE.PerspectiveCamera(28, 1, 0.1, 200);
+stillCam.position.set(12, 14.5, 25.5); stillCam.lookAt(0, 5.3, 0);
+const stillsEl = document.getElementById('stills');
+studies.forEach((s, i) => {
+  const obj = objects[i].clone(); stillScene.add(obj);
+  stillR.render(stillScene, stillCam);
+  const url = stillCanvas.toDataURL('image/jpeg', 0.88);
+  stillScene.remove(obj);
+  const b = document.createElement('button');
+  b.className = 'still'; b.type = 'button'; b.id = `still-${i}`;
+  b.innerHTML = `<div class="img"><img alt="${s.name}, rendered on a stone counter" src="${url}"></div>
+    <div class="row"><h3>${s.name}</h3><span class="label">${String(i + 1).padStart(2, '0')}</span></div><p>${s.line}</p>`;
+  b.addEventListener('click', () => { select(i); document.getElementById('viewer').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' }); });
+  stillsEl.appendChild(b);
+});
+stillR.dispose();
+
+// Live viewer
+const viewerEl = document.getElementById('viewer');
+const canvas = document.createElement('canvas'); viewerEl.prepend(canvas);
+const renderer = setupRenderer(canvas);
+const scene = makeScene(); envFor(renderer, scene);
+const camera = new THREE.PerspectiveCamera(26, 4 / 3, 0.1, 200);
+camera.position.set(13, 13.5, 27);
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, 5.3, 0); controls.enableDamping = true; controls.enablePan = false;
+controls.minDistance = 18; controls.maxDistance = 42; controls.maxPolarAngle = Math.PI / 2.05;
+controls.autoRotate = !reduceMotion; controls.autoRotateSpeed = 0.6;
+controls.addEventListener('start', () => { controls.autoRotate = false; });
+const holder = new THREE.Group(); scene.add(holder);
+
+function resize() {
+  const w = viewerEl.clientWidth, h = viewerEl.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(viewerEl); resize();
+
+const tabs = document.getElementById('tabs');
+studies.forEach((s, i) => {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = s.name; b.id = `tab-${i}`;
+  b.addEventListener('click', () => select(i)); tabs.appendChild(b);
+});
+function select(i) {
+  holder.clear(); holder.add(objects[i]);
+  const s = studies[i];
+  document.getElementById('s-index').textContent = `Study ${String(i + 1).padStart(2, '0')}`;
+  document.getElementById('s-name').textContent = s.name;
+  document.getElementById('s-line').textContent = s.line;
+  document.getElementById('s-char').textContent = s.char;
+  document.getElementById('s-tap').textContent = s.tap;
+  document.getElementById('s-mat').textContent = s.mat;
+  [...tabs.children].forEach((b, j) => b.setAttribute('aria-pressed', String(j === i)));
+}
+select(2);
+
+(function loop() {
+  controls.update(); renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+})();
+</script>

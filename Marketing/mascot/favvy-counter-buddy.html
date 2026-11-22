@@ -1,0 +1,408 @@
+<title>Favvy Counter Buddy</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&display=swap">
+<style>
+/* Layout: a showroom shelf. Six concepts on one counter, each card a product shot with its tap spot called out, then one exploded view of how they're built. */
+:root {
+  --bg: #eef1f3;           /* cool counter-top grey */
+  --surface: #ffffff;
+  --ink: #1d1b22;
+  --muted: #5d6170;
+  --line: #d9dde3;
+  --pink: #f4567f;         /* Favvy */
+  --pink-deep: #c8305e;
+  --pink-soft: #fde3ea;
+  --stage: #e3e7ea;        /* the photo backdrop inside each card */
+  --wood: #c99a62;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --body: "Figtree", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171c; --surface: #1e2128; --ink: #f1f2f5; --muted: #a3a8b5; --line: #2e323b;
+    --pink: #ff6f93; --pink-deep: #ff8fab; --pink-soft: #3a2029; --stage: #262a32; --wood: #c99a62;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171c; --surface: #1e2128; --ink: #f1f2f5; --muted: #a3a8b5; --line: #2e323b;
+  --pink: #ff6f93; --pink-deep: #ff8fab; --pink-soft: #3a2029; --stage: #262a32; --wood: #c99a62;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 400 16px/1.55 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 72px; display: grid; gap: 56px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800; line-height: 1.02; }
+h2 { font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 700; }
+h3 { font-size: 1.3rem; font-weight: 700; }
+p { margin: 0; max-width: 65ch; }
+.eyebrow { font: 600 0.75rem/1 var(--body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--pink-deep); }
+.muted { color: var(--muted); }
+
+/* Hero: the inspiration beside the idea */
+.hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: 32px; align-items: center; }
+.hero-copy { display: grid; gap: 16px; min-width: 0; }
+.hero-art { background: var(--stage); border-radius: 20px; padding: 12px; min-width: 0; }
+.hero-art svg { display: block; width: 100%; height: auto; }
+
+/* Concept grid */
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; display: grid; grid-template-rows: auto 1fr; }
+.card .stage { background: var(--stage); position: relative; }
+.card .stage svg { display: block; width: 100%; height: auto; }
+.card .tag { position: absolute; top: 12px; left: 12px; background: var(--surface); color: var(--ink); font: 600 0.72rem/1 var(--body); letter-spacing: 0.08em; text-transform: uppercase; padding: 7px 10px; border-radius: 999px; }
+.card .tag.pick { background: var(--pink); color: #fff; }
+.card .info { padding: 18px 20px 22px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 0.92rem; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+
+/* Shared build */
+.build { display: grid; grid-template-columns: 1fr 1.1fr; gap: 32px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 28px; }
+.build svg { width: 100%; height: auto; display: block; }
+.build ol { margin: 0; padding-left: 1.2em; display: grid; gap: 10px; }
+.build li::marker { font-family: var(--display); font-weight: 700; color: var(--pink-deep); }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.92rem; }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 0.75rem/1.2 var(--body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+
+.pick-box { display: grid; gap: 12px; padding: 24px 28px; border-radius: 20px; background: var(--pink-soft); }
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero, .build { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .grid { grid-template-columns: 1fr; }
+  .build { padding: 20px; }
+}
+</style>
+
+<div class="wrap">
+
+  <section class="hero">
+    <div class="hero-copy">
+      <span class="eyebrow">Favvy · counter figure concepts</span>
+      <h1>A Favvy that looks like it belongs by the register</h1>
+      <p>These take the Furbo Mini's shape (a soft cup on a short stem, with a flat lid on top) and make Favvy the character inside it. Each one has a clear spot to tap or scan. The QR is a sticker label, and the NFC tag sits right under it.</p>
+      <p>The brief: friendly and inviting, elegant and classy, but still fun and a little curious, so people want to touch it. Each card says where it lands on that.</p>
+      <p class="muted">All six are about 11 cm tall, about as tall as a coffee cup, with an 8.5 cm foot weighted with washers so a phone tap won't knock it over.</p>
+    </div>
+    <div class="hero-art" id="hero"></div>
+  </section>
+
+  <section style="display:grid;gap:20px">
+    <div style="display:grid;gap:8px">
+      <span class="eyebrow">Six directions</span>
+      <h2>Same family, different personality</h2>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section class="build">
+    <div id="exploded"></div>
+    <div style="display:grid;gap:14px;min-width:0">
+      <span class="eyebrow">How they're built</span>
+      <h2>Three printed parts and two stickers</h2>
+      <ol>
+        <li><b>Lid</b> in Bambu's wood-fill PLA (or white), printed flat. A shallow round recess on top holds the 38 mm NFC sticker with the 1.5 in QR label over it, so the tag sits right at the surface.</li>
+        <li><b>Body</b> printed upside down on its flat top. The walls lean inward as they rise, so it needs no supports and has no color swaps.</li>
+        <li><b>Foot</b> printed flat, with two 1 in steel washers pressed in underneath. The stem keys into the body with a twist-lock peg plus a drop of glue, so it's one solid piece.</li>
+        <li><b>Face</b> is a die-cut vinyl sticker: the dark heart window with Favvy's eyes and smile. It looks crisp and needs no multi-color printing.</li>
+      </ol>
+      <p class="muted">The three parts print in one color each, about 3 hours in total (an estimate until we slice them). That's far faster than the 12-hour multi-color print.</p>
+    </div>
+  </section>
+
+  <section style="display:grid;gap:16px">
+    <div style="display:grid;gap:8px">
+      <span class="eyebrow">Side by side</span>
+      <h2>Where people tap, and what it takes</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Concept</th><th>Tap or scan</th><th>Character</th><th>Parts</th><th>Best for</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="pick-box">
+    <span class="eyebrow">My pick</span>
+    <h2>Phone Rest, with the Furbo Favvy face</h2>
+    <p>It's the best balance of the brief: elegant enough for any counter, friendly because of the heart-window face, and curious enough that people want to try it. Its lid tilts toward the customer like a little tray, so people lay their phone on it without being told. That's the most reliable tap of the six, because the phone lands flat on the tag every time. It keeps the Furbo silhouette and the friendly heart-window face. Second choice: Furbo Favvy, if you want the cleanest look with a flat lid.</p>
+  </section>
+</div>
+
+<script>
+// ---------- drawing helpers (all six share the Furbo-style geometry) ----------
+const C = { pink: '#f4567f', deep: '#c8305e', ink: '#1d1b22', white: '#f7f6f4', wood: '#c99a62', woodDark: '#a87a45' };
+let uid = 0;
+
+function heart(cx, cy, w, h) {
+  return `M${cx},${cy + h * 0.44} C${cx - w * 0.56},${cy + h * 0.06} ${cx - w * 0.54},${cy - h * 0.52} ${cx - w * 0.24},${cy - h * 0.5}
+    C${cx - w * 0.09},${cy - h * 0.49} ${cx},${cy - h * 0.38} ${cx},${cy - h * 0.28}
+    C${cx},${cy - h * 0.38} ${cx + w * 0.09},${cy - h * 0.49} ${cx + w * 0.24},${cy - h * 0.5}
+    C${cx + w * 0.54},${cy - h * 0.52} ${cx + w * 0.56},${cy + h * 0.06} ${cx},${cy + h * 0.44} Z`;
+}
+
+function defs(id, bodyColor) {
+  const shade = bodyColor === C.pink ? '#d63d66' : '#d9d6d1';
+  return `<defs>
+    <linearGradient id="body${id}" x1="0" x2="1">
+      <stop offset="0" stop-color="${shade}"/><stop offset="0.38" stop-color="${bodyColor}"/>
+      <stop offset="0.62" stop-color="${bodyColor}"/><stop offset="1" stop-color="${shade}"/>
+    </linearGradient>
+    <linearGradient id="wood${id}" x1="0" x2="1">
+      <stop offset="0" stop-color="#b9854d"/><stop offset="0.5" stop-color="#d6a96f"/><stop offset="1" stop-color="#b17d47"/>
+    </linearGradient>
+    <linearGradient id="win${id}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a3740"/><stop offset="1" stop-color="#121116"/>
+    </linearGradient>
+    <linearGradient id="foot${id}" x1="0" x2="1">
+      <stop offset="0" stop-color="#d4d1cb"/><stop offset="0.5" stop-color="#fbfaf8"/><stop offset="1" stop-color="#cfccc6"/>
+    </linearGradient>
+    <radialGradient id="shadow${id}"><stop offset="0" stop-color="#000" stop-opacity="0.28"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+  </defs>`;
+}
+
+function counter() {
+  return `<rect x="0" y="292" width="300" height="48" fill="#c4a27a"/><rect x="0" y="292" width="300" height="3" fill="#d8b98f"/>
+    <path d="M0 310 H300 M0 326 H300" stroke="#b8956c" stroke-width="1" opacity="0.5"/>`;
+}
+
+function footAndStem(id, stemColor) {
+  return `<ellipse cx="150" cy="306" rx="86" ry="13" fill="url(#shadow${id})"/>
+    <path d="M84 296 v6 a66 11 0 0 0 132 0 v-6" fill="#c9c6c0"/>
+    <ellipse cx="150" cy="296" rx="66" ry="11" fill="url(#foot${id})"/>
+    <path d="M136 258 L136 294 Q150 298 164 294 L164 258 Z" fill="${stemColor}"/>
+    <path d="M136 258 L136 294 Q150 298 164 294 L164 258 Z" fill="url(#body${id})" opacity="0.55"/>`;
+}
+
+function cup(id) {
+  return `<path d="M62 112 C58 196 100 252 134 262 L166 262 C200 252 242 196 238 112 Z" fill="url(#body${id})"/>
+    <path d="M78 122 C78 170 92 206 112 230" stroke="#fff" stroke-opacity="0.45" stroke-width="6" stroke-linecap="round" fill="none"/>`;
+}
+
+function woodLid(id, tilt = 0) {
+  const g = `<g transform="rotate(${tilt} 150 100)">
+    <path d="M58 99 v13 a92 14 0 0 0 184 0 v-13" fill="#a87a45"/>
+    <ellipse cx="150" cy="99" rx="92" ry="14" fill="url(#wood${id})"/>
+    <path d="M86 96 C120 92 170 103 214 97 M78 101 C118 105 176 95 222 102" stroke="#9d703f" stroke-opacity="0.5" stroke-width="1.2" fill="none"/>
+    <ellipse cx="150" cy="99" rx="21" ry="4.6" fill="#fff" stroke="${C.pink}" stroke-width="1.2"/>
+  </g>`;
+  return g;
+}
+
+function whiteLid(id) {
+  return `<path d="M58 99 v13 a92 14 0 0 0 184 0 v-13" fill="#d7d4ce"/>
+    <ellipse cx="150" cy="99" rx="92" ry="14" fill="#fbfaf8"/>
+    <ellipse cx="150" cy="99" rx="21" ry="4.6" fill="#fff" stroke="${C.pink}" stroke-width="1.2"/>`;
+}
+
+function windowFace(id, cy = 166) {
+  // the dark heart window with glowing eyes, Furbo's camera window turned into a face
+  return `<path d="${heart(150, cy, 92, 82)}" fill="url(#win${id})"/>
+    <path d="${heart(150, cy, 92, 82)}" fill="none" stroke="#000" stroke-opacity="0.25" stroke-width="2"/>
+    <ellipse cx="133" cy="${cy - 10}" rx="7.5" ry="9.5" fill="#fff"/>
+    <ellipse cx="167" cy="${cy - 10}" rx="7.5" ry="9.5" fill="#fff"/>
+    <circle cx="135.5" cy="${cy - 13}" r="2.6" fill="${C.ink}"/><circle cx="169.5" cy="${cy - 13}" r="2.6" fill="${C.ink}"/>
+    <path d="M140 ${cy + 7} Q150 ${cy + 17} 160 ${cy + 7}" stroke="${C.pink}" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M108 ${cy - 34} q10 -6 18 -2" stroke="#fff" stroke-opacity="0.35" stroke-width="3" stroke-linecap="round" fill="none"/>`;
+}
+
+function cheeks(cy = 166, color = '#f8a3b8') {
+  return `<ellipse cx="96" cy="${cy + 4}" rx="11" ry="6" fill="${color}" opacity="0.85"/>
+    <ellipse cx="204" cy="${cy + 4}" rx="11" ry="6" fill="${color}" opacity="0.85"/>`;
+}
+
+function printedFace(cy = 170) {
+  // dark eyes with sparkles, printed straight on a pink body
+  return `<ellipse cx="128" cy="${cy - 8}" rx="11" ry="14" fill="${C.ink}"/><ellipse cx="172" cy="${cy - 8}" rx="11" ry="14" fill="${C.ink}"/>
+    <circle cx="132" cy="${cy - 13}" r="4" fill="#fff"/><circle cx="176" cy="${cy - 13}" r="4" fill="#fff"/>
+    <circle cx="125" cy="${cy - 2}" r="1.8" fill="#fff"/><circle cx="169" cy="${cy - 2}" r="1.8" fill="#fff"/>
+    <path d="M138 ${cy + 14} Q150 ${cy + 28} 162 ${cy + 14} Z" fill="${C.ink}"/>
+    <ellipse cx="150" cy="${cy + 21}" rx="5" ry="3" fill="#ff8fa8"/>
+    <ellipse cx="100" cy="${cy + 10}" rx="12" ry="6.5" fill="${C.deep}" opacity="0.8"/>
+    <ellipse cx="200" cy="${cy + 10}" rx="12" ry="6.5" fill="${C.deep}" opacity="0.8"/>`;
+}
+
+function callout(x, y, text, side = 'right') {
+  const tx = side === 'right' ? x + 16 : x - 16;
+  const anchor = side === 'right' ? 'start' : 'end';
+  return `<circle cx="${x}" cy="${y}" r="4" fill="${C.pink}"/><circle cx="${x}" cy="${y}" r="9" fill="none" stroke="${C.pink}" stroke-opacity="0.5" stroke-width="2"/>
+    <text x="${tx}" y="${y + 4}" text-anchor="${anchor}" font-family="Figtree, sans-serif" font-size="11" font-weight="600" fill="${C.ink}" paint-order="stroke" stroke="#fff" stroke-width="3">${text}</text>`;
+}
+
+function svg(inner, id, h = 340) {
+  return `<svg viewBox="0 0 300 ${h}" role="img" aria-hidden="false" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+}
+
+// ---------- the six concepts ----------
+const concepts = [
+  {
+    key: 'furbo', name: 'Furbo Favvy', line: 'The Furbo shape, almost unchanged. The camera window becomes a dark heart with Favvy\'s glowing eyes.',
+    tap: 'Lay the phone on the wood lid', character: 'Elegant and classy, a little high-tech', parts: 'Lid (wood PLA), body (white), foot (white), face sticker', best: 'Upscale counters, coffee shops',
+    color: C.white,
+    draw(id) {
+      return defs(id, C.white) + counter() + footAndStem(id, C.white) + cup(id) + windowFace(id) + cheeks() + woodLid(id)
+        + `<text x="150" y="236" text-anchor="middle" font-family="Bricolage Grotesque, sans-serif" font-weight="700" font-size="12" fill="#8d8a85">favvy</text>`
+        + callout(171, 99, 'Tap here');
+    }
+  },
+  {
+    key: 'pink', name: 'Pink Cup', line: 'Favvy himself is the cup: pink all over, big printed eyes, little nub arms and a white lid.',
+    tap: 'Lay the phone on the white lid', character: 'Fun and attractive, unmistakably Favvy', parts: 'Lid (white), body (pink), foot (white), eye sticker', best: 'Bakeries, ice cream, family spots',
+    color: C.pink,
+    draw(id) {
+      return defs(id, C.pink) + counter() + footAndStem(id, C.pink)
+        + `<ellipse cx="56" cy="176" rx="11" ry="17" fill="${C.pink}" transform="rotate(-24 56 176)"/><ellipse cx="244" cy="176" rx="11" ry="17" fill="${C.pink}" transform="rotate(24 244 176)"/>`
+        + cup(id) + printedFace() + whiteLid(id) + callout(171, 99, 'Tap here');
+    }
+  },
+  {
+    key: 'peek', name: 'Peek-a-boo', line: 'An open white cup with Favvy climbing out, hands on the rim. The QR label sits on the cup\'s front.',
+    tap: 'Scan or tap the label on the front', character: 'Curious and fun, invites a second look', parts: 'Favvy (pink), cup (white), foot (white), QR label', best: 'Casual counters, bars',
+    color: C.white,
+    draw(id) {
+      return defs(id, C.white) + counter() + footAndStem(id, C.white)
+        + `<path d="${heart(150, 92, 150, 136)}" fill="${C.pink}"/>`
+        + `<ellipse cx="132" cy="80" rx="8" ry="10" fill="${C.ink}"/><ellipse cx="168" cy="80" rx="8" ry="10" fill="${C.ink}"/>`
+        + `<circle cx="135" cy="76" r="3" fill="#fff"/><circle cx="171" cy="76" r="3" fill="#fff"/>`
+        + `<path d="M143 96 Q150 103 157 96" stroke="${C.ink}" stroke-width="3" stroke-linecap="round" fill="none"/>`
+        + `<ellipse cx="112" cy="94" rx="9" ry="5" fill="${C.deep}" opacity="0.7"/><ellipse cx="188" cy="94" rx="9" ry="5" fill="${C.deep}" opacity="0.7"/>`
+        + `<path d="M62 112 C58 196 100 252 134 262 L166 262 C200 252 242 196 238 112 Z" fill="url(#body${id})"/>`
+        + `<ellipse cx="150" cy="112" rx="88" ry="10" fill="#e9e6e1"/><path d="M62 112 a88 10 0 0 0 176 0" fill="none" stroke="#fff" stroke-width="3"/>`
+        + `<ellipse cx="98" cy="110" rx="14" ry="8" fill="${C.pink}"/><ellipse cx="202" cy="110" rx="14" ry="8" fill="${C.pink}"/>`
+        + `<circle cx="150" cy="180" r="30" fill="#fff" stroke="${C.pink}" stroke-width="2"/>`
+        + `<g fill="${C.ink}"><rect x="134" y="164" width="10" height="10"/><rect x="156" y="164" width="10" height="10"/><rect x="134" y="186" width="10" height="10"/><rect x="148" y="170" width="4" height="4"/><rect x="152" y="178" width="6" height="4"/><rect x="146" y="184" width="4" height="6"/><rect x="156" y="188" width="8" height="4"/><rect x="160" y="180" width="4" height="4"/></g>`
+        + `<text x="150" y="226" text-anchor="middle" font-family="Figtree, sans-serif" font-weight="700" font-size="9" letter-spacing="1" fill="#8d8a85">TAP OR SCAN</text>`
+        + callout(184, 180, 'Tap here');
+    }
+  },
+  {
+    key: 'heartlid', name: 'Heart Lid', line: 'The Furbo body with a lid shaped like a heart, so Favvy\'s outline reads from across the room.',
+    tap: 'Lay the phone on the heart lid', character: 'Attractive and iconic, readable across the room', parts: 'Heart lid (pink), body (white), foot (white), face sticker', best: 'Any counter; strongest brand mark',
+    color: C.white,
+    draw(id) {
+      return defs(id, C.white) + counter() + footAndStem(id, C.white) + cup(id) + windowFace(id) + cheeks()
+        + `<g transform="translate(150 100) scale(1 0.34) translate(-150 -100)"><path d="${heart(150, 106, 230, 210)}" fill="${C.deep}" transform="translate(0 26)"/><path d="${heart(150, 106, 230, 210)}" fill="${C.pink}"/></g>`
+        + `<ellipse cx="150" cy="102" rx="21" ry="4.6" fill="#fff" stroke="#fff" stroke-width="1.2"/>`
+        + callout(171, 102, 'Tap here');
+    }
+  },
+  {
+    key: 'rest', name: 'Phone Rest', line: 'The lid tilts toward the customer like a little tray with a lip, so a phone lands flat on the tag without anyone being told.',
+    tap: 'Rest the phone on the tilted tray', character: 'Elegant and inviting, obvious to use', parts: 'Tilted lid (wood PLA), body (white), foot (white), face sticker', best: 'Busy registers; most reliable tap', pick: true,
+    color: C.white,
+    draw(id) {
+      return defs(id, C.white) + counter() + footAndStem(id, C.white) + cup(id) + windowFace(id) + cheeks()
+        + `<g transform="rotate(-9 150 104)">
+            <path d="M56 101 v14 a94 16 0 0 0 188 0 v-14" fill="#a87a45"/>
+            <ellipse cx="150" cy="101" rx="94" ry="16" fill="url(#wood${id})"/>
+            <path d="M62 108 a90 13 0 0 0 176 0" fill="none" stroke="#8f6534" stroke-width="3"/>
+            <rect x="118" y="78" width="64" height="24" rx="5" fill="#2a2830" transform="rotate(4 150 90)"/>
+            <rect x="122" y="81" width="56" height="18" rx="3" fill="#4b6ea8" transform="rotate(4 150 90)"/>
+          </g>`
+        + callout(186, 86, 'Phone rests here');
+    }
+  },
+  {
+    key: 'cards', name: 'Card Cup', line: 'An open cup that holds the store\'s cards or mints. Favvy\'s face is on the front and the tap spot is on the foot.',
+    tap: 'Tap or scan the label on the foot', character: 'Classy and useful, part of the counter kit', parts: 'Cup (white), foot (pink, with label recess), face sticker', best: 'Stores that hand out cards or mints',
+    color: C.white,
+    draw(id) {
+      return defs(id, C.white) + counter()
+        + `<ellipse cx="150" cy="306" rx="96" ry="13" fill="url(#shadow${id})"/>
+          <path d="M66 290 v10 a84 13 0 0 0 168 0 v-10" fill="${C.deep}"/>
+          <ellipse cx="150" cy="290" rx="84" ry="13" fill="${C.pink}"/>
+          <ellipse cx="200" cy="292" rx="16" ry="4.5" fill="#fff" stroke="#fff"/>
+          <path d="M136 258 L136 290 L164 290 L164 258 Z" fill="#e8e5e0"/>`
+        + `<rect x="98" y="70" width="46" height="62" rx="3" fill="#fff" stroke="#d8d4ce" transform="rotate(-8 121 101)"/>
+           <rect x="130" y="64" width="46" height="62" rx="3" fill="#fff" stroke="#d8d4ce"/>
+           <rect x="160" y="70" width="46" height="62" rx="3" fill="#fff" stroke="#d8d4ce" transform="rotate(9 183 101)"/>
+           <circle cx="153" cy="80" r="6" fill="${C.pink}"/><rect x="138" y="92" width="30" height="3" fill="#cfcac3"/><rect x="138" y="98" width="22" height="3" fill="#cfcac3"/>`
+        + cup(id) + `<ellipse cx="150" cy="112" rx="88" ry="10" fill="#e9e6e1" opacity="0.6"/>` + windowFace(id, 170) + cheeks(170)
+        + callout(200, 292, 'Tap here');
+    }
+  }
+];
+
+// ---------- render ----------
+const grid = document.getElementById('grid');
+grid.innerHTML = concepts.map((c, i) => `
+  <article class="card">
+    <div class="stage">${svg(c.draw(i + 1), i + 1)}<span class="tag${c.pick ? ' pick' : ''}">${c.pick ? 'My pick' : 'Concept'}</span></div>
+    <div class="info">
+      <h3>${c.name}</h3>
+      <p class="muted">${c.line}</p>
+      <dl class="facts"><dt>Tap</dt><dd>${c.tap}</dd><dt>Feels</dt><dd>${c.character}</dd></dl>
+    </div>
+  </article>`).join('');
+
+document.getElementById('rows').innerHTML = concepts.map((c) => `
+  <tr><td><span class="dot" style="background:${c.color === C.pink ? C.pink : '#c9c6c0'}"></span><b>${c.name}</b></td>
+  <td>${c.tap}</td><td>${c.character}</td><td>${c.parts}</td><td>${c.best}</td></tr>`).join('');
+
+// Hero: the pick next to a register, for scale (a register screen is ~25 cm tall; Favvy ~11 cm)
+const pick = concepts.find((c) => c.pick);
+document.getElementById('hero').innerHTML = `<svg viewBox="0 0 520 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Phone Rest Favvy beside a tablet register">
+  <rect width="520" height="340" fill="transparent"/>
+  <rect x="0" y="292" width="520" height="48" fill="#c4a27a"/><rect x="0" y="292" width="520" height="3" fill="#d8b98f"/>
+  <ellipse cx="380" cy="300" rx="110" ry="10" fill="#000" opacity="0.12"/>
+  <path d="M352 292 L372 190 L388 190 L408 292 Z" fill="#cfd3d8"/>
+  <rect x="280" y="50" width="200" height="150" rx="12" fill="#26282e" transform="rotate(-8 380 125)"/>
+  <rect x="292" y="62" width="176" height="126" rx="6" fill="#eef2f6" transform="rotate(-8 380 125)"/>
+  <g transform="rotate(-8 380 125)" font-family="Figtree, sans-serif">
+    <text x="304" y="86" font-size="11" font-weight="700" fill="#1d1b22">Order #214</text>
+    <rect x="304" y="96" width="120" height="7" rx="3" fill="#cdd4dc"/><rect x="304" y="110" width="96" height="7" rx="3" fill="#cdd4dc"/>
+    <rect x="304" y="124" width="108" height="7" rx="3" fill="#cdd4dc"/>
+    <rect x="380" y="158" width="76" height="22" rx="6" fill="#2f8f5b"/><text x="418" y="173" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">Charge $14.50</text>
+  </g>
+  <g transform="translate(20 -4) scale(0.92)">${pick.draw(99).replace(counter(), '')}</g>
+  <text x="160" y="330" text-anchor="middle" font-family="Figtree, sans-serif" font-size="11" fill="#6b4f30">Favvy · about 11 cm tall</text>
+</svg>`;
+
+// Exploded view of the shared build
+document.getElementById('exploded').innerHTML = `<svg viewBox="0 0 380 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Exploded view: lid with NFC and label, body, foot with washers, face sticker">
+  ${defs(77, C.white)}
+  <g font-family="Figtree, sans-serif" font-size="11" font-weight="600" fill="currentColor">
+    <ellipse cx="130" cy="34" rx="20" ry="4.5" fill="#fff" stroke="${C.pink}" stroke-width="1.5"/>
+    <text x="196" y="30" fill="${C.pink}">QR label (1.5 in)</text>
+    <ellipse cx="130" cy="58" rx="19" ry="4.2" fill="#9aa3ad"/>
+    <text x="196" y="62" fill="#7b8692">NFC sticker (38 mm)</text>
+    <g transform="translate(-20 -12)">
+      <path d="M58 99 v13 a92 14 0 0 0 184 0 v-13" fill="#a87a45"/>
+      <ellipse cx="150" cy="99" rx="92" ry="14" fill="url(#wood77)"/>
+      <ellipse cx="150" cy="99" rx="22" ry="4.8" fill="#8f6534"/>
+    </g>
+    <text x="232" y="96" fill="#a87a45">Lid</text>
+    <g transform="translate(-20 30)">
+      <path d="M62 112 C58 196 100 252 134 262 L166 262 C200 252 242 196 238 112 Z" fill="url(#body77)"/>
+      <ellipse cx="150" cy="112" rx="88" ry="10" fill="#e6e3de"/>
+      <path d="${heart(150, 176, 92, 82)}" fill="none" stroke="${C.pink}" stroke-width="2" stroke-dasharray="5 4"/>
+      <rect x="136" y="262" width="28" height="22" fill="#e1ded9"/>
+    </g>
+    <text x="232" y="200" fill="#8d8a85">Body (upside down)</text>
+    <text x="232" y="216" fill="${C.pink}">Face sticker</text>
+    <g transform="translate(-20 60)">
+      <path d="M84 296 v6 a66 11 0 0 0 132 0 v-6" fill="#c9c6c0"/>
+      <ellipse cx="150" cy="296" rx="66" ry="11" fill="url(#foot77)"/>
+      <ellipse cx="150" cy="296" rx="14" ry="3.5" fill="#bdb9b2"/>
+      <ellipse cx="114" cy="322" rx="13" ry="3" fill="#8a9099"/><ellipse cx="186" cy="322" rx="13" ry="3" fill="#8a9099"/>
+    </g>
+    <text x="232" y="358" fill="#8d8a85">Foot + 2 washers</text>
+  </g>
+</svg>`;
+</script>
