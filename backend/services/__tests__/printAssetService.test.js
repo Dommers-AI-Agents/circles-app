@@ -74,6 +74,28 @@ describe('printAssetService', () => {
     }
   }, 90000);
 
+  test('totem labels: one per store on Avery 8293, from any start position, linking to the totem sticker', async () => {
+    const stores = Array.from({ length: 21 }, (_, i) => ({ ...venue, venueId: `v${i}`, windowCode: `W${i}` }));
+    const pageCount = (pdf) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length;
+    expect(svc.TOTEM_LABELS_PER_SHEET).toBe(20);
+    expect(svc.totemUrl('WIN123')).toBe('https://api.favcircles.com/s/WIN123?t=totem');
+    const one = await svc.renderTotemLabels(stores.slice(0, 1));
+    expect(mediaBox(one)).toEqual([612, 792]);
+    expect(pageCount(one)).toBe(1);
+    expect(pageCount(await svc.renderTotemLabels(stores.slice(0, 2), { startAt: 20 }))).toBe(2);
+    expect(pageCount(await svc.renderTotemLabels(stores))).toBe(2);
+    for (const bad of [{ startAt: 0 }, { startAt: 21 }, { startAt: 'x' }]) {
+      await expect(svc.renderTotemLabels(stores.slice(0, 1), bad)).rejects.toMatchObject({ status: 400 });
+    }
+    await expect(svc.renderTotemLabels([])).rejects.toMatchObject({ status: 400 });
+    await expect(svc.renderTotemLabels([{ ...venue, windowCode: null }])).rejects.toMatchObject({ status: 404 });
+    // label centres 1.25–7.25 in across, 1.5–9.5 in down
+    const t = svc.TOTEM_SHEET;
+    expect([t.firstX, t.firstY, t.pitch]).toEqual([90, 108, 144]);
+    expect(t.firstX + (t.cols - 1) * t.pitch).toBe(7.25 * 72);
+    expect(t.firstY + (t.rows - 1) * t.pitch).toBe(9.5 * 72);
+  });
+
   test('sticker sheets match Avery\'s templates', () => {
     const { avery22805: big, avery94102: small } = svc.STICKER_SHEETS;
     // Every sheet's columns and rows fit the letter page with equal side margins

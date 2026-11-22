@@ -270,6 +270,29 @@ exports.printStoreStickers = async (req, res) => {
   }
 };
 
+// @desc    Totem QR labels: one 1½ in round label per picked store, on Avery
+//          8293 / Presta 94506, linking to the store's "totem" NFC sticker
+// @route   GET /api/rewards/stickers/totem?venueIds=a,b&startAt=1
+// @access  Super user
+exports.printTotemLabels = async (req, res) => {
+  try {
+    const ids = String(req.query.venueIds || '').split(',').map(s => s.trim()).filter(Boolean);
+    const unique = [...new Set(ids)];
+    if (unique.length > printAssetService.MAX_TOTEM_LABELS) {
+      throw new ServiceError(400, 'TOO_MANY_STORES', `At most ${printAssetService.MAX_TOTEM_LABELS} stores at a time`);
+    }
+    const docs = await getDocsById(STICKER_COLLECTIONS.STICKER_VENUES, unique);
+    const venues = unique.filter(id => docs.has(id)).map(id => ({ venueId: id, ...docs.get(id).data() }));
+    if (venues.length < unique.length) throw new ServiceError(404, 'STORE_NOT_FOUND', 'One of those stores no longer exists');
+    const pdf = await printAssetService.renderTotemLabels(venues, { startAt: req.query.startAt || 1 });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="FavCircles Totem labels - ${venues.length} ${venues.length === 1 ? 'store' : 'stores'} - Avery 8293.pdf"`);
+    res.send(pdf);
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Totem labels', fallbackCode: 'PRINT_FAILED', fallbackMessage: 'Could not build the Totem labels' });
+  }
+};
+
 // @desc    Coaster stickers: the generic "Join FavCircles" App Clip code on
 //          ¾ in Avery 94102 squares, two per coaster (one each side)
 // @route   GET /api/rewards/stickers/coasters?coasters=40&startAt=1

@@ -484,6 +484,75 @@ async function renderStoreStickers(venues, { kind = 'window', startAt = 1 } = {}
   return drawStickerSheets(entries, start);
 }
 
+// Totem QR labels (Wes, 2026-11-22): one 1½ in round label per store for the
+// Totem's base, on Avery 8293 / Presta 94506 (4 × 5, 2 in pitch, centred on
+// Letter). The label sits over the base's NFC sticker, so its link is the same
+// one the sticker carries: the window code + ?t=totem (the "Totem" Points
+// sticker's tag). Drawn exactly like Marketing/mascot/favvy-print/make-label.js:
+// pink ring, 21 mm code, "TAP OR SCAN". The store's name prints small under
+// each label, on the backing that peels away, so the sheet says whose is whose.
+const MM = IN / 25.4;
+const TOTEM_TAG = 'totem';
+const TOTEM_SHEET = { label: 'Avery 8293 or Presta 94506 (1½ in round, 20 per sheet)', diameter: 38.1 * MM,
+  cols: 4, rows: 5, pitch: 2 * IN, firstX: 1.25 * IN, firstY: 1.5 * IN };
+const TOTEM_LABELS_PER_SHEET = TOTEM_SHEET.cols * TOTEM_SHEET.rows;
+const MAX_TOTEM_LABELS = 100;
+const TOTEM_PINK = '#f4567f';
+const TOTEM_INK = '#1d1b22';
+const TOTEM_QR = 21 * MM;
+
+const totemUrl = (code) => `${rewardService.stickerUrl(code)}?t=${TOTEM_TAG}`;
+
+function drawTotemLabel(doc, cx, cy, url, name) {
+  const r = TOTEM_SHEET.diameter / 2;
+  doc.save();
+  doc.circle(cx, cy, r).fill('#FFFFFF');
+  doc.circle(cx, cy, r - 0.5 * MM).lineWidth(0.8 * MM).strokeColor(TOTEM_PINK).stroke();
+  doc.restore();
+  // drawQR keeps one quiet module inside its square; size it so the dark
+  // modules span exactly 21 mm, 1.8 mm above centre as on the printed labels
+  const modules = QRCode.create(url, { errorCorrectionLevel: 'M' }).modules;
+  const cell = TOTEM_QR / modules.size;
+  drawQR(doc, { modules, dark: TOTEM_INK }, cx - TOTEM_QR / 2 - cell * QR_MARGIN,
+    cy - TOTEM_QR / 2 - 1.8 * MM - cell * QR_MARGIN, TOTEM_QR + cell * QR_MARGIN * 2);
+  // "TAP OR SCAN": 2.7 mm type, baseline 13.6 mm below centre
+  const size = 2.7 * MM;
+  doc.font('Helvetica-Bold').fontSize(size).fillColor(TOTEM_INK);
+  doc.text('TAP OR SCAN', cx - r, cy + 13.6 * MM - size * 0.77, { width: 2 * r, align: 'center', lineBreak: false, characterSpacing: 0.2 * MM });
+  if (name) {
+    doc.font('Helvetica').fontSize(6).fillColor(GUIDE_TEXT)
+      .text(name, cx - IN * 0.95, cy + r + 0.07 * IN, { width: IN * 1.9, align: 'center', lineBreak: false, ellipsis: true, height: 8 });
+  }
+}
+
+async function renderTotemLabels(venues, { startAt = 1 } = {}) {
+  const start = Number(startAt);
+  if (!Number.isInteger(start) || start < 1 || start > TOTEM_LABELS_PER_SHEET) {
+    throw new ServiceError(400, 'BAD_START', `startAt must be 1 to ${TOTEM_LABELS_PER_SHEET}`);
+  }
+  if (!venues.length) throw new ServiceError(400, 'NO_STORES', 'Pick at least one store');
+  if (venues.length > MAX_TOTEM_LABELS) {
+    throw new ServiceError(400, 'TOO_MANY_STORES', `At most ${MAX_TOTEM_LABELS} stores at a time`);
+  }
+  const entries = venues.map((venue) => ({
+    url: totemUrl(codeFor('window', venue)),
+    name: String(venue.venueName || '').trim() || 'Store'
+  }));
+  const { cols, pitch, firstX, firstY } = TOTEM_SHEET;
+  const doc = new PDFDocument({ size: GEOMETRY.stickers.page, margin: 0, autoFirstPage: false });
+  const header = () => doc.fillColor(GUIDE_TEXT).font('Helvetica').fontSize(7)
+    .text(`${TOTEM_SHEET.label} · print at 100% / Actual size · try one on plain paper first`,
+      0, 0.22 * IN, { width: GEOMETRY.stickers.page[0], align: 'center', lineBreak: false });
+  let slot = 0;
+  entries.forEach((entry, i) => {
+    if (i === 0) { doc.addPage(); slot = start - 1; header(); }
+    else if (slot >= TOTEM_LABELS_PER_SHEET) { doc.addPage(); slot = 0; header(); }
+    drawTotemLabel(doc, firstX + (slot % cols) * pitch, firstY + Math.floor(slot / cols) * pitch, entry.url, entry.name);
+    slot += 1;
+  });
+  return pdfToBuffer(doc);
+}
+
 async function renderPDF(venue, rawOptions) {
   const { kind, format, qrInches } = printOptions(rawOptions);
   const code = codeFor(kind, venue);
@@ -538,7 +607,8 @@ const registerCardPDF = (venue) => renderPDF(venue, { kind: 'register', format: 
 const tableTentPDF = (venue) => renderPDF(venue, { kind: 'register', format: 'tent', qr: 'medium' });
 
 module.exports = {
-  renderPDF, renderStoreStickers, renderCoasterStickers, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
+  renderPDF, renderStoreStickers, renderCoasterStickers, renderTotemLabels, totemUrl,
+  TOTEM_LABELS_PER_SHEET, MAX_TOTEM_LABELS, TOTEM_SHEET, TOTEM_TAG, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
   STICKERS_PER_SHEET, MAX_STORE_STICKERS, COASTER_STICKERS_PER_SHEET, MAX_COASTERS, STICKER_SHEETS,
   windowSignPDF, registerCardPDF, tableTentPDF
 };
