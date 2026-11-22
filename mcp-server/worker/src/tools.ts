@@ -27,6 +27,20 @@ import {
   UserProfile,
   docId,
 } from "./backend";
+import { MAP_LINK, registerPublicTools } from "./public-info";
+
+// ---- links that open FavCircles --------------------------------------------
+// The same Universal Links the app's own shares use (AASA on api.favcircles.com):
+// with the app installed they open the place / circle / map in FavCircles; in a
+// browser they show a preview page with the App Store link.
+const LINK_BASE = "https://api.favcircles.com";
+/** A save id or a venue (globalPlaces) id both resolve; the venue id is the stable one. */
+function placeLink(id: string | null | undefined): string | null {
+  return id && id !== "(no id)" ? `${LINK_BASE}/place/${encodeURIComponent(id)}` : null;
+}
+function circleLink(id: string | null | undefined): string | null {
+  return id && id !== "(no id)" ? `${LINK_BASE}/circle/${encodeURIComponent(id)}` : null;
+}
 
 // Backend enums (from backend/models/FirestoreModels.js validators)
 const PLACE_CATEGORIES = [
@@ -53,6 +67,8 @@ const CIRCLE_OUT = z.object({
   privacy: z.string(),
   placesCount: z.number().nullable(),
   description: z.string().nullable(),
+  /** Opens this circle in the FavCircles app (Universal Link). */
+  appLink: z.string().nullable(),
 });
 type CircleOut = z.infer<typeof CIRCLE_OUT>;
 
@@ -108,6 +124,8 @@ const PLACE_OUT = z.object({
   // anything else overrides it.
   privacy: z.string(),
   privacyMeaning: z.string(),
+  /** Opens this place in the FavCircles app (Universal Link); the map shows every save. */
+  appLink: z.string().nullable(),
 });
 type PlaceOut = z.infer<typeof PLACE_OUT>;
 
@@ -119,6 +137,7 @@ function circleStruct(c: Circle): CircleOut {
     privacy: c.privacy || "myNetwork",
     placesCount: c.placesCount ?? null,
     description: c.description || null,
+    appLink: circleLink(docId(c)),
   };
 }
 
@@ -140,6 +159,7 @@ function placeStruct(p: Place, circleName?: string): PlaceOut {
     longitude: lng,
     privacy: tier,
     privacyMeaning: TIER_LABEL[tier] || tier,
+    appLink: placeLink(p.globalPlaceId || docId(p)),
   };
 }
 
@@ -155,6 +175,7 @@ const RECOMMENDATION_OUT = z.object({
   circleName: z.string().nullable(),
   recommendedById: z.string().nullable(),
   recommendedByName: z.string().nullable(),
+  appLink: z.string().nullable(),
 });
 type RecommendationOut = z.infer<typeof RECOMMENDATION_OUT>;
 
@@ -224,6 +245,8 @@ function formatCircle(c: Circle): string {
     `  category: ${c.category || "other"} | privacy: ${c.privacy || "myNetwork"} | places: ${c.placesCount ?? "?"}`,
   ];
   if (c.description) parts.push(`  description: ${c.description}`);
+  const link = circleLink(docId(c));
+  if (link) parts.push(`  open in FavCircles: ${link}`);
   return parts.join("\n");
 }
 
@@ -236,6 +259,8 @@ function formatPlace(p: Place): string {
   if (p.rating != null) bits.push(`  rating: ${p.rating}`);
   const tier = p.privacy || "followCircle";
   bits.push(`  privacy: ${tier} (${TIER_LABEL[tier] || tier})`);
+  const link = placeLink(p.globalPlaceId || docId(p));
+  if (link) bits.push(`  open in FavCircles: ${link}`);
   return bits.join("\n");
 }
 
@@ -251,12 +276,16 @@ Conventions:
 
 Importing places: users can bring their saved-place history from Mapstr, Google Maps (Takeout), or Swarm/Foursquare (personal data export) by sharing the export file with you. YOU parse the file (any format), normalize it, and use prepare_place_import → user confirmation → execute_place_import. Never invent coordinates — only pass lat/lng found in the file; rows without them import unmapped, which is correct. Aggregate repeat Swarm check-ins into one place with visitCount.
 
-Store owners: users who claimed their business get store-management tools (list_my_stores first; other store tools take its venueId, optional for single-store owners). Announcements broadcast to every follower and redemption codes are worth real loyalty points — always confirm exact content/amounts with the user before posting or minting. Some store tools need the FavCircles Business tier; a 403 means the owner should upgrade in the app, not that something is broken.`;
+About FavCircles itself: for "what is FavCircles?", "how do I start?", "what widgets are there?" or "why should my store join?", call about_favcircles / getting_started / widgets_overview / for_store_owners rather than answering from memory. They need no account. Someone without an account creates one on the connect page (it has "Create an account"); never ask for their password in chat.
+
+Links: every place, circle and recommendation carries appLink, which opens it in the FavCircles app (or a preview page with the App Store link). After saving places, offer the link, and the map link (${MAP_LINK}) to see every save on their map.
+
+Store owners: a business owner claims their store with claim_my_store (confirm the exact business and their contact details first; a person at FavCircles verifies it), then set_up_my_store walks them through what's left. Users who claimed their business get store-management tools (list_my_stores first; other store tools take its venueId, optional for single-store owners). Announcements broadcast to every follower and redemption codes are worth real loyalty points — always confirm exact content/amounts with the user before posting or minting. Some store tools need the FavCircles Business tier; a 403 means the owner should upgrade in the app, not that something is broken.`;
 
 export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
   const backend = new Backend(auth, apiBase);
   const server = new McpServer(
-    { name: "favcircles", version: "0.8.0" },
+    { name: "favcircles", version: "0.9.0" },
     { instructions: SERVER_INSTRUCTIONS }
   );
 
@@ -366,14 +395,20 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
           .optional()
           .describe("The place's id from discover_places. Pass it whenever the place came from discover_places"),
       },
-      outputSchema: { place: PLACE_OUT },
+      outputSchema: { place: PLACE_OUT, mapLink: z.string() },
       annotations: { title: "Save a place to a circle", ...CREATE },
       _meta: inv("Saving the place", "Saved the place"),
     },
     async (input): Promise<ToolResult> => {
       try {
         const place = await backend.createPlace(input);
-        return ok(`Added "${place.name}" (id: ${docId(place)}) to the circle.`, { place: placeStruct(place) });
+        const added = placeStruct(place);
+        return ok(
+          `Added "${place.name}" (id: ${docId(place)}) to the circle.` +
+            (added.appLink ? `\nOpen it in FavCircles: ${added.appLink}` : "") +
+            `\nSee it on your map: ${MAP_LINK}`,
+          { place: added, mapLink: MAP_LINK }
+        );
       } catch (e) {
         if (e instanceof BackendError && e.status === 404) {
           return err(new Error(`Circle ${input.circleId} not found — run list_circles to get valid ids.`));
@@ -998,7 +1033,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
           const meta = [r.category, r.address].filter(Boolean).join(" | ");
           const who = r.recommendedByName ? ` — recommended by ${r.recommendedByName}` : "";
           const circle = r.circleName ? ` (in "${r.circleName}")` : "";
-          return `- ${r.name}${who}${circle}${meta ? `\n  ${meta}` : ""}${r.notes ? `\n  notes: ${r.notes}` : ""}`;
+          return `- ${r.name}${who}${circle}${meta ? `\n  ${meta}` : ""}${r.notes ? `\n  notes: ${r.notes}` : ""}${r.appLink ? `\n  open in FavCircles: ${r.appLink}` : ""}`;
         });
         return ok(`${recommendations.length} recommendation(s) from your network:\n\n${lines.join("\n")}`, structured);
       } catch (e) {
@@ -1216,6 +1251,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
             website: z.string().nullable(),
             phone: z.string().nullable(),
             savedByCircles: z.number().nullable(),
+            appLink: z.string().nullable(),
           })
         ),
       },
@@ -1251,6 +1287,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
             website: p.googleData?.website || null,
             phone: p.googleData?.phone || null,
             savedByCircles: p.totalCircleReferences ?? null,
+            appLink: placeLink(docId(p)),
           };
         });
         const structured = { count: places.length, places };
@@ -1267,7 +1304,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
             .join(", ");
           return `- ${p.name}${meta ? `\n  ${meta}` : ""}${extras ? `\n  ${extras}` : ""}${
             p.latitude != null ? `\n  coordinates: ${p.latitude}, ${p.longitude}` : ""
-          }`;
+          }${p.appLink ? `\n  open in FavCircles: ${p.appLink}` : ""}`;
         });
         return ok(`Found ${places.length} place(s) in the community database:\n\n${lines.join("\n")}`, structured);
       } catch (e) {
@@ -1456,6 +1493,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
     }
   );
 
+  registerPublicTools(server);
   registerImportTools(server, backend);
   registerStoreOwnerTools(server, backend);
   registerPrivacyTools(server, backend);
@@ -1702,7 +1740,7 @@ function registerStoreOwnerTools(server: McpServer, backend: Backend): void {
   async function resolveVenue(venueId?: string): Promise<import("./backend").OwnerVenue> {
     const { venues } = await backend.getMyVenues();
     if (venues.length === 0) {
-      throw new Error("You don't manage any stores on FavCircles. Claim your store from its place page in the app first.");
+      throw new Error("You don't manage any stores on FavCircles yet. Claim your store first: claim_my_store (or Claim on its place page in the app). Once FavCircles verifies it, it shows up here.");
     }
     if (venueId) {
       const match = venues.find((v) => v.venueId === venueId);
@@ -1739,7 +1777,7 @@ function registerStoreOwnerTools(server: McpServer, backend: Backend): void {
         const { venues } = await backend.getMyVenues();
         const stores = venues.map(storeStruct);
         if (stores.length === 0) {
-          return ok("You don't manage any stores on FavCircles yet. Claim your store from its place page in the app.", { count: 0, stores: [] });
+          return ok("You don't manage any stores on FavCircles yet. Claim yours with claim_my_store (or Claim on its place page in the app); it shows up here once FavCircles verifies it.", { count: 0, stores: [] });
         }
         const lines = stores.map((s) =>
           `- ${s.storeName} (venueId: ${s.venueId})${s.businessTier ? " · Business" : " · free tier"}\n  saves ${s.saves} · followers ${s.followers} · visits ${s.visits} · scans ${s.scans} · redemptions ${s.redemptions}`);
@@ -2292,6 +2330,148 @@ function registerStoreOwnerTools(server: McpServer, backend: Backend): void {
     return { offerId: o.offerId, title: o.title, pointsCost: o.pointsCost, active: o.active !== false };
   }
 
+  server.registerTool(
+    "claim_my_store",
+    {
+      title: "Claim my store",
+      description:
+        "Ask to become the owner of a business on FavCircles. A person at FavCircles verifies ownership (usually by phone or email) and then the store appears in list_my_stores with its dashboard, window sticker QR and the owner tools. " +
+        "If the business is already in FavCircles, find it with discover_places (or the user's own saves) and pass its id as placeId. If it isn't, pass name, address, latitude and longitude instead and FavCircles adds it. " +
+        "Always confirm the exact business and the contact details with the user before calling; the claim notifies FavCircles staff.",
+      inputSchema: {
+        placeId: z.string().optional().describe("The business's id from discover_places or the user's saves. Omit to add a new business by details."),
+        name: z.string().optional().describe("Business name (only when there is no placeId)"),
+        address: z.string().optional().describe("Full street address (only when there is no placeId)"),
+        latitude: z.number().min(-90).max(90).optional().describe("Latitude of the business (only when there is no placeId)"),
+        longitude: z.number().min(-180).max(180).optional().describe("Longitude of the business (only when there is no placeId)"),
+        category: z.enum(PLACE_CATEGORIES).optional().describe("Business category (new business only)"),
+        phone: z.string().optional().describe("Business phone (new business only)"),
+        website: z.string().optional().describe("Business website (new business only)"),
+        contactName: z.string().min(2).describe("The owner's or manager's name, for verification"),
+        contactEmail: z.string().email().describe("A business email to verify with"),
+        contactPhone: z.string().optional().describe("A phone number to verify with (speeds things up)"),
+        message: z.string().max(1000).optional().describe("Anything the reviewer should know, e.g. 'I'm the owner since 2019'"),
+      },
+      outputSchema: {
+        claimId: z.string(),
+        status: z.string(),
+        business: z.string().nullable(),
+        address: z.string().nullable(),
+        nextSteps: z.string(),
+      },
+      annotations: { title: "Claim my store", ...CREATE, openWorldHint: true },
+      _meta: inv("Sending your claim", "Claim sent"),
+    },
+    async (input): Promise<ToolResult> => {
+      try {
+        const contact = {
+          contactName: input.contactName, contactEmail: input.contactEmail,
+          ...(input.contactPhone ? { contactPhone: input.contactPhone } : {}),
+          ...(input.message ? { message: input.message } : {}),
+        };
+        let claim;
+        if (input.placeId) {
+          claim = await backend.claimPlace(input.placeId, contact);
+        } else {
+          if (!input.name || !input.address || input.latitude == null || input.longitude == null) {
+            return err(new Error("Pass placeId for a business already in FavCircles (find it with discover_places), or name, address, latitude and longitude to add it."));
+          }
+          claim = await backend.claimBusinessByDetails({
+            ...contact, name: input.name, address: input.address, lat: input.latitude, lng: input.longitude,
+            ...(input.category ? { category: input.category } : {}),
+            ...(input.phone ? { phone: input.phone } : {}),
+            ...(input.website ? { website: input.website } : {}),
+          });
+        }
+        const business = claim.placeName || claim.venueName || input.name || null;
+        const nextSteps =
+          "A person at FavCircles verifies that you own or run the business, usually by calling the business or emailing you, and approves the claim. " +
+          "Then the store shows up under list_my_stores and in the app (your profile → your store → Manage Store), and FavCircles sends your window sticker, register card and table tents. " +
+          "Use set_up_my_store after approval to finish the page. FavCircles Business (loyalty points, announcements, online ordering and more) is 3 months free, then $49.99/month.";
+        const status = claim.status || "pending";
+        return ok(
+          `Claim sent for ${business ?? "the business"}${claim.placeAddress ? ` (${claim.placeAddress})` : ""}. Status: ${status}.\n\n${nextSteps}`,
+          { claimId: claim.claimId, status, business, address: claim.placeAddress ?? input.address ?? null, nextSteps }
+        );
+      } catch (e) {
+        if (e instanceof BackendError && e.status === 409) {
+          return ok("This business already has an owner on FavCircles. If you run it, ask the current owner to add you as a manager in the app (Manage Store → Managers), or email wesley@favcircles.com.");
+        }
+        return storeErr(e);
+      }
+    }
+  );
+
+  server.registerTool(
+    "set_up_my_store",
+    {
+      title: "Set up my store (checklist)",
+      description:
+        "A setup checklist for a store the user owns or manages: what's done and what's next (page details, hours, photos, window QR, FavCircles Business, loyalty points and rewards, announcements, online ordering, automatic nudges, waitlist, bring-a-friend), each with the tool or app screen that does it. Use when an owner asks 'help me set up my store' or 'what should I do next?'.",
+      inputSchema: { venueId: VENUE_ID_INPUT },
+      outputSchema: {
+        store: z.string(),
+        venueId: z.string(),
+        done: z.number(),
+        total: z.number(),
+        steps: z.array(z.object({ step: z.string(), done: z.boolean(), detail: z.string(), how: z.string() })),
+        nextStep: z.string().nullable(),
+        storePageLink: z.string().nullable(),
+      },
+      annotations: { title: "Set up my store", ...OWNER },
+      _meta: inv("Checking your store setup", "Checked your store setup"),
+    },
+    async ({ venueId }): Promise<ToolResult> => {
+      try {
+        const venue = await resolveVenue(venueId);
+        let place: import("./backend").VenueRecord = {};
+        if (venue.globalPlaceId) {
+          try { place = await backend.getGlobalPlace(venue.globalPlaceId); } catch { /* checklist still useful without it */ }
+        }
+        const g = place.googleData || {};
+        const phone = place.phone || g.phone;
+        const website = place.website || g.website;
+        const hours = place.openingHours || g.openingHours;
+        const photos = (place.photos || []).length;
+        const business = venue.ownerPremium === true;
+        const offers = (venue.offers || []).filter((o) => o.active !== false);
+        const anns = (venue.announcements || []).filter((a) => a.active !== false);
+        const a = venue.automations || {};
+        const nudges = ["winBack", "birthday", "almostThere"].filter((k) => a?.[k]?.enabled === true);
+        const biz = business ? "" : " (needs FavCircles Business)";
+        const steps = [
+          { step: "Claim the store", done: true, detail: "Claimed and verified.", how: "Done." },
+          { step: "Describe your store", done: !!place.description, detail: place.description ? "Your page has a description." : "No description yet.", how: "update_store_details, or the app: Manage Store → Store details." },
+          { step: "Phone and website", done: !!(phone && website), detail: [phone ? "phone ✓" : "no phone", website ? "website ✓" : "no website"].join(", "), how: "update_store_details" },
+          { step: "Opening hours", done: !!hours, detail: hours ? "Hours are set." : "No hours yet.", how: "set_store_hours" },
+          { step: "Photos and a cover photo", done: photos > 0 && !!place.coverPhotoUrl, detail: `${photos} photo(s)${place.coverPhotoUrl ? ", cover set" : ", no cover photo"}.`, how: "Add photos in the app (Manage Store → Photos), then set_store_cover_photo." },
+          { step: "Window sticker QR", done: !!venue.windowCode, detail: venue.windowCode ? "Your window QR is ready; customers scan it to save your store. FavCircles also sends your printed window sticker, register card and table tents." : "No window code yet.", how: "email_store_qr sends it to you; reprints from the app: Store Admin → window code → Share → Print a sign or tent." },
+          { step: "FavCircles Business", done: business, detail: business ? "Active." : "Free tier. Business is 3 months free, then $49.99/month.", how: "In the app: Manage Store → upgrade to Business." },
+          { step: "Loyalty points", done: business && (venue.earnRate ?? 0) > 0, detail: business ? `Customers earn ${venue.earnRate ?? 0} point(s) per visit.` : `Customers earn points at your register${biz}.`, how: "set_store_earn_rate (you choose how many)." },
+          { step: "Rewards to redeem", done: offers.length > 0, detail: offers.length ? `${offers.length} reward(s): ${offers.map((o) => `${o.title} (${o.pointsCost} pts)`).join(", ")}.` : `No rewards yet${biz}.`, how: "create_store_offer" },
+          { step: "Announce a special", done: anns.length > 0, detail: anns.length ? `${anns.length} active announcement(s).` : `Nothing posted yet${biz}. Announcements reach your followers and nearby customers in Locals.`, how: "post_store_announcement" },
+          { step: "Online menu and pickup ordering", done: venue.orderingEnabled === true, detail: venue.orderingEnabled ? "Ordering is on." : `Off${biz}. Photograph your menu and it becomes an order-ahead menu in the app and on order.favcircles.com.`, how: "In the app: Manage Store → Ordering." },
+          { step: "Automatic nudges", done: nudges.length > 0, detail: nudges.length ? `On: ${nudges.join(", ")}.` : `Off${biz}. Win-back, birthday and almost-there nudges bring customers back for you.`, how: "In the app: Manage Store → Automations." },
+          { step: "Waitlist", done: venue.waitlist?.enabled === true, detail: venue.waitlist?.enabled ? "On." : `Off${biz} (optional, for places with a line).`, how: "In the app: Manage Store → Waitlist." },
+          { step: "Bring a friend", done: venue.referrals?.enabled === true, detail: venue.referrals?.enabled ? "On." : `Off${biz}. When a customer's friend makes a first purchase, both earn the points you set.`, how: "In the app: Manage Store → Bring a friend." },
+        ];
+        const done = steps.filter((x) => x.done).length;
+        const next = steps.find((x) => !x.done) || null;
+        const storePageLink = placeLink(venue.globalPlaceId || null);
+        const text = `${venue.venueName}: ${done} of ${steps.length} setup steps done.\n\n` +
+          steps.map((x) => `${x.done ? "✅" : "⬜"} ${x.step}: ${x.detail}${x.done ? "" : `\n   → ${x.how}`}`).join("\n") +
+          (next ? `\n\nNext: ${next.step}. ${next.how}` : "\n\nEverything's set up.") +
+          (storePageLink ? `\nYour store's page: ${storePageLink}` : "");
+        return ok(text, {
+          store: venue.venueName, venueId: venue.venueId, done, total: steps.length, steps,
+          nextStep: next ? `${next.step}: ${next.how}` : null, storePageLink,
+        });
+      } catch (e) {
+        return storeErr(e);
+      }
+    }
+  );
+
   function annStruct(a: import("./backend").VenueAnnouncement) {
     return {
       announcementId: a.announcementId ?? a.id ?? null,
@@ -2320,6 +2500,7 @@ function toRecommendation(
     circleName,
     recommendedById,
     recommendedByName,
+    appLink: placeLink(p.globalPlaceId || docId(p)),
   };
 }
 

@@ -64,6 +64,18 @@ const catalog = {};
 for (const g of data.groups) for (const w of g.widgets) catalog[w.id] = { title: w.name, blurb: w.tagline, emoji: w.emoji, page: SITE + pageURL(w.id) };
 fs.writeFileSync(serverCopy, JSON.stringify(catalog, null, 1) + '\n');
 
+// And AI assistants: the FavCircles MCP server's widgets_overview tool reads
+// favcircles.com/widgets.json (Wes, 2026-11-22). Upload it with widgets.html.
+const publicList = {
+  updated: data.updated,
+  page: `${SITE}/widgets.html`,
+  groups: data.groups.map((g) => ({
+    title: g.title,
+    widgets: g.widgets.map((w) => ({ id: w.id, emoji: w.emoji, name: w.name, tagline: w.tagline, features: w.features, page: SITE + pageURL(w.id) }))
+  }))
+};
+fs.writeFileSync(path.join(root, 'favcircles.com/widgets.json'), JSON.stringify(publicList, null, 1) + '\n');
+
 const total = ids.length;
 const card = (w) => `
           <article class="widget" id="${esc(w.id)}">

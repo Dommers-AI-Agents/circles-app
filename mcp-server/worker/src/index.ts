@@ -25,6 +25,7 @@ import { SignJWT } from "jose";
 import { AuthError, AuthInfo, DEFAULT_AUDIENCE, verifyBearer } from "./auth";
 import { authDefaultHandler } from "./oauth-ui";
 import { buildServer } from "./tools";
+import { buildPublicServer } from "./public-info";
 
 interface Env {
   FAVCIRCLES_JWT_SECRET: string; // wrangler secret
@@ -112,7 +113,16 @@ export default {
     }
 
     if (url.pathname === "/" || url.pathname === "/health") {
-      return Response.json({ ok: true, service: "favcircles-mcp", transport: "streamable-http", endpoint: "/mcp" });
+      return Response.json({ ok: true, service: "favcircles-mcp", transport: "streamable-http", endpoint: "/mcp", publicEndpoint: "/public/mcp" });
+    }
+
+    // No-login server (Wes, 2026-11-22): only about_favcircles, getting_started,
+    // widgets_overview and for_store_owners. Separate from /mcp on purpose —
+    // /mcp must keep answering 401 without a token so ChatGPT and Claude start
+    // their connect flow (the same four tools are on /mcp too).
+    if (url.pathname === "/public/mcp") {
+      const handler = createMcpHandler(buildPublicServer(), { route: "/public/mcp", corsOptions: { origin: "*" } } as any);
+      return handler(request, env, ctx);
     }
 
     // Fast path: pre-issued FavCircles JWT with the right audience.

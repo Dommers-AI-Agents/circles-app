@@ -1,0 +1,41 @@
+# FavCircles
+
+> FavCircles is a free iPhone app for keeping the places you love and seeing the ones the people you know love. You save restaurants, shops, bars, parks and anything else to your own personal map, organize them into "circles" you name yourself (Date Night, Best Coffee, Weekend Trips…), and see your friends' and family's maps, so you can skip reviews by strangers. It also has Moments (short videos and photos from places), the Locals tab (nearby specials and events), free Widgets (mini-apps for everyday life) and store Rewards. Local businesses use it for loyalty points, announcements and online pickup ordering.
+
+Download (iPhone, free): https://apps.apple.com/us/app/favcircles/id6746807095 — Android is coming soon.
+
+## For people
+
+- What it solves: (1) a personal map of your favorite places, so once saved you never forget them; (2) organized your way, in circles; (3) your friends' and family's maps of their favorites. The payoff: recommendations from people you know instead of strangers' reviews.
+- Privacy: every circle and every place can be Public, Connections, Inner Circle (a short list you choose) or Private. Profiles can be public or private.
+- Import saved places for free from Google Maps (Takeout), Mapstr and Swarm/Foursquare.
+- Rewards: participating local stores give points for visits and for saving them (scan the register QR; the card lives in Apple Wallet). Activity also earns FavCoins, a real cryptocurrency on the Cactus blockchain.
+- [Home page](https://favcircles.com/): what FavCircles is, with a 90-second video
+- [Widgets](https://favcircles.com/widgets.html): every free widget and its features ([machine-readable list](https://favcircles.com/widgets.json))
+- [Store Rewards](https://favcircles.com/rewards.html): how customers earn and redeem points
+- [FAQ](https://favcircles.com/faq.html)
+- [Switch from Google Maps](https://favcircles.com/switch-from-google-maps.html), [from Mapstr](https://favcircles.com/switch-from-mapstr.html), [from Swarm](https://favcircles.com/switch-from-swarm.html)
+
+## For store owners
+
+- Free: claim your store's page (a person at FavCircles verifies ownership), keep your details, photos and hours up to date, be discoverable to nearby FavCircles users, and get a dashboard plus your window sticker QR. FavCircles provides every new store's window sticker, register card and table tents.
+- FavCircles Business: one plan, 3 months free, then $49.99/month (billed through the App Store, cancel anytime). It adds a loyalty program (customers scan your register QR to earn the points you choose, with Apple Wallet cards), announcements and specials that reach followers and nearby customers, an online menu with pickup ordering in the app and at order.favcircles.com/your-store (no fees, no cut), automatic win-back, birthday and almost-there nudges, a waitlist, bring-a-friend rewards and insights.
+- [Store owners](https://favcircles.com/store-owners.html): the full pitch
+- [Owner tutorial video](https://favcircles.com/store-owner-tutorial.html) (4 minutes)
+- [Sell sheet (PDF)](https://favcircles.com/FavCircles-Founding-Store-Sell-Sheet.pdf)
+- Questions: wesley@favcircles.com (a founder answers)
+
+## Use FavCircles from an AI assistant
+
+FavCircles has an MCP connector: https://mcp.favcircles.com/mcp (OAuth sign-in; the connect page can also create a new account with email, Google or Facebook). Once connected, an assistant can save places into circles, create and organize circles, search your places and your network's recommendations, set privacy, import saved places, and, for store owners, claim a store, run a setup checklist, and manage details, hours, offers, points and announcements. Every place and circle comes back with a link that opens it in the FavCircles app.
+
+- Claude: Settings → Connectors → Add custom connector → paste the URL ([guide](https://favcircles.com/connect-claude.html)).
+- ChatGPT: Settings → Apps & Connectors → add the URL as a custom connector (developer mode), or find FavCircles in the app directory once it's listed.
+- Grok: grok.com/connectors → New Connector → Custom → paste the URL (paid Grok plans).
+- No-login information (what FavCircles is, getting started, widgets, store pitch) is also served without an account at https://mcp.favcircles.com/public/mcp.
+
+## Optional
+
+- [Cactus blockchain and FavCoins](https://favcircles.com/cactus.html)
+- [Watch](https://favcircles.com/watch.html): demo videos
+- [Privacy policy](https://favcircles.com/privacy.html), [Terms](https://favcircles.com/terms.html), [Support](https://favcircles.com/support.html), [Delete your data](https://favcircles.com/delete-data.html)

@@ -10,6 +10,37 @@ deploy/submission, app-submission-guidelines, deploy/connect-chatgpt).
 
 ---
 
+## Current tool surface (updated 2026-11-22, v0.9.0, 59 tools)
+
+The lists further down are from July and are out of date; this is the current set.
+
+- **No login needed** (also on `/mcp`, and alone on the open server
+  `https://mcp.favcircles.com/public/mcp`): `about_favcircles`, `getting_started`,
+  `widgets_overview` (reads favcircles.com/widgets.json), `for_store_owners`.
+- **Circles and places**: `list_circles`, `get_circle`, `create_circle`, `update_circle`,
+  `add_place`, `update_place`, `search_places`, `merge_accounts`.
+- **Trash**: `delete_circle`, `delete_place`, `list_trash`, `restore_circle`, `restore_place`,
+  `permanently_delete_circle`, `permanently_delete_place`.
+- **People and network**: `get_current_user`, `list_connections`, `get_friend_circles`,
+  `search_users`, `send_connection_request`, `respond_to_connection_request`,
+  `get_network_recommendations`, `find_shared_favorites`, `get_network_suggestions`,
+  `post_suggestion`, `get_network_activity`, `discover_places`.
+- **Import**: `prepare_place_import`, `execute_place_import`.
+- **Store owners**: `claim_my_store`, `set_up_my_store`, `list_my_stores`, `get_store_dashboard`,
+  `get_store_followers`, `get_store_savers`, `get_store_activity`, `update_store_details`,
+  `set_store_hours`, `list_store_photos`, `set_store_cover_photo`, `post_store_announcement`,
+  `update_store_announcement`, `delete_store_announcement`, `create_store_offer`,
+  `update_store_offer`, `set_store_earn_rate`, `create_redemption_codes`,
+  `list_redemption_codes`, `email_store_qr`.
+- **Privacy**: `get_privacy_overview`, `set_privacy`, `set_activity_privacy`,
+  `get_inner_circle`, `update_inner_circle`, `update_item_access`.
+- Every place, circle, recommendation and `discover_places` result carries `appLink`
+  (a Universal Link that opens it in the app); `add_place` also returns the map link.
+- The connect page (`/authorize`) can **create an account** (email + password, the
+  app's own sign-up endpoint), besides Google, Facebook and email sign-in. Sign in with
+  Apple is built but hidden until a Services ID exists (see GROK_AND_MUSE.md → Apple).
+- `/mcp` still answers 401 without a token on purpose, so clients start the OAuth flow.
+
 ## What the server provides (done, deployed, tested)
 
 - **Transport**: Streamable HTTP at `https://mcp.favcircles.com/mcp` (the only

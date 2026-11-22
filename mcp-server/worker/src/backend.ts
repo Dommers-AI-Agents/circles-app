@@ -55,6 +55,8 @@ export interface Place {
   privacy?: string;
   /** Named people who may see this one save whatever its tier says. */
   sharedWith?: string[];
+  /** The canonical venue record this save points at (links use it). */
+  globalPlaceId?: string | null;
 }
 
 /** "Who can see my activity": audience × category, all booleans. */
@@ -579,10 +581,26 @@ export class Backend {
     return res.data;
   }
 
-  async getGlobalPlace(globalPlaceId: string): Promise<{ photos?: { url: string }[]; coverPhotoUrl?: string | null }> {
+  /** The venue record. GET /places/global/:id answers { data: { globalPlace, … } }. */
+  async getGlobalPlace(globalPlaceId: string): Promise<VenueRecord> {
     const res = await this.request<{ place?: any; data?: any }>(
       "GET", `/places/global/${encodeURIComponent(globalPlaceId)}`);
-    return res.place || res.data || res;
+    return res.data?.globalPlace || res.place || res.data || res;
+  }
+
+  /** Claim a business that's already in FavCircles (a save id or a venue id). */
+  async claimPlace(placeId: string, input: ClaimContact): Promise<ClaimResult> {
+    const res = await this.request<{ data: { claim: ClaimResult } }>(
+      "POST", `/rewards/places/${encodeURIComponent(placeId)}/claim`, input);
+    return res.data.claim;
+  }
+
+  /** Add-and-claim: a business nobody has saved yet, by its details. */
+  async claimBusinessByDetails(input: ClaimContact & {
+    name: string; address: string; lat: number; lng: number; category?: string; phone?: string; website?: string;
+  }): Promise<ClaimResult> {
+    const res = await this.request<{ data: { claim: ClaimResult } }>("POST", "/rewards/businesses/claim", input);
+    return res.data.claim;
   }
 
   async setVenueCoverPhoto(venueId: string, url: string | null): Promise<string | null> {
@@ -699,6 +717,34 @@ export interface ImportExecuteOutcome {
 
 // ---- Store-owner types ------------------------------------------------------
 
+export interface VenueRecord {
+  _id?: string;
+  id?: string;
+  name?: string;
+  description?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  openingHours?: unknown;
+  coverPhotoUrl?: string | null;
+  photos?: ({ url: string } | string)[];
+  googleData?: { phone?: string | null; website?: string | null; openingHours?: unknown } | null;
+}
+
+export interface ClaimContact {
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  message?: string;
+}
+
+export interface ClaimResult {
+  claimId: string;
+  status?: string;
+  venueName?: string | null;
+  placeName?: string | null;
+  placeAddress?: string | null;
+}
+
 export interface OwnerVenue {
   venueId: string;
   venueName: string;
@@ -712,6 +758,12 @@ export interface OwnerVenue {
   stats?: { scans?: number; signups?: number; saves?: number; visits?: number; redemptions?: number; followers?: number };
   offers?: VenueOffer[];
   announcements?: VenueAnnouncement[];
+  windowCode?: string | null;
+  orderingEnabled?: boolean;
+  automations?: Record<string, any> | null;
+  waitlist?: Record<string, any> | null;
+  referrals?: Record<string, any> | null;
+  isPrimaryOwner?: boolean;
 }
 
 export interface VenueDashboard {
