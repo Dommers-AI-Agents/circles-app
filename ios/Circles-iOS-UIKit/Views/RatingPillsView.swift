@@ -8,10 +8,14 @@ final class RatingPillsView: UIView {
 
     private(set) var selectedRating: Int?
     private let currentRating: Int?
+    /// The unselected pills' fill: the page's box color by default, a lighter
+    /// fill when the row sits on a card (the Check In screen, 2026-11-21)
+    private let unselectedBackground: UIColor
     private var buttons: [UIButton] = []
 
-    init(currentRating: Int? = nil) {
+    init(currentRating: Int? = nil, unselectedBackground: UIColor = Constants.Colors.secondaryBackground) {
         self.currentRating = currentRating
+        self.unselectedBackground = unselectedBackground
         super.init(frame: .zero)
         let stack = UIStackView()
         stack.axis = .horizontal
@@ -20,6 +24,7 @@ final class RatingPillsView: UIView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         for value in 0...10 {
             let button = UIButton.pillButton(title: "\(value)")
+            button.backgroundColor = unselectedBackground
             if value == currentRating {
                 button.layer.borderWidth = 2
                 button.layer.borderColor = Constants.Colors.primary.cgColor
@@ -45,7 +50,7 @@ final class RatingPillsView: UIView {
         selectedRating = rating
         for button in buttons {
             let selected = button.tag == rating
-            button.backgroundColor = selected ? Constants.Colors.primary : Constants.Colors.secondaryBackground
+            button.backgroundColor = selected ? Constants.Colors.primary : unselectedBackground
             button.setTitleColor(selected ? .white : Constants.Colors.label, for: .normal)
         }
     }

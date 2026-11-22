@@ -42,37 +42,60 @@ final class CheckInComposeViewController: BaseViewController {
         return stack
     }()
 
-    private lazy var placeCard: UIView = {
-        let card = UIView()
-        card.backgroundColor = Constants.Colors.secondaryBackground
-        card.layer.cornerRadius = 12
+    /// The place's photo fading into the brand wash, behind everything
+    /// (Wes, 2026-11-21: "make this prettier" — never a flat black page)
+    private let backdrop = FirstRunBackdropView()
+    private var hasPhoto: Bool { !(place.photos?.first ?? "").isEmpty }
+
+    /// The place, said once at the top with no box around it: its category
+    /// in a tinted tile, the name big, the address under a pin
+    private lazy var placeHero: UIView = {
+        let tile = UIImageView(image: UIImage(systemName: place.category.systemIconName))
+        tile.tintColor = place.category.color
+        tile.contentMode = .center
+        tile.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 22, weight: .semibold)
+        tile.backgroundColor = place.category.color.withAlphaComponent(0.18)
+        tile.layer.cornerRadius = 14
+        tile.translatesAutoresizingMaskIntoConstraints = false
+        tile.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        tile.heightAnchor.constraint(equalToConstant: 48).isActive = true
+
         let name = UILabel()
         name.text = place.name
-        name.font = UIFont.systemFont(ofSize: 18, weight: .semibold)
+        name.font = UIFont.systemFont(ofSize: 28, weight: .bold)
         name.textColor = Constants.Colors.label
         name.numberOfLines = 2
+        name.adjustsFontSizeToFitWidth = true
+        name.minimumScaleFactor = 0.8
+
+        let pin = UIImageView(image: UIImage(systemName: "mappin.and.ellipse"))
+        pin.tintColor = Constants.Colors.secondaryLabel
+        pin.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+        pin.setContentHuggingPriority(.required, for: .horizontal)
         let address = UILabel()
         address.text = place.address
-        address.font = UIFont.systemFont(ofSize: 14)
+        address.font = UIFont.systemFont(ofSize: 15)
         address.textColor = Constants.Colors.secondaryLabel
         address.numberOfLines = 2
-        let stack = UIStackView(arrangedSubviews: [name, address])
-        stack.axis = .vertical
-        stack.spacing = 4
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        card.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: card.topAnchor, constant: 12),
-            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -12),
-            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16)
-        ])
-        return card
+        let addressRow = UIStackView(arrangedSubviews: [pin, address])
+        addressRow.axis = .horizontal
+        addressRow.alignment = .firstBaseline
+        addressRow.spacing = 5
+
+        let words = UIStackView(arrangedSubviews: [name, addressRow])
+        words.axis = .vertical
+        words.spacing = 4
+        let hero = UIStackView(arrangedSubviews: [tile, words])
+        hero.axis = .horizontal
+        hero.alignment = .top
+        hero.spacing = 14
+        return hero
     }()
 
     // Rating: outlined pill = what they said last time (own save only —
     // someone else's copy carries their score, not ours)
-    private lazy var ratingPills = RatingPillsView(currentRating: place.isAddedByCurrentUser ? place.userRating : nil)
+    private lazy var ratingPills = RatingPillsView(currentRating: place.isAddedByCurrentUser ? place.userRating : nil,
+                                                   unselectedBackground: .tertiarySystemFill)
 
     private let notePlaceholder = "Say something about this visit (optional)"
     private lazy var noteTextView: UITextView = {
@@ -80,13 +103,11 @@ final class CheckInComposeViewController: BaseViewController {
         view.font = UIFont.systemFont(ofSize: 16)
         view.textColor = Constants.Colors.secondaryLabel
         view.text = notePlaceholder
-        view.backgroundColor = Constants.Colors.secondaryBackground
-        view.layer.cornerRadius = 12
-        view.layer.borderWidth = 1
-        view.layer.borderColor = Constants.Colors.separator.cgColor
-        view.textContainerInset = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
+        // The card is the box: no fill or border of its own
+        view.backgroundColor = .clear
+        view.textContainerInset = UIEdgeInsets(top: 14, left: 11, bottom: 12, right: 11)
         view.delegate = self
-        view.heightAnchor.constraint(equalToConstant: 96).isActive = true
+        view.heightAnchor.constraint(equalToConstant: 100).isActive = true
         return view
     }()
 
@@ -103,11 +124,13 @@ final class CheckInComposeViewController: BaseViewController {
     }()
     private var postOnPlaceSetByHand = false
 
-    private lazy var notifyButton: UIButton = {
-        let button = UIButton.fieldButton()
+    private lazy var notifyButton: IconRowButton = {
+        let button = IconRowButton(systemName: "bell.badge.fill", tint: Constants.Colors.accent, title: "Notify people")
         button.addTarget(self, action: #selector(notifyTapped), for: .touchUpInside)
         return button
     }()
+    /// The line between the two rows of the share card; goes with the notify row
+    private let shareDivider = CheckInComposeViewController.hairline()
 
     /// Who this check-in is for. Connections is the historic default; a named
     /// Inner Circle list narrows it; Followers widens it to all your followers,
@@ -125,10 +148,9 @@ final class CheckInComposeViewController: BaseViewController {
         if case .list(let id) = selectedAudience { return id }
         return nil
     }
-    private var audienceSection: UIView?
-    private lazy var audienceButton: UIButton = {
-        let button = UIButton.menuFieldButton()
-        button.heightAnchor.constraint(equalToConstant: 48).isActive = true
+    private lazy var audienceButton: IconRowButton = {
+        let button = IconRowButton(systemName: "person.2.fill", tint: Constants.Colors.primary, title: "Who's it for?")
+        button.showsMenuAsPrimaryAction = true
         return button
     }()
 
@@ -137,6 +159,10 @@ final class CheckInComposeViewController: BaseViewController {
         let button = UIButton.primaryButton(title: "  Check In")
         button.setImage(.checkInIcon?.withConfiguration(UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)), for: .normal)
         button.tintColor = .white
+        button.layer.shadowColor = Constants.Colors.primary.cgColor
+        button.layer.shadowOpacity = 0.35
+        button.layer.shadowRadius = 12
+        button.layer.shadowOffset = CGSize(width: 0, height: 6)
         return button
     }()
     private var postOnPlaceRow: UIView?
@@ -147,6 +173,19 @@ final class CheckInComposeViewController: BaseViewController {
         super.viewDidLoad()
         title = "Check In"
         view.backgroundColor = Constants.Colors.background
+        // The bar stays out of the way of the photo
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        if hasPhoto {
+            // The title sits on the photo: white with a little shadow, in either mode
+            let shadow = NSShadow()
+            shadow.shadowColor = UIColor.black.withAlphaComponent(0.6)
+            shadow.shadowOffset = CGSize(width: 0, height: 1)
+            shadow.shadowBlurRadius = 4
+            appearance.titleTextAttributes = [.foregroundColor: UIColor.white, .shadow: shadow]
+        }
+        navigationItem.standardAppearance = appearance
+        navigationItem.scrollEdgeAppearance = appearance
         if navigationController?.viewControllers.first === self {
             navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(cancelTapped))
         }
@@ -164,24 +203,35 @@ final class CheckInComposeViewController: BaseViewController {
         let footer = UIStackView(arrangedSubviews: [checkInButton])
         footer.axis = .vertical
         footer.translatesAutoresizingMaskIntoConstraints = false
-        checkInButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        checkInButton.heightAnchor.constraint(equalToConstant: 52).isActive = true
         checkInButton.addTarget(self, action: #selector(checkInTapped), for: .touchUpInside)
 
+        backdrop.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backdrop)
+        backdrop.showPhoto(from: place.photos?.first)
         view.addSubview(scrollView)
         view.addSubview(footer)
         scrollView.addSubview(contentStack)
+        scrollView.delegate = self
 
-        contentStack.addArrangedSubview(placeCard)
-        contentStack.addArrangedSubview(section("How was it? (optional)", ratingPills))
-        contentStack.addArrangedSubview(noteTextView)
+        contentStack.addArrangedSubview(placeHero)
+        contentStack.setCustomSpacing(24, after: placeHero)
+        // Three cards: the rating, the note (with its comment switch), who hears
+        contentStack.addArrangedSubview(card(section("How was it?", ratingPills), inset: 16))
         let commentRow = switchRow("Also post as a comment", postOnPlaceSwitch)
         postOnPlaceRow = commentRow
-        contentStack.addArrangedSubview(commentRow)
-        contentStack.addArrangedSubview(notifyButton)
+        let noteStack = UIStackView(arrangedSubviews: [noteTextView, Self.hairline(), commentRow])
+        noteStack.axis = .vertical
+        noteStack.spacing = 0
+        noteStack.setCustomSpacing(12, after: noteStack.arrangedSubviews[1])
+        noteStack.isLayoutMarginsRelativeArrangement = true
+        noteStack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 14, trailing: 0)
+        contentStack.addArrangedSubview(card(noteStack, inset: 0, horizontalInset: 14))
+        let shareStack = UIStackView(arrangedSubviews: [notifyButton, shareDivider, audienceButton])
+        shareStack.axis = .vertical
+        contentStack.addArrangedSubview(card(shareStack, inset: 2, horizontalInset: 2))
         // Lists may still be loading when this screen opens; the menu is
         // rebuilt when they arrive.
-        audienceSection = section("Who's it for?", audienceButton)
-        contentStack.addArrangedSubview(audienceSection!)
         refreshAudienceMenu()
         InnerCircleManager.shared.primeIfNeeded { [weak self] in
             DispatchQueue.main.async { self?.refreshAudienceMenu() }
@@ -192,15 +242,20 @@ final class CheckInComposeViewController: BaseViewController {
                 if case .success(let data) = result { self?.venueRewards = data }
             }
         }
-        contentStack.setCustomSpacing(8, after: noteTextView)
 
         NSLayoutConstraint.activate([
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -8),
 
-            contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 16),
+            // Under the photo band when there is one, so the place's picture is the opener
+            contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: hasPhoto ? 150 : 16),
             contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -16),
             contentStack.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor, constant: 16),
             contentStack.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor, constant: -16),
@@ -211,15 +266,53 @@ final class CheckInComposeViewController: BaseViewController {
         ])
     }
 
+    /// A card's title with "Optional" at the right, then its content
     private func section(_ title: String, _ content: UIView) -> UIView {
         let label = UILabel()
         label.text = title
-        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        label.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
         label.textColor = Constants.Colors.label
-        let stack = UIStackView(arrangedSubviews: [label, content])
+        let optional = UILabel()
+        optional.text = "Optional"
+        optional.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        optional.textColor = Constants.Colors.tertiaryLabel
+        optional.setContentHuggingPriority(.required, for: .horizontal)
+        let header = UIStackView(arrangedSubviews: [label, optional])
+        header.axis = .horizontal
+        header.alignment = .firstBaseline
+        let stack = UIStackView(arrangedSubviews: [header, content])
         stack.axis = .vertical
-        stack.spacing = 10
+        stack.spacing = 12
         return stack
+    }
+
+    /// A lifted card on the wash (the first-run screens' idiom): slightly
+    /// translucent so the photo and the gradient show through its edges
+    private func card(_ content: UIView, inset: CGFloat, horizontalInset: CGFloat? = nil) -> UIView {
+        let card = UIView()
+        card.backgroundColor = UIColor.secondarySystemGroupedBackground.withAlphaComponent(0.94)
+        card.layer.cornerRadius = 18
+        card.layer.shadowColor = UIColor.black.cgColor
+        card.layer.shadowOpacity = 0.08
+        card.layer.shadowRadius = 10
+        card.layer.shadowOffset = CGSize(width: 0, height: 3)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(content)
+        let side = horizontalInset ?? inset
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: card.topAnchor, constant: inset),
+            content.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -inset),
+            content.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: side),
+            content.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -side)
+        ])
+        return card
+    }
+
+    private static func hairline() -> UIView {
+        let line = UIView()
+        line.backgroundColor = Constants.Colors.separator
+        line.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale).isActive = true
+        return line
     }
 
     private func switchRow(_ title: String, _ toggle: UISwitch) -> UIView {
@@ -245,7 +338,6 @@ final class CheckInComposeViewController: BaseViewController {
     /// Circle to be "only".
     private func refreshAudienceMenu() {
         let lists = InnerCircleManager.shared.usableLists
-        audienceSection?.isHidden = false
         // A list that went away (deleted, or everyone removed) must not stay
         // selected: it would send an audience nobody is on. Only once the
         // lists have loaded — before that a saved Inner Circle default would
@@ -293,12 +385,12 @@ final class CheckInComposeViewController: BaseViewController {
         audienceButton.menu = UIMenu(children: [
             UIMenu(options: .displayInline, children: [everyone, connections] + listActions + [justMe])
         ])
-        audienceButton.setTitle("\(title)  ›", for: .normal)
-        audienceButton.setTitleColor(Constants.Colors.label, for: .normal)
+        audienceButton.value = title
         // A private check-in notifies nobody and posts no comment, so those
         // rows would only promise something that won't happen.
         let isPrivate = selectedAudience == .justMe
         notifyButton.isHidden = isPrivate
+        shareDivider.isHidden = isPrivate
         postOnPlaceRow?.isHidden = isPrivate
     }
 
@@ -325,18 +417,16 @@ final class CheckInComposeViewController: BaseViewController {
 
     private func updateNotifyTitle() {
         let count = selectedGroups.count + selectedUsers.count
-        let detail: String
         if count == 0 {
-            detail = "Notify people (optional)  ›"
+            notifyButton.value = "Optional"
         } else {
             let people = selectedUsers.count
             let groups = selectedGroups.count
             var parts: [String] = []
             if people > 0 { parts.append("\(people) \(people == 1 ? "person" : "people")") }
             if groups > 0 { parts.append("\(groups) \(groups == 1 ? "group" : "groups")") }
-            detail = "Notifying \(parts.joined(separator: " and "))  ›"
+            notifyButton.value = parts.joined(separator: " and ")
         }
-        notifyButton.setTitle(detail, for: .normal)
     }
 
     // MARK: - Actions
@@ -426,6 +516,13 @@ final class CheckInComposeViewController: BaseViewController {
                 }
             }
         }
+    }
+}
+
+// MARK: - The photo drifts as the page scrolls
+extension CheckInComposeViewController: UIScrollViewDelegate {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        backdrop.follow(scrollOffset: scrollView.contentOffset.y + scrollView.adjustedContentInset.top)
     }
 }
 
