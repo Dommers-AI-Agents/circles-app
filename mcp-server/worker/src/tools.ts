@@ -1779,7 +1779,13 @@ function registerStoreOwnerTools(server: McpServer, backend: Backend): void {
   /** Business-tier 403s become guidance, not raw errors. */
   function storeErr(e: unknown): ToolResult {
     if (e instanceof BackendError && e.status === 403 && /business/i.test(e.message)) {
-      return ok("This needs FavCircles Business for this store. The owner can upgrade from the store's dashboard in the FavCircles app ($49.99/mo after a 3-month free trial).");
+      // Returned as an error result: these tools declare an outputSchema, and a
+      // plain result without structuredContent fails the SDK's output check, so
+      // the owner saw "Output validation error" instead of this guidance.
+      return {
+        content: [{ type: "text", text: "This needs FavCircles Business for this store. The owner can upgrade from the store's dashboard in the FavCircles app (3 months free, then $49.99/month)." }],
+        isError: true,
+      };
     }
     return err(e);
   }
