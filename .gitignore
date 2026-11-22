@@ -139,5 +139,7 @@ mcp-server/dist/
 Marketing/user-tour/real/tour-raw.mov
 Marketing/user-tour/real/tour-final.mov
 
-# blst assembly is generated locally (worktrees symlink it); never track the dir or a link to it
-ios/ThirdParty/blst/build
+# ios/ThirdParty/blst/build is upstream blst source (assembly.S + perl generators) and IS tracked;
+# a fresh clone cannot build without it (Mac mini, 2026-11-22). Never commit a symlink in its place.
+!ios/ThirdParty/blst/build/
+!ios/ThirdParty/blst/build/**
