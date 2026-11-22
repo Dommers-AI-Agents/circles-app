@@ -76,3 +76,68 @@ struct CoasterStickerSheet: Equatable {
         "FavCircles coaster stickers - \(coasters) \(coasters == 1 ? "coaster" : "coasters") - Avery 94102.pdf"
     }
 }
+
+/// Totem QR labels: one 1½ in round label per picked store for the Totem's
+/// base, on Avery 8293 / Presta 94506 (`GET rewards/stickers/totem`). Each
+/// links to the store's window code + `?t=totem`, the same link as the
+/// Totem's NFC sticker (Wes, 2026-11-22: never 20 labels of one store).
+struct TotemLabelSheet: Equatable {
+    static let perSheet = 20
+    static let maxStores = 100
+
+    /// Store ids in the order they were picked (that's the order they print)
+    var venueIds: [String]
+    /// 1 is the top-left label; later positions skip labels already used
+    var startAt: Int = 1
+
+    var queryParams: [String: String] {
+        ["venueIds": venueIds.joined(separator: ","), "startAt": String(startAt)]
+    }
+
+    /// Sheets the print takes from `startAt`
+    var sheetCount: Int {
+        guard !venueIds.isEmpty else { return 0 }
+        return (startAt - 1 + venueIds.count + Self.perSheet - 1) / Self.perSheet
+    }
+
+    /// A typed start position, or nil when it isn't 1–20
+    static func startPosition(from text: String?) -> Int? {
+        guard let value = Int((text ?? "").trimmingCharacters(in: .whitespaces)),
+              (1...perSheet).contains(value) else { return nil }
+        return value
+    }
+
+    var fileName: String {
+        "FavCircles Totem labels - \(venueIds.count) \(venueIds.count == 1 ? "store" : "stores") - Avery 8293.pdf"
+    }
+}
+
+/// What the store picker on Sticker Venues is choosing stores for
+enum StorePickPrint: Equatable {
+    case windowStickers
+    case totemLabels
+
+    var maxStores: Int {
+        switch self {
+        case .windowStickers: return StoreStickerSheet.maxStores
+        case .totemLabels: return TotemLabelSheet.maxStores
+        }
+    }
+
+    var perSheet: Int {
+        switch self {
+        case .windowStickers: return StoreStickerSheet.perSheet
+        case .totemLabels: return TotemLabelSheet.perSheet
+        }
+    }
+
+    /// The start-position prompt's message for `count` picked stores
+    func startMessage(count: Int) -> String {
+        switch self {
+        case .windowStickers:
+            return "\(count) \(count == 1 ? "sticker" : "stickers"), one per store, on Avery 22805. 1 is the top-left sticker; start later to skip ones already used."
+        case .totemLabels:
+            return "\(count) round \(count == 1 ? "label" : "labels"), one per store, on Avery 8293. 1 is the top-left label; start later to skip ones already used. Each opens the store like its Totem's NFC tag."
+        }
+    }
+}

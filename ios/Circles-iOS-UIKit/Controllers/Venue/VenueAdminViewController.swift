@@ -4,8 +4,9 @@ import UIKit
 /// per-sticker stats. Tapping a store opens its full admin page
 /// (VenueAdminDetailViewController); from here you can also sign up a new
 /// venue and grant super-user access to other users. The QR button prints
-/// sticker sheets: window codes for picked stores (StoreStickerSheet) or the
-/// generic App Clip code for coasters (CoasterStickerSheet).
+/// sticker sheets: window codes for picked stores (StoreStickerSheet), round
+/// Totem QR labels for picked stores (TotemLabelSheet) or the generic App Clip
+/// code for coasters (CoasterStickerSheet).
 class VenueAdminViewController: BaseViewController {
 
     // MARK: - Properties
@@ -17,6 +18,8 @@ class VenueAdminViewController: BaseViewController {
     private var shown: [AdminVenue] = []
     /// Stores picked for the sticker sheet, in the order tapped
     private var stickerPicks: [String] = []
+    /// What the picked stores print as
+    private var pickPrint: StorePickPrint = .windowStickers
     /// The bar's usual buttons, put back when picking ends
     private var normalRightItems: [UIBarButtonItem] = []
 
@@ -326,9 +329,10 @@ extension VenueAdminViewController {
     @objc private func stickersTapped() {
         AlertPresenter.showActionSheet(
             title: "Print stickers",
-            message: "Stickers cover the old App Store code on printed window stickers and coasters.",
+            message: "Pick stores and print one sticker or label for each, starting at any spot on a sheet.",
             actions: [
-                ("Window stickers for several stores…", .default, { [weak self] in self?.startStickerPicking() }),
+                ("Window stickers for several stores…", .default, { [weak self] in self?.startStickerPicking(.windowStickers) }),
+                ("Totem QR labels for several stores…", .default, { [weak self] in self?.startStickerPicking(.totemLabels) }),
                 ("Coaster stickers (2 per coaster)…", .default, { [weak self] in self?.askCoasterCount() })
             ],
             from: self,
@@ -336,7 +340,8 @@ extension VenueAdminViewController {
         )
     }
 
-    private func startStickerPicking() {
+    private func startStickerPicking(_ print: StorePickPrint) {
+        pickPrint = print
         stickerPicks = []
         tableView.setEditing(true, animated: true)
         navigationItem.leftBarButtonItem = cancelStickersButton
@@ -355,25 +360,34 @@ extension VenueAdminViewController {
     private func updateStickerPickTitle() {
         let count = stickerPicks.count
         title = count == 0 ? "Pick Stores" : "\(count) Picked"
-        printStickersButton.isEnabled = count > 0 && count <= StoreStickerSheet.maxStores
+        printStickersButton.isEnabled = count > 0 && count <= pickPrint.maxStores
     }
 
     @objc private func printStickersTapped() {
         let count = stickerPicks.count
         AlertPresenter.showTextInput(
-            title: "Start at sticker #",
-            message: "\(count) \(count == 1 ? "sticker" : "stickers"), one per store, on Avery 22805. 1 is the top-left sticker; start later to skip ones already used.",
+            title: pickPrint == .totemLabels ? "Start at label #" : "Start at sticker #",
+            message: pickPrint.startMessage(count: count),
             initialText: "1",
             keyboardType: .numberPad,
             confirmTitle: "Print",
             from: self
         ) { [weak self] text in
             guard let self, let text else { return }
-            guard let start = StoreStickerSheet.startPosition(from: text) else {
-                self.showError("Pick a sticker from 1 to \(StoreStickerSheet.perSheet).")
-                return
+            switch self.pickPrint {
+            case .windowStickers:
+                guard let start = StoreStickerSheet.startPosition(from: text) else {
+                    self.showError("Pick a sticker from 1 to \(StoreStickerSheet.perSheet).")
+                    return
+                }
+                self.downloadStickers(StoreStickerSheet(venueIds: self.stickerPicks, startAt: start))
+            case .totemLabels:
+                guard let start = TotemLabelSheet.startPosition(from: text) else {
+                    self.showError("Pick a label from 1 to \(TotemLabelSheet.perSheet).")
+                    return
+                }
+                self.downloadTotemLabels(TotemLabelSheet(venueIds: self.stickerPicks, startAt: start))
             }
-            self.downloadStickers(StoreStickerSheet(venueIds: self.stickerPicks, startAt: start))
         }
     }
 
@@ -388,6 +402,21 @@ extension VenueAdminViewController {
                         self.showError(error)
                     case .success(let data):
                         self.sharePDF(data, fileName: sheet.fileName)
+                    }
+                }
+            }
+        }
+    }
+
+    private func downloadTotemLabels(_ sheet: TotemLabelSheet) {
+        let loading = AlertPresenter.showLoading(message: "Building your labels…", from: self)
+        RewardsService.shared.downloadTotemLabels(sheet) { [weak self] result in
+            DispatchQueue.main.async {
+                loading.dismiss(animated: true) {
+                    guard let self else { return }
+                    switch result {
+                    case .failure(let error): self.showError(error)
+                    case .success(let data): self.sharePDF(data, fileName: sheet.fileName)
                     }
                 }
             }

@@ -41,6 +41,13 @@ class RewardsService {
         }
     }
 
+    /// Super-user: one round Totem QR label per store on Avery 8293
+    func downloadTotemLabels(_ sheet: TotemLabelSheet, completion: @escaping (Result<Data, Error>) -> Void) {
+        apiService.requestData(endpoint: "rewards/stickers/totem", queryParams: sheet.queryParams) { result in
+            completion(result.mapError { $0 as Error })
+        }
+    }
+
     // MARK: - Scan (window sticker or register card)
 
     /// The store a code belongs to and what kind of code it is ("window" |
