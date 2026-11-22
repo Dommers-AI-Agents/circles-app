@@ -221,6 +221,16 @@ extension AddPlaceViewController {
         // Find and set the current circle
         if let currentCircle = userCircles.first(where: { $0.id == selectedCircleId }) {
             selectedCircle = currentCircle
+        } else if circleRequired, selectedCircleId.isEmpty,
+                  let target = AddPlaceDefaultCircle.pick(from: circles.map(\.id),
+                                                          lastUsedId: UserDefaults.standard.string(forKey: Self.lastUsedCircleKey)),
+                  let circle = circles.first(where: { $0.id == target }) {
+            // From Home and the map (Wes, 2026-11-21: "The circle should default
+            // to the last circle selected"): the circle saved into last, shown
+            // as "the one you used last, tap to change" so it's never silent
+            selectedCircle = circle
+            selectedCircleId = circle.id
+            DispatchQueue.main.async { self.circleWasRemembered = circles.count > 1 }
         } else if !circleRequired, let firstCircle = circles.first {
             // Fallback to first circle if the selected one is not found.
             // From Home the person chooses on the card instead (2026-11-09).

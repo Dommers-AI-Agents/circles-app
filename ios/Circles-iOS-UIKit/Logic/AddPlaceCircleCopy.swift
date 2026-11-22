@@ -27,3 +27,16 @@ enum AddPlaceCircleCopy {
         return "Save to \(trimmed)"
     }
 }
+
+/// Which circle Add Place starts on when the caller didn't name one (Home's
+/// Add Place button, a place tapped on the map). Wes, 2026-11-21: "The circle
+/// should default to the last circle selected". The card says "the one you
+/// used last" so the choice is never silent. Pure.
+enum AddPlaceDefaultCircle {
+    /// The circle saved into last, when it still exists; the only circle when
+    /// there's one; otherwise none (the card asks).
+    static func pick(from circleIds: [String], lastUsedId: String?) -> String? {
+        if let lastUsedId, circleIds.contains(lastUsedId) { return lastUsedId }
+        return circleIds.count == 1 ? circleIds[0] : nil
+    }
+}

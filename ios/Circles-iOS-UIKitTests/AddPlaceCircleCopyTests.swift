@@ -18,3 +18,17 @@ struct AddPlaceCircleCopyTests {
         #expect(AddPlaceCircleCopy.saveTitle(circleName: "Entertainment, Recreation, Sightseeing") == "Save to Entertainment, Recrea…")
     }
 }
+
+struct AddPlaceDefaultCircleTests {
+    @Test func startsOnTheCircleSavedIntoLast() {
+        #expect(AddPlaceDefaultCircle.pick(from: ["a", "b", "c"], lastUsedId: "b") == "b")
+    }
+    @Test func aDeletedLastCircleMeansTheCardAsks() {
+        #expect(AddPlaceDefaultCircle.pick(from: ["a", "b"], lastUsedId: "gone") == nil)
+        #expect(AddPlaceDefaultCircle.pick(from: ["a", "b"], lastUsedId: nil) == nil)
+    }
+    @Test func theOnlyCircleIsChosen() {
+        #expect(AddPlaceDefaultCircle.pick(from: ["a"], lastUsedId: nil) == "a")
+        #expect(AddPlaceDefaultCircle.pick(from: [], lastUsedId: "a") == nil)
+    }
+}
