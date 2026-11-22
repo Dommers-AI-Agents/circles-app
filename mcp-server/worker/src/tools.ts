@@ -141,6 +141,10 @@ function circleStruct(c: Circle): CircleOut {
   };
 }
 
+/** Google's ratings arrive as floats like 4.599999904632568 — show 4.6 */
+const oneDecimal = (n: number | null | undefined): number | null =>
+  typeof n === "number" && Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+
 function placeStruct(p: Place, circleName?: string): PlaceOut {
   const [lng, lat] = p.location?.coordinates ?? [null, null];
   const tier = p.privacy || "followCircle";
@@ -151,8 +155,10 @@ function placeStruct(p: Place, circleName?: string): PlaceOut {
     address: p.address || null,
     circleId: p.circleId || null,
     circleName: circleName ?? null,
-    notes: p.publicNotes || p.notes || null,
-    rating: p.rating ?? null,
+    // The user's own note. Public notes were retired (they're comments on the
+    // venue now) and the API only keeps privateNotes, shown to the saver only.
+    notes: p.privateNotes || p.publicNotes || p.notes || null,
+    rating: oneDecimal(p.rating),
     website: p.website || null,
     phone: p.phone || null,
     latitude: lat,
@@ -254,9 +260,9 @@ function formatPlace(p: Place): string {
   const bits: string[] = [`- ${p.name} (id: ${docId(p)})`];
   const meta = [p.category, p.address].filter(Boolean).join(" | ");
   if (meta) bits.push(`  ${meta}`);
-  const notes = p.publicNotes || p.notes;
-  if (notes) bits.push(`  notes: ${notes}`);
-  if (p.rating != null) bits.push(`  rating: ${p.rating}`);
+  const notes = p.privateNotes || p.publicNotes || p.notes;
+  if (notes) bits.push(`  your note (only you see it): ${notes}`);
+  if (p.rating != null) bits.push(`  rating: ${oneDecimal(p.rating)}`);
   const tier = p.privacy || "followCircle";
   bits.push(`  privacy: ${tier} (${TIER_LABEL[tier] || tier})`);
   const link = placeLink(p.globalPlaceId || docId(p));
@@ -367,9 +373,12 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
     async (input): Promise<ToolResult> => {
       try {
         const circle = await backend.createCircle(input);
-        return ok(`Created circle "${circle.name}" (id: ${docId(circle)}). Add places with add_place.`, {
-          circle: circleStruct(circle),
-        });
+        const made = circleStruct(circle);
+        return ok(
+          `Created circle "${circle.name}" (id: ${docId(circle)}, privacy: ${made.privacy}). Add places with add_place.` +
+            (made.appLink ? `\nOpen it in FavCircles: ${made.appLink}` : ""),
+          { circle: made }
+        );
       } catch (e) {
         return err(e);
       }
@@ -389,7 +398,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
         category: z.enum(PLACE_CATEGORIES).describe("Place category"),
         latitude: z.number().min(-90).max(90).describe("Latitude"),
         longitude: z.number().min(-180).max(180).describe("Longitude"),
-        notes: z.string().optional().describe("Optional note about the place (visible to people who can see it)"),
+        notes: z.string().optional().describe("Optional private note about the place: only the user sees it (e.g. what to order, who recommended it)"),
         placeId: z
           .string()
           .optional()
@@ -550,7 +559,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
         name: z.string().min(1).optional().describe("New name"),
         address: z.string().min(1).optional().describe("New address"),
         category: z.enum(PLACE_CATEGORIES).optional().describe("New category"),
-        notes: z.string().optional().describe("New note (visible to anyone who can see the place)"),
+        notes: z.string().optional().describe("New private note (only the user sees it)"),
         privacy: z
           .enum(PLACE_PRIVACY_LEVELS)
           .optional()
@@ -562,7 +571,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
     },
     async ({ placeId, notes, ...updates }): Promise<ToolResult> => {
       try {
-        const body = { ...updates, ...(notes !== undefined ? { publicNotes: notes } : {}) };
+        const body = { ...updates, ...(notes !== undefined ? { privateNotes: notes } : {}) };
         if (Object.values(body).every((v) => v === undefined)) {
           return err(new Error("Nothing to update — provide at least one of name/address/category/notes/privacy."));
         }
@@ -1099,7 +1108,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
             name: match.name,
             category: match.category || theirPlace.category || null,
             address: match.address || theirPlace.address || null,
-            myNotes: match.publicNotes || match.notes || null,
+            myNotes: match.privateNotes || match.publicNotes || match.notes || null,
             theirNotes: theirPlace.publicNotes || theirPlace.notes || null,
           });
         }
@@ -1283,7 +1292,7 @@ export function buildServer(auth: AuthInfo, apiBase?: string): McpServer {
             address: p.address || null,
             latitude: lat,
             longitude: lng,
-            rating: p.googleData?.rating ?? null,
+            rating: oneDecimal(p.googleData?.rating),
             website: p.googleData?.website || null,
             phone: p.googleData?.phone || null,
             savedByCircles: p.totalCircleReferences ?? null,
@@ -1736,12 +1745,28 @@ function registerStoreOwnerTools(server: McpServer, backend: Backend): void {
     };
   }
 
+  /**
+   * What to say when the user manages no store yet: a claim waiting for review
+   * (or turned down) is named, so nobody is told to claim a store they already claimed.
+   */
+  async function noStoreMessage(): Promise<string> {
+    const claims = await backend.listMyClaims().catch(() => []);
+    const pending = claims.filter((c) => c.status === "pending");
+    if (pending.length) {
+      const names = pending.map((c) => `${c.businessName || "your business"}${c.address ? ` (${c.address})` : ""}`).join("; ");
+      return `Your claim for ${names} is waiting for review. A person at FavCircles verifies that you own or run the business (usually by calling it or emailing you). Once it's approved, the store shows up here and in the app under Manage Store, and you can finish setting it up.`;
+    }
+    const denied = claims.find((c) => c.status === "denied");
+    if (denied) {
+      return `You don't manage a store yet. Your claim for ${denied.businessName || "a business"} was not approved${denied.denialReason ? ` (${denied.denialReason})` : ""}. Reply to the FavCircles email or write to wesley@favcircles.com, or claim again with claim_my_store.`;
+    }
+    return "You don't manage any stores on FavCircles yet. Claim yours with claim_my_store (or Claim on its place page in the app); it shows up here once FavCircles verifies it.";
+  }
+
   /** Resolve which store a tool targets. Omitted venueId = the only store. */
   async function resolveVenue(venueId?: string): Promise<import("./backend").OwnerVenue> {
     const { venues } = await backend.getMyVenues();
-    if (venues.length === 0) {
-      throw new Error("You don't manage any stores on FavCircles yet. Claim your store first: claim_my_store (or Claim on its place page in the app). Once FavCircles verifies it, it shows up here.");
-    }
+    if (venues.length === 0) throw new Error(await noStoreMessage());
     if (venueId) {
       const match = venues.find((v) => v.venueId === venueId);
       if (!match) throw new Error(`No store with venueId ${venueId}. Your stores: ${venues.map((v) => `${v.venueName} (${v.venueId})`).join(", ")}`);
@@ -1777,7 +1802,7 @@ function registerStoreOwnerTools(server: McpServer, backend: Backend): void {
         const { venues } = await backend.getMyVenues();
         const stores = venues.map(storeStruct);
         if (stores.length === 0) {
-          return ok("You don't manage any stores on FavCircles yet. Claim yours with claim_my_store (or Claim on its place page in the app); it shows up here once FavCircles verifies it.", { count: 0, stores: [] });
+          return ok(await noStoreMessage(), { count: 0, stores: [] });
         }
         const lines = stores.map((s) =>
           `- ${s.storeName} (venueId: ${s.venueId})${s.businessTier ? " · Business" : " · free tier"}\n  saves ${s.saves} · followers ${s.followers} · visits ${s.visits} · scans ${s.scans} · redemptions ${s.redemptions}`);
@@ -2410,8 +2435,8 @@ function registerStoreOwnerTools(server: McpServer, backend: Backend): void {
         "A setup checklist for a store the user owns or manages: what's done and what's next (page details, hours, photos, window QR, FavCircles Business, loyalty points and rewards, announcements, online ordering, automatic nudges, waitlist, bring-a-friend), each with the tool or app screen that does it. Use when an owner asks 'help me set up my store' or 'what should I do next?'.",
       inputSchema: { venueId: VENUE_ID_INPUT },
       outputSchema: {
-        store: z.string(),
-        venueId: z.string(),
+        store: z.string().nullable(),
+        venueId: z.string().nullable(),
         done: z.number(),
         total: z.number(),
         steps: z.array(z.object({ step: z.string(), done: z.boolean(), detail: z.string(), how: z.string() })),
@@ -2423,6 +2448,10 @@ function registerStoreOwnerTools(server: McpServer, backend: Backend): void {
     },
     async ({ venueId }): Promise<ToolResult> => {
       try {
+        // No store yet: not an error, just where they are (claim pending, turned down, or none)
+        if (!venueId && (await backend.getMyVenues()).venues.length === 0) {
+          return ok(await noStoreMessage(), { store: null, venueId: null, done: 0, total: 0, steps: [], nextStep: null, storePageLink: null });
+        }
         const venue = await resolveVenue(venueId);
         let place: import("./backend").VenueRecord = {};
         if (venue.globalPlaceId) {
@@ -2494,7 +2523,7 @@ function toRecommendation(
     category: p.category || null,
     address: p.address || null,
     notes: p.publicNotes || p.notes || null,
-    rating: p.rating ?? null,
+    rating: oneDecimal(p.rating),
     latitude: lat,
     longitude: lng,
     circleName,

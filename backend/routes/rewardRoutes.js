@@ -135,6 +135,8 @@ router.post('/venues/:venueId/claim', claimVenue);
 router.post('/places/:placeId/claim', claimPlace);
 // Add-and-claim: business never saved by anyone — submit by details
 router.post('/businesses/claim', claimBusinessByDetails);
+// The caller's own claims (pending / approved / denied)
+router.get('/claims/mine', require('../controllers/venues/venueClaimsController').listMyClaims);
 
 // Super-user endpoints (in-app venue management + granting access)
 const requireSuperUser = require('../middleware/requireSuperUser');

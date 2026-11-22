@@ -307,6 +307,41 @@ exports.claimBusinessByDetails = async (req, res) => {
   }
 };
 
+// @desc    The caller's own ownership claims (any status), newest first, so
+//          an owner (or their AI assistant) can see "pending review" instead
+//          of being told to claim again
+// @route   GET /api/rewards/claims/mine
+// @access  Private
+exports.listMyClaims = async (req, res) => {
+  try {
+    // Single equality filter (automatic index); newest first in memory
+    const snapshot = await db.collection(STICKER_COLLECTIONS.VENUE_CLAIM_REQUESTS)
+      .where('userId', '==', req.user.uid)
+      .limit(50)
+      .get();
+    const claims = snapshot.docs
+      .map((doc) => {
+        const c = doc.data();
+        return {
+          claimId: doc.id,
+          status: c.status,
+          businessName: c.venueName || c.placeName || null,
+          address: c.placeAddress || null,
+          venueId: c.venueId || null,
+          globalPlaceId: c.globalPlaceId || null,
+          denialReason: c.denialReason || null,
+          createdAt: c.createdAt || null,
+          resolvedAt: c.resolvedAt || null
+        };
+      })
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    res.json({ success: true, data: { claims, count: claims.length } });
+  } catch (error) {
+    console.error('❌ listMyClaims failed:', error);
+    res.status(500).json({ success: false, error: 'Failed to load your claims' });
+  }
+};
+
 // @desc    List ownership claims for review
 // @route   GET /api/rewards/claims?status=pending
 // @access  Super user

@@ -59,3 +59,19 @@ test('a claim that enrolls the store does the same', async () => {
   expect(appClip.publishNewVenueQuiet).toHaveBeenCalledWith('vNew');
   expect(emailService.sendStickerQREmail).toHaveBeenCalledWith('wes@example.com', expect.objectContaining({ venueId: 'vNew' }), 'w', 'r');
 });
+
+// An owner (or their AI assistant) sees their own claims, newest first, and nobody else's
+test('listMyClaims returns only the caller\'s claims, newest first', async () => {
+  const { listMyClaims } = require('../venues/venueClaimsController');
+  await put('venueClaimRequests', 'old', { status: 'denied', userId: 'owner1', placeName: 'Old Cafe', denialReason: 'Could not verify', createdAt: '2026-11-01T00:00:00Z' });
+  await put('venueClaimRequests', 'new', { status: 'pending', userId: 'owner1', placeName: 'New Cafe', placeAddress: '2 Main St', globalPlaceId: 'g1', createdAt: '2026-11-20T00:00:00Z' });
+  await put('venueClaimRequests', 'other', { status: 'pending', userId: 'someoneElse', placeName: 'Not Mine', createdAt: '2026-11-21T00:00:00Z' });
+
+  const res = respond();
+  await listMyClaims({ user: { uid: 'owner1' } }, res);
+
+  expect(res.body.success).toBe(true);
+  expect(res.body.data.claims.map((c) => c.claimId)).toEqual(['new', 'old']);
+  expect(res.body.data.claims[0]).toMatchObject({ status: 'pending', businessName: 'New Cafe', address: '2 Main St' });
+  expect(res.body.data.claims[1].denialReason).toBe('Could not verify');
+});

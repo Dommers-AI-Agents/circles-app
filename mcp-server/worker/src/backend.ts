@@ -8,6 +8,16 @@ import type { AuthInfo } from "./auth";
 
 export const DEFAULT_API_BASE = "https://api.favcircles.com/api";
 
+export interface MyClaim {
+  claimId: string;
+  status: "pending" | "approved" | "denied" | string;
+  businessName: string | null;
+  address: string | null;
+  venueId: string | null;
+  denialReason: string | null;
+  createdAt: string | null;
+}
+
 export class BackendError extends Error {
   constructor(
     message: string,
@@ -520,7 +530,8 @@ export class Backend {
       address: input.address,
       category: input.category,
       location: { type: "Point", coordinates: [input.longitude, input.latitude] },
-      ...(input.notes ? { publicNotes: input.notes } : {}),
+      // The API keeps only the saver's private note (publicNotes is retired and dropped)
+      ...(input.notes ? { privateNotes: input.notes } : {}),
     };
     const res = await this.request<{ place?: Place; data?: Place }>("POST", "/places", body);
     const place = res.place || res.data;
@@ -546,6 +557,18 @@ export class Backend {
     const res = await this.request<{ data: { venues: OwnerVenue[]; count: number } }>(
       "GET", "/rewards/my-venues");
     return res.data;
+  }
+
+  /** The caller's own ownership claims (pending / approved / denied), newest first. */
+  async listMyClaims(): Promise<MyClaim[]> {
+    try {
+      const res = await this.request<{ data: { claims: MyClaim[] } }>("GET", "/rewards/claims/mine");
+      return res.data?.claims || [];
+    } catch (e) {
+      // An API without the route yet: no claims to report, never an error
+      if (e instanceof BackendError && e.status === 404) return [];
+      throw e;
+    }
   }
 
   async getVenueDashboard(venueId: string): Promise<VenueDashboard> {
