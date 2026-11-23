@@ -13,6 +13,8 @@ protocol MessageCellDelegate: AnyObject {
     func didTapMotivation(lineId: String)
     /// A shared place, circle or location was tapped.
     func didTapShareCard(_ card: MessageShareCard)
+    /// A bubble was held: Copy / Edit / Delete.
+    func didLongPressMessage(id: String, from sourceView: UIView)
 }
 
 class ChatViewController: BaseViewController {
@@ -100,6 +102,22 @@ class ChatViewController: BaseViewController {
     private var messageInputBottomConstraint: NSLayoutConstraint!
     private let cellIdentifier = "MessageCell"
     private var hasCompletedInitialLoad = false
+
+    /// The new look (color wash, grouped bubbles, day dividers) or the
+    /// classic one; read once, when the chat opens (`ChatLookPreference`)
+    private let isPolished = ChatLookPreference.isPolished
+    /// What the table shows, oldest first (the table is inverted)
+    private var rows: [ChatTimeline.Row] = []
+    private var messagesById: [String: Message] = [:]
+    /// "Read" / "Sent" under your newest message (one-on-one, new look)
+    private var receipt: (id: String, text: String)?
+    /// Everything a bubble draws from, per message, as last shown: a redraw
+    /// happens when this changes (an edit, a delete, a read), not only when
+    /// the count does
+    private var shownSignature: [String] = []
+    private var markedReadIds = Set<String>()
+    private let directTitleView = ChatTitleView()
+    private let emptyStateView = ChatEmptyStateView()
     
     // MARK: - BaseViewController Configuration
     override var showsLoadingIndicator: Bool { true }
@@ -122,12 +140,22 @@ class ChatViewController: BaseViewController {
         setupView()
         setupTableView()
         setupMessageInput()
-        setupKeyboardHandling(bottomConstraint: messageInputBottomConstraint, dismissOnTap: false)
         setupSubscribers()
+        // Already loaded once (the list preloads, or a reopen): show it now
+        // instead of a spinner until the fetch lands
+        if let conversationId = conversation?.id, messagingManager.activeMessages[conversationId] != nil {
+            refreshFromManager()
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // Both stop when the chat is covered (a profile, the info screen), so
+        // both start here, not once in viewDidLoad: back from a profile the
+        // chat used to stop refreshing and the keyboard covered the field
+        setupKeyboardHandling(bottomConstraint: messageInputBottomConstraint, dismissOnTap: false)
+        startRefreshTimer()
+        if hasCompletedInitialLoad { refreshFromManager() }
         markMessagesAsRead()
         // Seeing the chat settles its notifications even when every message
         // was already read (another device, or a reopen)
@@ -169,12 +197,36 @@ class ChatViewController: BaseViewController {
             addNavigationBarButton(image: "gearshape.fill", position: .right, action: #selector(openGroupSettings))
         } else {
             Logger.debug("ℹ️ ChatViewController: Setting up direct conversation UI")
-            setupNavigationBar(title: conversation?.displayName ?? "Chat")
+            setupDirectTitle()
             addNavigationBarButton(image: "info.circle", position: .right, action: #selector(showConversationInfo))
+        }
+        
+        if isPolished {
+            // Never a flat black page: the brand wash behind clear bubbles
+            // (top to bottom: bubbles gather at the bottom, so the color
+            // can't fade out halfway down like the first-run backdrop's)
+            let backdrop = GradientView()
+            backdrop.colors = [Constants.Colors.primary.withAlphaComponent(0.30),
+                               Constants.Colors.accent.withAlphaComponent(0.14),
+                               Constants.Colors.primary.withAlphaComponent(0.16)]
+            backdrop.locations = [0, 0.5, 1]
+            backdrop.isUserInteractionEnabled = false
+            view.backgroundColor = Constants.Colors.background
+            backdrop.translatesAutoresizingMaskIntoConstraints = false
+            view.insertSubview(backdrop, at: 0)
+            NSLayoutConstraint.activate([
+                backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+                backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            ])
+            tableView.backgroundColor = .clear
+            loadingView.backgroundColor = .clear
         }
         
         view.addSubview(tableView)
         view.addSubview(messageInputContainer)
+        setupEmptyState()
         
         // Add loading view
         view.addSubview(loadingView)
@@ -194,6 +246,66 @@ class ChatViewController: BaseViewController {
         showLoading()
     }
     
+    /// The other person in a one-on-one chat
+    private var otherParticipant: User? {
+        let me = AuthService.shared.getUserId()
+        let people = conversation?.participantDetails
+        return people?.first(where: { $0.id != me }) ?? people?.first
+    }
+
+    /// One-on-one: the person's photo and name in the bar; a tap opens
+    /// their profile (Wes, 2026-11-23)
+    private func setupDirectTitle() {
+        setupNavigationBar(title: conversation?.displayName ?? "Chat")
+        guard let conversation, conversation.type == .direct, let other = otherParticipant else { return }
+        directTitleView.configure(name: conversation.displayName, avatarURL: other.profilePicture, seed: other.id)
+        directTitleView.addTarget(self, action: #selector(directTitleTapped), for: .touchUpInside)
+        navigationItem.titleView = directTitleView
+    }
+
+    @objc private func directTitleTapped() {
+        guard let userId = otherParticipant?.id else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        didTapProfileImage(for: userId)
+    }
+
+    /// A chat with nothing in it says who it is with and how to start
+    private func setupEmptyState() {
+        emptyStateView.translatesAutoresizingMaskIntoConstraints = false
+        emptyStateView.isHidden = true
+        view.addSubview(emptyStateView)
+        NSLayoutConstraint.activate([
+            emptyStateView.centerYAnchor.constraint(equalTo: tableView.centerYAnchor),
+            emptyStateView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),
+            emptyStateView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32)
+        ])
+        emptyStateView.onWave = { [weak self] in self?.send(text: "👋") }
+        emptyStateView.onSharePlace = { [weak self] in self?.sharePlace() }
+        configureEmptyState()
+    }
+
+    private func configureEmptyState() {
+        guard let conversation else { return }
+        let isGroup = conversation.type == .group
+        emptyStateView.configure(name: conversation.displayName,
+                                 firstName: isGroup ? nil : otherFirstName,
+                                 avatarURL: conversation.displayAvatar,
+                                 seed: isGroup ? conversation.id : (otherParticipant?.id ?? conversation.id),
+                                 isGroup: isGroup)
+    }
+
+    private var otherFirstName: String? {
+        guard conversation?.type == .direct, let other = otherParticipant else { return nil }
+        if let first = other.firstName, !first.isEmpty { return first }
+        return other.displayName.components(separatedBy: .whitespaces).first(where: { !$0.isEmpty })
+    }
+
+    private func updateEmptyState() {
+        // (a system thread has nobody to wave at)
+        let canStart = conversation?.type == .direct || conversation?.type == .group
+        emptyStateView.isHidden = !(canStart && hasCompletedInitialLoad && messages.isEmpty)
+    }
+
     private func setupNavigationBarWithTappableTitle() {
         setupNavigationBar(title: conversation?.displayName ?? "Group Chat")
         
@@ -273,6 +385,7 @@ class ChatViewController: BaseViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(MessageCell.self, forCellReuseIdentifier: cellIdentifier)
+        tableView.register(ChatDayCell.self, forCellReuseIdentifier: ChatDayCell.reuseIdentifier)
         // Removed ConnectionRequestMessageCell registration - no longer needed
         tableView.contentInset = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         
@@ -295,6 +408,24 @@ class ChatViewController: BaseViewController {
         attachButton.addTarget(self, action: #selector(showAttachmentOptions), for: .touchUpInside)
         
         messageInputBottomConstraint = messageInputContainer.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+
+        if isPolished {
+            // No boxed-in bar: a soft pill on the wash, brand-blue buttons
+            messageInputContainer.backgroundColor = .clear
+            messageInputContainer.layer.borderWidth = 0
+            messageTextView.backgroundColor = MessageCell.receivedBubbleColor
+            messageTextView.layer.cornerRadius = 20
+            messageTextView.layer.cornerCurve = .continuous
+            messageTextView.textContainerInset = UIEdgeInsets(top: 10, left: 14, bottom: 10, right: 14)
+            placeholderLabel.text = otherFirstName.map { "Message \($0)" } ?? "Message"
+            attachButton.setImage(UIImage(systemName: "plus.circle.fill",
+                                          withConfiguration: UIImage.SymbolConfiguration(pointSize: 26, weight: .medium)), for: .normal)
+            attachButton.tintColor = Constants.Colors.primary
+            sendButton.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 30, weight: .medium), forImageIn: .normal)
+            sendButton.tintColor = .systemGray3
+        }
+        attachButton.accessibilityLabel = "Share a circle, place or location"
+        sendButton.accessibilityLabel = "Send"
         
         NSLayoutConstraint.activate([
             messageInputContainer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
@@ -313,11 +444,11 @@ class ChatViewController: BaseViewController {
             messageTextView.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -8),
             messageTextView.heightAnchor.constraint(lessThanOrEqualToConstant: 120),
             
-            placeholderLabel.leadingAnchor.constraint(equalTo: messageTextView.leadingAnchor, constant: 16),
+            placeholderLabel.leadingAnchor.constraint(equalTo: messageTextView.leadingAnchor, constant: isPolished ? 19 : 16),
             placeholderLabel.centerYAnchor.constraint(equalTo: messageTextView.centerYAnchor),
             
             sendButton.trailingAnchor.constraint(equalTo: messageInputContainer.trailingAnchor, constant: -8),
-            sendButton.bottomAnchor.constraint(equalTo: messageInputContainer.bottomAnchor, constant: -8),
+            sendButton.bottomAnchor.constraint(equalTo: messageInputContainer.bottomAnchor, constant: isPolished ? -12 : -8),
             sendButton.widthAnchor.constraint(equalToConstant: 36),
             sendButton.heightAnchor.constraint(equalToConstant: 36)
         ])
@@ -355,51 +486,76 @@ class ChatViewController: BaseViewController {
         Logger.debug("🔍 ChatViewController: Added observer for ConversationUpdated")
         
         // Poll for message updates (as backup)
+    }
+
+    /// Looks for changes every 2 seconds while the chat is on screen
+    private func startRefreshTimer() {
+        messageUpdateTimer?.invalidate()
         messageUpdateTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            
-            // Commented out repetitive timer logs - uncomment for debugging
-            // Logger.debug("🔍 ChatViewController: Timer fired - checking for messages in conversationId: \(conversationId)")
-            
-            if let messages = self.messagingManager.activeMessages[conversationId] {
-                // Logger.debug("🔍 ChatViewController: Found \(messages.count) messages in activeMessages")
-                
-                // Filter out connection request messages (handled in My Network tab)
-                let filteredMessages = messages.filter { $0.type != .connectionRequest }
-                // Logger.debug("🔍 ChatViewController: After filtering, have \(filteredMessages.count) messages")
-                
-                // Hide loading on initial load only (not for subsequent timer refreshes)
-                if self.messages.isEmpty && !self.hasCompletedInitialLoad {
-                    Logger.debug("🔍 ChatViewController: Initial load complete, hiding loading (filtered messages: \(filteredMessages.count))")
-                    self.hasCompletedInitialLoad = true
-                    self.hideLoading()
-                }
-                
-                if filteredMessages.count != self.messages.count {
-                    // Only log significant changes, not every timer check
-                    if abs(filteredMessages.count - self.messages.count) > 0 {
-                        Logger.debug("🔍 ChatViewController: Message count changed from \(self.messages.count) to \(filteredMessages.count)")
-                    }
-                    self.messages = filteredMessages
-                    self.tableView.reloadData()
-                    self.scrollToBottom(animated: true)
-                }
-            } else {
-                // Only log this once, not every 2 seconds
-                if !self.hasCompletedInitialLoad {
-                    Logger.debug("⚠️ ChatViewController: No messages found in activeMessages for conversationId: \(conversationId)")
-                }
-                
-                // Hide loading if this is the initial load and no messages are found
-                if self.messages.isEmpty && !self.hasCompletedInitialLoad {
-                    Logger.debug("🔍 ChatViewController: Initial load complete with no messages, hiding loading")
-                    self.hasCompletedInitialLoad = true
-                    self.hideLoading()
-                }
-            }
+            self?.refreshFromManager()
         }
-        
-        // Logger.debug("🔍 ChatViewController: Message update timer scheduled")
+    }
+
+    /// Shows what the manager holds for this chat. Redraws when anything a
+    /// bubble shows has changed: a new message, an edit, a delete, a read
+    /// (it used to compare counts only, so those never appeared).
+    private func refreshFromManager() {
+        guard let conversationId = conversation?.id else { return }
+        guard let loaded = messagingManager.activeMessages[conversationId] else {
+            // Nothing fetched and nothing on the way: stop the spinner
+            if !messagingManager.isLoadingMessages { finishInitialLoad() }
+            return
+        }
+        // Connection requests live in My Network, not here
+        let filtered = loaded.filter { $0.type != .connectionRequest }
+        finishInitialLoad()
+        guard filtered.map(Self.signature) != shownSignature else { return }
+        let newestChanged = filtered.last?.id != messages.last?.id
+        apply(filtered)
+        if newestChanged { scrollToBottom(animated: true) }
+    }
+
+    private func finishInitialLoad() {
+        guard !hasCompletedInitialLoad else { return }
+        hasCompletedInitialLoad = true
+        hideLoading()
+        updateEmptyState()
+    }
+
+    private static func signature(_ message: Message) -> String {
+        "\(message.id)|\(message.editedAt ?? "")|\(message.deletedAt ?? "")|\(message.readBy?.count ?? 0)"
+    }
+
+    /// Takes a new list of messages (oldest first) and redraws the chat
+    private func apply(_ newMessages: [Message]) {
+        messages = newMessages
+        shownSignature = newMessages.map(Self.signature)
+        messagesById = Dictionary(newMessages.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+
+        let me = AuthService.shared.getUserId()
+        let otherId = conversation?.type == .direct ? otherParticipant?.id : nil
+        let entries = newMessages.map { message in
+            ChatTimeline.Entry(id: message.id, senderId: message.senderId, date: message.createdDate,
+                               isMine: message.senderId == me,
+                               readByOther: otherId.map { (message.readBy ?? []).contains($0) } ?? false)
+        }
+        rows = ChatTimeline.rows(entries, grouped: isPolished)
+        receipt = (isPolished && otherId != nil) ? ChatTimeline.receipt(entries) : nil
+
+        tableView.reloadData()
+        updateEmptyState()
+        // Reading it here counts as read (it used to wait for the chat to close)
+        if viewIfLoaded?.window != nil { markMessagesAsRead() }
+    }
+
+    /// The row at a table position (the table is inverted: row 0 is newest)
+    private func row(at indexPath: IndexPath) -> ChatTimeline.Row? {
+        let index = rows.count - 1 - indexPath.row
+        return rows.indices.contains(index) ? rows[index] : nil
+    }
+
+    private func message(at indexPath: IndexPath) -> Message? {
+        row(at: indexPath)?.messageId.flatMap { messagesById[$0] }
     }
     
     @objc private func handleConversationUpdated(_ notification: Notification) {
@@ -415,10 +571,14 @@ class ChatViewController: BaseViewController {
         self.conversation = updatedConversation
         
         // Refresh navigation bar to show updated avatar/name
-        if conversation?.type == .group {
-            DispatchQueue.main.async { [weak self] in
-                self?.setupNavigationBarWithTappableTitle()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if self.conversation?.type == .group {
+                self.setupNavigationBarWithTappableTitle()
+            } else {
+                self.setupDirectTitle()
             }
+            self.configureEmptyState()
         }
     }
     
@@ -443,36 +603,7 @@ class ChatViewController: BaseViewController {
             return
         }
         
-        Logger.debug("✅ ChatViewController: handleNewMessages - conversationId matches, refreshing messages")
-        
-        // Refresh messages from MessagingManager
-        if let messages = messagingManager.activeMessages[notificationConversationId] {
-            Logger.debug("🔍 ChatViewController: handleNewMessages - found \(messages.count) messages in activeMessages")
-            
-            // Filter out connection request messages (handled in My Network tab)
-            let filteredMessages = messages.filter { $0.type != .connectionRequest }
-            Logger.debug("🔍 ChatViewController: handleNewMessages - after filtering: \(filteredMessages.count) messages")
-            
-            // Hide loading on initial load only (not for subsequent notifications)
-            if self.messages.isEmpty && !self.hasCompletedInitialLoad {
-                Logger.debug("🔍 ChatViewController: handleNewMessages - initial load complete, hiding loading (filtered messages: \(filteredMessages.count))")
-                self.hasCompletedInitialLoad = true
-                self.hideLoading()
-            }
-            
-            self.messages = filteredMessages
-            tableView.reloadData()
-            scrollToBottom(animated: true)
-        } else {
-            Logger.debug("⚠️ ChatViewController: handleNewMessages - no messages found in activeMessages for conversationId: \(notificationConversationId)")
-            
-            // Hide loading if this is the initial load and no messages are found
-            if self.messages.isEmpty && !self.hasCompletedInitialLoad {
-                Logger.debug("🔍 ChatViewController: handleNewMessages - initial load complete with no messages, hiding loading")
-                self.hasCompletedInitialLoad = true
-                self.hideLoading()
-            }
-        }
+        refreshFromManager()
     }
     
     // MARK: - BaseViewController Implementation
@@ -521,18 +652,20 @@ class ChatViewController: BaseViewController {
     private func markMessagesAsRead() {
         guard let conversationId = conversation?.id else { return }
         
+        // Each message is reported once; the list refreshes every 2 seconds
         let unreadMessageIds = messages
-            .filter { !$0.isCurrentUserMessage && !$0.isRead }
+            .filter { !$0.isCurrentUserMessage && !$0.isRead && !markedReadIds.contains($0.id) }
             .map { $0.id }
         
         if !unreadMessageIds.isEmpty {
+            markedReadIds.formUnion(unreadMessageIds)
             messagingManager.markMessagesAsRead(conversationId: conversationId, messageIds: unreadMessageIds)
         }
     }
     
     // MARK: - Actions
     @objc private func sendMessage() {
-        guard let conversationId = conversation?.id else { return }
+        guard conversation?.id != nil else { return }
         
         // Get text directly from text view
         let text = messageTextView.text ?? ""
@@ -540,27 +673,31 @@ class ChatViewController: BaseViewController {
         
         guard !trimmedText.isEmpty else { return }
         
-        // Store the message text before clearing
-        let messageToSend = trimmedText
-        
-        // Clear input and temporary storage
+        // Clear the field (on the next turn: this can run inside the text
+        // view's own change callback); a failed send puts the words back
         DispatchQueue.main.async { [weak self] in
-            self?.messageTextView.text = ""
-            self?.textViewDidChange(self?.messageTextView ?? UITextView())
+            guard let self else { return }
+            self.messageTextView.text = ""
+            self.textViewDidChange(self.messageTextView)
         }
-        
-        // Send message
-        messagingManager.sendMessage(
-            conversationId: conversationId,
-            type: .text,
-            content: messageToSend
-        ) { [weak self] result in
-            if case .failure(let error) = result {
-                self?.showError(error)
-                // Restore text on failure
-                DispatchQueue.main.async {
-                    self?.messageTextView.text = messageToSend
-                    self?.textViewDidChange(self?.messageTextView ?? UITextView())
+        send(text: trimmedText) { [weak self] in
+            guard let self, self.messageTextView.text.isEmpty else { return }
+            self.messageTextView.text = trimmedText
+            self.textViewDidChange(self.messageTextView)
+        }
+    }
+
+    /// Sends a text message and shows it at once
+    private func send(text: String, onFailure: (() -> Void)? = nil) {
+        guard let conversationId = conversation?.id else { return }
+        messagingManager.sendMessage(conversationId: conversationId, type: .text, content: text) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self?.refreshFromManager()
+                case .failure(let error):
+                    self?.showError(error)
+                    onFailure?()
                 }
             }
         }
@@ -641,7 +778,7 @@ class ChatViewController: BaseViewController {
     
     // MARK: - Helper Methods
     private func scrollToBottom(animated: Bool) {
-        guard !messages.isEmpty else { return }
+        guard !rows.isEmpty else { return }
         let indexPath = IndexPath(row: 0, section: 0)
         tableView.scrollToRow(at: indexPath, at: .bottom, animated: animated)
     }
@@ -655,8 +792,11 @@ class ChatViewController: BaseViewController {
         guard let conversationId = conversation?.id else { return }
         messagingManager.sendMessage(conversationId: conversationId, type: share.type,
                                      content: share.content, metadata: share.metadata) { [weak self] result in
-            if case .failure(let error) = result {
-                DispatchQueue.main.async { self?.showError(error) }
+            DispatchQueue.main.async {
+                switch result {
+                case .success: self?.refreshFromManager()
+                case .failure(let error): self?.showError(error)
+                }
             }
         }
     }
@@ -768,24 +908,32 @@ class ChatViewController: BaseViewController {
     
     
     private func deleteMessage(at indexPath: IndexPath) {
-        let messageIndex = messages.count - 1 - indexPath.row
-        guard messageIndex >= 0 && messageIndex < messages.count else { return }
-        
-        let message = messages[messageIndex]
+        guard let id = row(at: indexPath)?.messageId else { return }
+        deleteMessage(id: id)
+    }
+
+    /// Gone from the chat at once, then from the server
+    private func deleteMessage(id: String) {
+        guard let conversationId = conversation?.id, messagesById[id] != nil else { return }
+        apply(messages.filter { $0.id != id })
+        messagingManager.deleteMessage(messageId: id, conversationId: conversationId)
+    }
+
+    private func editMessage(_ message: Message) {
         guard let conversationId = conversation?.id else { return }
-        
-        // Store the message for potential restoration
-        let deletedMessage = message
-        
-        // Remove from local array immediately for better UX
-        messages.remove(at: messageIndex)
-        
-        // Animate the deletion
-        tableView.performBatchUpdates({
-            tableView.deleteRows(at: [indexPath], with: .fade)
-        }) { [weak self] _ in
-            // Call the messaging manager to delete from backend
-            self?.messagingManager.deleteMessage(messageId: deletedMessage.id, conversationId: conversationId)
+        AlertPresenter.showTextInput(title: "Edit message", initialText: message.content, confirmTitle: "Save",
+                                     from: self) { [weak self] newText in
+            let trimmed = (newText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let self, !trimmed.isEmpty, trimmed != message.content else { return }
+            self.messagingManager.editMessage(messageId: message.id, conversationId: conversationId,
+                                              newContent: trimmed) { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success: self?.refreshFromManager()
+                    case .failure(let error): self?.showError(error)
+                    }
+                }
+            }
         }
     }
 }
@@ -793,18 +941,31 @@ class ChatViewController: BaseViewController {
 // MARK: - UITableViewDataSource
 extension ChatViewController: UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return messages.count
+        return rows.count
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let message = messages[messages.count - 1 - indexPath.row] // Reverse order due to inverted table
-        
-        // All connection request messages are now filtered out, so only handle regular messages
-        let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath) as! MessageCell
-        cell.delegate = self
-        cell.configure(with: message, conversation: conversation)
-        cell.transform = CGAffineTransform(scaleX: 1, y: -1) // Invert cell
-        return cell
+        let flipped = CGAffineTransform(scaleX: 1, y: -1) // the table is inverted
+        switch row(at: indexPath) {
+        case .day(let title):
+            let cell = tableView.dequeueReusableCell(withIdentifier: ChatDayCell.reuseIdentifier, for: indexPath) as! ChatDayCell
+            cell.configure(title: title)
+            cell.transform = flipped
+            return cell
+        case .message(let bubble):
+            let cell = tableView.dequeueReusableCell(withIdentifier: cellIdentifier, for: indexPath) as! MessageCell
+            cell.transform = flipped
+            guard let message = messagesById[bubble.id] else { return cell }
+            cell.delegate = self
+            let layout = isPolished
+                ? MessageCell.Layout(polished: true, startsRun: bubble.startsRun, endsRun: bubble.endsRun,
+                                     receipt: receipt?.id == bubble.id ? receipt?.text : nil)
+                : MessageCell.Layout.classic
+            cell.configure(with: message, conversation: conversation, layout: layout)
+            return cell
+        case nil:
+            return UITableViewCell()
+        }
     }
 }
 
@@ -819,10 +980,8 @@ extension ChatViewController: UITableViewDelegate {
     }
     
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        let message = messages[messages.count - 1 - indexPath.row]
-        
         // Allow deletion of user's own messages OR connection request messages
-        guard message.isCurrentUserMessage || message.type == .connectionRequest else { return nil }
+        guard let message = message(at: indexPath), message.isCurrentUserMessage || message.type == .connectionRequest else { return nil }
         
         let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completionHandler in
             self?.deleteMessage(at: indexPath)
@@ -885,16 +1044,10 @@ extension ChatViewController: ConnectionRequestMessageCellDelegate {
             switch result {
             case .success:
                 // Update the message to mark as handled
-                if let indexPath = self?.tableView.indexPath(for: cell) {
-                    let messageIndex = (self?.messages.count ?? 0) - 1 - indexPath.row
-                    if messageIndex >= 0 && messageIndex < (self?.messages.count ?? 0) {
-                        // Simply reload the cell - the button state will be updated based on the connection status
+                DispatchQueue.main.async {
+                    if let indexPath = self?.tableView.indexPath(for: cell) {
                         self?.tableView.reloadRows(at: [indexPath], with: .fade)
                     }
-                }
-                
-                // Show success message
-                DispatchQueue.main.async {
                     self?.showSuccess("Connection request accepted")
                 }
                 
@@ -912,16 +1065,10 @@ extension ChatViewController: ConnectionRequestMessageCellDelegate {
             switch result {
             case .success:
                 // Update the message to mark as handled
-                if let indexPath = self?.tableView.indexPath(for: cell) {
-                    let messageIndex = (self?.messages.count ?? 0) - 1 - indexPath.row
-                    if messageIndex >= 0 && messageIndex < (self?.messages.count ?? 0) {
-                        // Simply reload the cell - the button state will be updated based on the connection status
+                DispatchQueue.main.async {
+                    if let indexPath = self?.tableView.indexPath(for: cell) {
                         self?.tableView.reloadRows(at: [indexPath], with: .fade)
                     }
-                }
-                
-                // Show success message
-                DispatchQueue.main.async {
                     self?.showSuccess("Connection request declined")
                 }
                 
@@ -948,6 +1095,37 @@ class MessageCell: UITableViewCell {
     // MARK: - Delegate
     weak var delegate: MessageCellDelegate?
     private var currentUserId: String?
+    private var currentMessageId: String?
+
+    /// How a bubble sits among its neighbours. `classic` is the chat as it
+    /// was: every message its own bubble with its own time and avatar.
+    struct Layout {
+        var polished = false
+        /// First of a run from one person (the name goes here in a group)
+        var startsRun = true
+        /// Last of a run (avatar, time and the bubble's tail go here)
+        var endsRun = true
+        /// "Read" / "Sent", on your newest message only
+        var receipt: String?
+        static let classic = Layout()
+    }
+
+    /// Deep enough that white words read on it in dark mode (the brand
+    /// primary turns pale there)
+    static let sentBubbleColor = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.13, green: 0.44, blue: 0.80, alpha: 1)
+            : UIColor(red: 0.2, green: 0.51, blue: 0.81, alpha: 1)
+    }
+    static let receivedBubbleColor = UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(white: 0.17, alpha: 1) : UIColor(white: 0.93, alpha: 1)
+    }
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
     
     private let bubbleView: UIView = {
         let view = UIView()
@@ -1020,6 +1198,13 @@ class MessageCell: UITableViewCell {
     private var bubbleTrailingToAvatarConstraint: NSLayoutConstraint!
     private var avatarTrailingConstraint: NSLayoutConstraint!
     private var avatarLeadingConstraint: NSLayoutConstraint!
+    private var bubbleTopConstraint: NSLayoutConstraint!
+    private var bubbleBottomConstraint: NSLayoutConstraint!
+    private var classicWidthConstraint: NSLayoutConstraint!
+    private var polishedWidthConstraint: NSLayoutConstraint!
+    private var messageTopToSenderConstraint: NSLayoutConstraint!
+    private var messageTopToBubbleConstraint: NSLayoutConstraint!
+    private var timeTopConstraint: NSLayoutConstraint!
     
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -1045,6 +1230,15 @@ class MessageCell: UITableViewCell {
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(avatarTapped))
         avatarImageView.addGestureRecognizer(tapGesture)
         mediaImageView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(mediaTapped)))
+        bubbleView.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(bubbleLongPressed(_:))))
+
+        bubbleTopConstraint = bubbleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4)
+        bubbleBottomConstraint = bubbleView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4)
+        classicWidthConstraint = bubbleView.widthAnchor.constraint(lessThanOrEqualToConstant: 280)
+        polishedWidthConstraint = bubbleView.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, multiplier: 0.78)
+        messageTopToSenderConstraint = messageLabel.topAnchor.constraint(equalTo: senderLabel.bottomAnchor, constant: 2)
+        messageTopToBubbleConstraint = messageLabel.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 8)
+        timeTopConstraint = timeLabel.topAnchor.constraint(equalTo: mediaImageView.bottomAnchor, constant: 4)
 
         mediaHeightConstraint = mediaImageView.heightAnchor.constraint(equalToConstant: 0)
         mediaWidthConstraint = mediaImageView.widthAnchor.constraint(equalToConstant: 240)
@@ -1068,15 +1262,15 @@ class MessageCell: UITableViewCell {
             avatarImageView.widthAnchor.constraint(equalToConstant: 32),
             avatarImageView.heightAnchor.constraint(equalToConstant: 32),
             
-            bubbleView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
-            bubbleView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
-            bubbleView.widthAnchor.constraint(lessThanOrEqualToConstant: 280),
+            bubbleTopConstraint,
+            bubbleBottomConstraint,
+            classicWidthConstraint,
             
             senderLabel.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 8),
             senderLabel.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 12),
             senderLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
             
-            messageLabel.topAnchor.constraint(equalTo: senderLabel.bottomAnchor, constant: 2),
+            messageTopToSenderConstraint,
             messageLabel.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 12),
             messageLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
             
@@ -1084,14 +1278,15 @@ class MessageCell: UITableViewCell {
             mediaHeightConstraint,
             mediaImageView.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 8),
             mediaImageView.trailingAnchor.constraint(lessThanOrEqualTo: bubbleView.trailingAnchor, constant: -8),
-            timeLabel.topAnchor.constraint(equalTo: mediaImageView.bottomAnchor, constant: 4),
+            timeTopConstraint,
             timeLabel.leadingAnchor.constraint(equalTo: bubbleView.leadingAnchor, constant: 12),
             timeLabel.trailingAnchor.constraint(equalTo: bubbleView.trailingAnchor, constant: -12),
             timeLabel.bottomAnchor.constraint(equalTo: bubbleView.bottomAnchor, constant: -8)
         ])
     }
     
-    func configure(with message: Message, conversation: Conversation?) {
+    func configure(with message: Message, conversation: Conversation?, layout: Layout = .classic) {
+        currentMessageId = message.id
         messageLabel.text = message.displayContent
         timeLabel.text = message.formattedTime
         configureMedia(for: message)
@@ -1126,8 +1321,10 @@ class MessageCell: UITableViewCell {
             messageLabel.textColor = .label
             timeLabel.textColor = .secondaryLabel
             
-            // Show sender name in group chats
-            if let senderName = message.senderDetails?.displayName {
+            // The sender's name, in group chats only (one-on-one there is
+            // one other voice, and the bar already names them), once per run
+            if conversation?.type == .group, layout.startsRun || !layout.polished,
+               let senderName = message.senderDetails?.displayName {
                 senderLabel.text = senderName
                 senderLabel.isHidden = false
             } else {
@@ -1189,10 +1386,60 @@ class MessageCell: UITableViewCell {
             bubbleView.layer.maskedCorners = [.layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         }
         
-        // Update constraints for sender label
+        // The words start under the name, or at the bubble's top without one.
+        // A hidden name keeps no text, so it can't widen the bubble.
         if senderLabel.isHidden {
-            messageLabel.topAnchor.constraint(equalTo: bubbleView.topAnchor, constant: 8).isActive = true
+            senderLabel.text = nil
+            messageTopToSenderConstraint.isActive = false
+            messageTopToBubbleConstraint.isActive = true
+        } else {
+            messageTopToBubbleConstraint.isActive = false
+            messageTopToSenderConstraint.isActive = true
         }
+        applyLayout(layout, to: message)
+    }
+
+    /// The new look: runs of one person's messages sit close together, with
+    /// the avatar, the time and the bubble's tail once, at the end
+    private func applyLayout(_ layout: Layout, to message: Message) {
+        guard layout.polished else {
+            polishedWidthConstraint.isActive = false
+            classicWidthConstraint.isActive = true
+            return
+        }
+        classicWidthConstraint.isActive = false
+        polishedWidthConstraint.isActive = true
+
+        let isMine = message.isCurrentUserMessage
+        bubbleView.layer.cornerRadius = 20
+        bubbleView.layer.cornerCurve = .continuous
+        bubbleView.backgroundColor = isMine ? Self.sentBubbleColor : Self.receivedBubbleColor
+        bubbleTopConstraint.constant = layout.startsRun ? 6 : 1
+        bubbleBottomConstraint.constant = layout.endsRun ? -6 : -1
+        if !layout.endsRun {
+            bubbleView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner,
+                                              .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        }
+        if !isMine { avatarImageView.isHidden = !layout.endsRun }
+
+        if message.isDeleted { messageLabel.text = "Message deleted" }
+        messageLabel.alpha = message.isDeleted ? 0.6 : 1
+
+        if layout.endsRun {
+            // The day divider says which day; the bubble says when
+            let time = message.createdDate.map { Self.timeFormatter.string(from: $0) } ?? message.formattedTime
+            timeLabel.text = [message.isEdited && !message.isDeleted ? "Edited" : nil, time, layout.receipt]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+            timeTopConstraint.constant = 4
+        } else {
+            timeLabel.text = nil
+            timeTopConstraint.constant = 0
+        }
+    }
+
+    @objc private func bubbleLongPressed(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began, let currentMessageId else { return }
+        delegate?.didLongPressMessage(id: currentMessageId, from: bubbleView)
     }
     
     /// Shows the photo for image/postcard messages; collapses for text.
@@ -1407,6 +1654,23 @@ extension ChatViewController: MessageCellDelegate {
         let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
         item.name = name
         item.openInMaps(launchOptions: [MKLaunchOptionsMapCenterKey: NSValue(mkCoordinate: coordinate)])
+    }
+
+    func didLongPressMessage(id: String, from sourceView: UIView) {
+        guard let message = messagesById[id], !message.isDeleted else { return }
+        var actions: [(title: String, style: UIAlertAction.Style, handler: () -> Void)] = []
+        if let text = message.content, !text.isEmpty {
+            actions.append((title: "Copy", style: .default, handler: { UIPasteboard.general.string = text }))
+        }
+        if message.isCurrentUserMessage {
+            if message.type == .text {
+                actions.append((title: "Edit", style: .default, handler: { [weak self] in self?.editMessage(message) }))
+            }
+            actions.append((title: "Delete", style: .destructive, handler: { [weak self] in self?.deleteMessage(id: id) }))
+        }
+        guard !actions.isEmpty else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        AlertPresenter.showActionSheet(actions: actions, from: self, sourceView: sourceView, sourceRect: sourceView.bounds)
     }
 
     func didTapDrink(id: String) {

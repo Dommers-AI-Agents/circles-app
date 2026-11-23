@@ -200,6 +200,17 @@ struct Message: Codable, Identifiable {
         }
     }
     
+    /// When it was sent (the server's ISO string, with or without fractions)
+    var createdDate: Date? {
+        Message.isoFractional.date(from: createdAt) ?? Message.isoPlain.date(from: createdAt)
+    }
+    private static let isoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let isoPlain = ISO8601DateFormatter()
+
     var formattedTime: String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

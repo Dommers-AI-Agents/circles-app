@@ -49,6 +49,12 @@ function buildClientConfig() {
     activityFeed: {
       alive: process.env.ACTIVITY_FEED_ALIVE !== 'false'
     },
+    // The chat screen's look (Wes, 2026-11-23): color wash, grouped bubbles,
+    // day dividers. CHAT_POLISHED=false puts every phone back on the classic
+    // chat at its next launch, no release.
+    chat: {
+      polished: process.env.CHAT_POLISHED !== 'false'
+    },
     // "Did you know" lines the app shows while it waits (the circle
     // organizer's ~30 s run; Wes, 2026-11-04). Same list as the weekly email.
     tips: TIPS.map(({ emoji, text }) => ({ emoji, text }))

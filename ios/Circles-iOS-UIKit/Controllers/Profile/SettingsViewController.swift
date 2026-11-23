@@ -66,6 +66,8 @@ class SettingsViewController: BaseTableViewController {
         case homeShortcuts
         /// The lively Activity feed, on this phone (2026-11-16)
         case livelyFeed
+        /// The new chat look, on this phone (2026-11-23)
+        case chatLook
 
         var title: String {
             switch self {
@@ -75,6 +77,7 @@ class SettingsViewController: BaseTableViewController {
             case .exportData: return "Export My Data"
             case .homeShortcuts: return "Home Screen Shortcuts"
             case .livelyFeed: return ActivityFeedPreference.rowTitle
+            case .chatLook: return ChatLookPreference.rowTitle
             }
         }
     }
@@ -239,6 +242,10 @@ class SettingsViewController: BaseTableViewController {
 
     @objc private func livelyFeedToggled(_ toggle: UISwitch) {
         ActivityFeedPreference.livelyOnThisPhone = toggle.isOn
+    }
+
+    @objc private func chatLookToggled(_ toggle: UISwitch) {
+        ChatLookPreference.polishedOnThisPhone = toggle.isOn
     }
 
     /// Private Profile switch. Going public lets in everyone who was waiting,
@@ -819,6 +826,22 @@ extension SettingsViewController {
                     cell.accessoryView = toggle
                     cell.accessoryType = .none
                     cell.selectionStyle = .none
+                case .chatLook:
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    config.secondaryText = ChatLookPreference.rowDetail
+                    config.secondaryTextProperties.color = .secondaryLabel
+                    config.secondaryTextProperties.numberOfLines = 0
+                    config.image = UIImage(systemName: "bubble.left.and.bubble.right")
+                    config.imageProperties.tintColor = Constants.Colors.primary
+                    cell.contentConfiguration = config
+                    let toggle = UISwitch()
+                    toggle.isOn = ChatLookPreference.polishedOnThisPhone
+                    toggle.onTintColor = Constants.Colors.primary
+                    toggle.addTarget(self, action: #selector(chatLookToggled(_:)), for: .valueChanged)
+                    cell.accessoryView = toggle
+                    cell.accessoryType = .none
+                    cell.selectionStyle = .none
                 }
             }
             
@@ -1048,7 +1071,7 @@ extension SettingsViewController {
                     showDataExport()
                 case .homeShortcuts:
                     navigationController?.pushViewController(HomeShortcutsViewController(), animated: true)
-                case .livelyFeed:
+                case .livelyFeed, .chatLook:
                     break
                 }
             }

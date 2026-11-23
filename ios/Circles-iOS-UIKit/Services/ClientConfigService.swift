@@ -35,6 +35,12 @@ struct ClientConfig: Codable, Equatable {
         var alive: Bool?
     }
 
+    /// The chat screen's look (2026-11-23): `polished` off = the classic
+    /// chat on every phone, no release. Missing = on.
+    struct Chat: Codable, Equatable {
+        var polished: Bool?
+    }
+
     /// "Did you know" lines shown while the app waits (Wes, 2026-11-04);
     /// the weekly email's list. Absent offline before the first fetch.
     struct Tip: Codable, Equatable {
@@ -50,6 +56,7 @@ struct ClientConfig: Codable, Equatable {
     var onboarding: Onboarding?
     var tips: [Tip]?
     var activityFeed: ActivityFeed?
+    var chat: Chat?
 
     /// Offline fallback only — the server is the source.
     static let builtIn = ClientConfig(
@@ -61,7 +68,8 @@ struct ClientConfig: Codable, Equatable {
         favCoins: FavCoins(firstPlaceAdded: 25, drinkReceived: 1, eventJoined: 1),
         onboarding: Onboarding(firstFavorite: true),
         tips: nil,
-        activityFeed: ActivityFeed(alive: true))
+        activityFeed: ActivityFeed(alive: true),
+        chat: Chat(polished: true))
 }
 
 final class ClientConfigService {
