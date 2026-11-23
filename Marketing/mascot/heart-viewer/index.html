@@ -45,13 +45,14 @@ h1 i { color: var(--rose); }
 <div class="wrap">
   <header>
     <h1>The Totem, <i>places you love</i></h1>
-    <p class="lede">Your pick: the dropped pin on a red heart, a Dark Blue ring and base, lettering in gold paint. FAVCIRCLES over the top of the ring, with place icons spaced down both sides, SIGN and UP either side of the TAP OR SCAN label, PLACES YOU LOVE along the front. Turn it around (or use Back and Underneath): the heart's back matches its front, place icons circle the back of the ring, the sides of the base show the network (five linked people on the left, a constellation with a heart on the right), the unpainted FavCircles nameplate is on the back, and the numbered maker's mark is underneath. The other hearts and colors are still below. Drag to turn it, pinch or scroll to zoom.</p>
+    <p class="lede">Your pick: the dropped pin on a red heart (back to the original, less-round shape; the puffy one is under Heart shape), a Dark Blue ring and base, lettering in gold paint. FAVCIRCLES over the top of the ring, with place icons spaced down both sides, SIGN and UP either side of the TAP OR SCAN label, PLACES YOU LOVE along the front. Turn it around (or use Back and Underneath): the heart's back matches its front, place icons circle the back of the ring, the sides of the base show the network (five linked people on the left, a constellation with a heart on the right), the unpainted FavCircles nameplate is on the back, and the numbered maker's mark is underneath. The other hearts and colors are still below. Drag to turn it, pinch or scroll to zoom.</p>
   </header>
 
   <div class="stage" id="stage"><div class="loading" id="loading">Loading the Totem…</div><span class="hint">Drag to rotate · scroll to zoom</span></div>
 
   <div class="controls">
     <div class="group wide"><span>View</span><div class="chips" id="view"></div></div>
+    <div class="group wide"><span>Heart shape (the map pin)</span><div class="chips" id="shape"></div></div>
     <div class="group wide"><span>The map pin</span><div class="chips" id="design-pin"></div></div>
     <div class="group wide"><span>ChatGPT's designs</span><div class="chips" id="design-gpt"></div></div>
     <div class="group wide"><span>Claude's designs</span><div class="chips" id="design"></div></div>
@@ -101,7 +102,8 @@ const PAINTS = [['white', 'White', 0xf7f5f0], ['ivory', 'Ivory', 0xf2ead4], ['cr
 const FRAMES = MINE;
 const VIEWS = [['totem', 'Front'], ['back', 'Back'], ['under', 'Underneath'], ['heart', 'Heart close-up']];
 const CROWN = [['off', 'Plain sides'], ['on', 'Charlotte crown on the side']];
-const state = { crown: 'off', view: 'totem', design: 'pin_drop', plastic: 'red', paint: 'gold', frame: 'darkblue' };
+const SHAPES = [['classic', 'Classic (22 mm, flat face)'], ['puffy', 'Puffy (38 mm, v1)']];
+const state = { shape: 'classic', crown: 'off', view: 'totem', design: 'pin_drop', plastic: 'red', paint: 'gold', frame: 'darkblue' };
 
 // ---- binary STL → geometry with smooth normals that keep sharp edges (30°) ----
 function parseSTL(buf) {
@@ -205,12 +207,14 @@ function setColors() {
 }
 async function show() {
   const d = state.design;
-  front.geometry = await geo(`body_${d}`);
+  // Wes 2026-11-23: back to the original, less-round heart; the puffy v1 stays one tap away
+  const v = d === 'pin_drop' && state.shape === 'puffy' ? '_puffy' : '';
+  front.geometry = await geo(`body_${d}${v}`);
   // the back of the heart matches the front for the chosen pin (Wes 2026-11-22)
   const backMatch = d === 'pin_drop';
-  back.geometry = await geo(backMatch ? 'back_pin_drop' : 'back');
+  back.geometry = await geo(backMatch ? `back_pin_drop${v}` : 'back');
   paint.visible = d !== 'plain';
-  if (paint.visible) paint.geometry = await geo(`paint_${d}`);
+  if (paint.visible) paint.geometry = await geo(`paint_${d}${v}`);
   paintBack.visible = backMatch;
   if (backMatch) paintBack.geometry = paint.geometry;
   document.getElementById('about').innerHTML = DESIGNS.find(x => x.id === d).about;
@@ -237,6 +241,7 @@ function chips(id, items, k, onPick) {
   }
 }
 chips('view', VIEWS, 'view', () => setView());
+chips('shape', SHAPES, 'shape', show);
 crownPaint.visible = false;
 chips('design-pin', DESIGNS.filter(d => d.pin).map(d => [d.id, d.name]), 'design', pickDesign);
 chips('design-gpt', DESIGNS.filter(d => d.plastic && !d.pin).map(d => [d.id, d.name]), 'design', pickDesign);

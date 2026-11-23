@@ -11,6 +11,9 @@
 // Hardware: one 38 mm NFC sticker (in the base pocket), two 1.75 mm filament offcuts
 // (heart dowels), a 1.5 in QR label, four rubber bumpers, glue.
 // All sizes in mm and match Marketing/mascot/favcircles-totem.html.
+// Revisions (git tags; each can be printed again from its tag):
+//   totem-v1-puffy    2026-11-22  puffy 38 mm heart, pin_drop, SIGN UP, ring icons, network sides
+//   totem-v2-classic  2026-11-23  the original 22 mm heart shape (HEART_SHAPE), same engravings
 
 part = "assembly";
 $fn = 96;
@@ -21,8 +24,10 @@ RING_OUT = 55; RING_IN = 41; RING_D = 18; RING_R = 2.5; RING_CH = 1.2;
 HEART_S = 28;          // bezier scale; the outline is this plus HEART_EDGE
 HEART_EDGE = 6;        // outline grows 6 mm around the bezier heart (68 mm wide)
 HEART_DY = -4;         // heart centre below the ring centre
-HALF_T = 19;           // each half is 19 mm thick: a 38 mm puffy heart, round all over (Wes 2026-11-21: "more spherical")
-DOME_R = 21;           // the dome starts this far in from the edge (about as far as the heart allows), so there is no flat top
+// Wes 2026-11-23: "rather have the heart less round. like the original design, but keeping the updated engravings."
+HEART_SHAPE = "classic";   // "classic" = the original 22 mm heart, flat face with rounded edges; "puffy" = v1's 38 mm heart, round all over
+HALF_T = HEART_SHAPE == "puffy" ? 19 : 11;   // thickness of each half
+DOME_R = HEART_SHAPE == "puffy" ? 21 : 7;    // how far in from the edge the rounding reaches
 TENON_W = 8; TENON_T = 10;            // printed stem from the heart tip into the ring
 SOCKET_DEPTH = 6; FIT = 0.2;
 DOWEL_D = 1.95; DOWEL_DEPTH = 5; DOWELS = [[-18, 14], [18, 14]];

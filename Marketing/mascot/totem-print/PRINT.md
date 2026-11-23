@@ -4,7 +4,7 @@
 | Plate | File | Spool | Time | Filament |
 |---|---|---|---|---|
 | 1 | `bambu/Totem 1 - ring + base.3mf` | Dark Blue, PLA Matte | 3 h 12 min | 108 g |
-| 2 | `bambu/Totem 2 - heart halves.3mf` | Red, PLA Basic | 1 h 14 min | 38 g |
+| 2 | `bambu/Totem 2 - heart halves.3mf` | Red, PLA Basic | 53 min | 31 g |
 
 The plain files have No. 0001 under the base and no store name. For a store:
 
@@ -28,3 +28,8 @@ That makes `stores/<code>-totem/`: the store's plate 1 (its maker's mark says MA
 2. Stick it on the ceiling of the pocket under the base.
 3. Print `stores/<code>-totem/sheet.pdf` on Avery 8293 at Actual size and put the store's label in the round recess on top.
 4. Test: tap a phone on the label and scan the QR. Both should open the store.
+
+## Versions
+Each version Wes picks is a git tag; the old ones can always be printed again (`git checkout <tag> -- Marketing/mascot/totem-print`, or set the switch in totem.scad).
+- `totem-v1-puffy` (2026-11-22): puffy 38 mm heart. `HEART_SHAPE = "puffy"` rebuilds it with today's engravings.
+- `totem-v2-classic` (2026-11-23): the original 22 mm heart with a flat face, same engravings. Current.
