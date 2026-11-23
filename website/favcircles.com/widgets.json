@@ -253,7 +253,7 @@
       "A reminder at each time; tap Took it right from the notification, or snooze 10 minutes",
       "Today's doses at a glance, with anything missed flagged after two hours",
       "How many doses you took over the last 7 days and this month",
-      "Private: only you see it. Label photos are read and discarded, never kept",
+      "Private: only you see it. we don't keep your label photos",
       "A convenience, not medical advice: you're responsible for checking every medicine, dose and time"
      ],
      "page": "https://favcircles.com/widgets/medication-reminder-app.html"
