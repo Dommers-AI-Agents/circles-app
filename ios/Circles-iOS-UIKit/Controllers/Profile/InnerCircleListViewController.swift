@@ -92,47 +92,17 @@ class InnerCircleListViewController: BaseViewController {
 
     @objc private func renameTapped() {
         guard let listId else { return }
-        AlertPresenter.showTextInput(
-            title: "Rename \(listName)",
-            placeholder: "Name",
-            initialText: listName,
-            confirmTitle: "Save",
-            from: self
-        ) { [weak self] name in
-            guard let self, let name = name?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !name.isEmpty, name != self.listName else { return }
-            let loading = AlertPresenter.showLoading(message: "Saving…", from: self)
-            InnerCircleService.shared.updateList(id: listId, name: name) { [weak self] result in
-                DispatchQueue.main.async {
-                    loading.dismiss(animated: true) {
-                        guard let self = self else { return }
-                        switch result {
-                        case .success(let list):
-                            self.listName = (list.lists ?? []).first { $0.id == listId }?.name ?? name
-                            self.title = self.listName
-                        case .failure(let error):
-                            self.showError(error)
-                        }
-                    }
-                }
-            }
+        InnerCircleEditing.promptRename(listId: listId, currentName: listName, from: self) { [weak self] list in
+            guard let self else { return }
+            self.listName = (list.lists ?? []).first { $0.id == listId }?.name ?? self.listName
+            self.title = self.listName
         }
     }
 
     @objc private func addPeopleTapped() {
-        let picker = TagPeoplePickerViewController()
-        picker.title = "Add to \(listName)"
-        // Seeded with the current members so the picker is the whole list, not
-        // an append-only box — people expect to be able to uncheck here too.
-        picker.initialSelection = members.map {
-            TaggedMomentUser(id: $0.id, displayName: $0.displayName, profilePicture: $0.profilePicture)
+        InnerCircleEditing.presentPeoplePicker(listName: listName, currentMembers: members, maxSize: maxSize, from: self) { [weak self] userIds in
+            self?.replaceList(with: userIds)
         }
-        picker.selectionLimit = maxSize
-        picker.limitMessage = "A list can hold up to \(maxSize) people"
-        picker.onDone = { [weak self] chosen in
-            self?.replaceList(with: chosen.map { $0.id })
-        }
-        present(UINavigationController(rootViewController: picker), animated: true)
     }
 
     /// The people on the list this screen is showing.
@@ -172,11 +142,7 @@ class InnerCircleListViewController: BaseViewController {
     }
 
     private func confirmRemove(_ person: User) {
-        showConfirmation(
-            title: "Remove \(person.displayName)?",
-            message: "They'll stop seeing anything you've set to \(listName), including things they can see now.",
-            confirmTitle: "Remove"
-        ) { [weak self] in
+        InnerCircleEditing.confirmRemove(person, listName: listName, from: self) { [weak self] in
             self?.remove(person)
         }
     }

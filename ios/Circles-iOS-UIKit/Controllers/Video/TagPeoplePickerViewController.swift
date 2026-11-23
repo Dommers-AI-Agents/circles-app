@@ -36,7 +36,8 @@ class TagPeoplePickerViewController: BaseViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Tag People"
+        // A caller reusing the picker (an Inner Circle list) names it itself
+        if title == nil { title = "Tag People" }
         view.backgroundColor = Constants.Colors.background
         selectedIds = Set(initialSelection.map { $0.id })
 

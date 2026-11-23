@@ -73,15 +73,32 @@ class AllUsersListViewController: UIViewController {
     enum ListMode { case people, requests }
     var listMode: ListMode = .people
 
-    /// Sub-scope within `.people`: Connections | Following. Two different
-    /// relationships deserve two lists, not one long scroll — Following also
-    /// hosts the follow-back section, since those people are one tap away
-    /// from joining it.
-    private enum PeopleScope: Int { case connections = 0, following = 1 }
+    /// Sub-scope within `.people`: Connections | Following | Inner Circles.
+    /// Two different relationships deserve two lists, not one long scroll —
+    /// Following also hosts the follow-back section, since those people are
+    /// one tap away from joining it. Inner Circles (Wes, 2026-11-23) is not a
+    /// list at all: it is the named lists drawn as rings of faces, editable
+    /// in place (`InnerCirclesVisualViewController`).
+    private enum PeopleScope: Int { case connections = 0, following = 1, innerCircles = 2 }
     private var peopleScope: PeopleScope = .connections
 
+    /// The rings, laid over the table while the Inner Circles scope is
+    /// selected. Opaque and in front, so the people list's own spinner and
+    /// empty states never show through it.
+    private lazy var innerCirclesVC = InnerCirclesVisualViewController()
+    private let innerCirclesContainer: UIView = {
+        let view = UIView()
+        view.backgroundColor = Constants.Colors.background
+        view.isHidden = true
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    private var isShowingInnerCircles: Bool {
+        listMode == .people && peopleScope == .innerCircles && !isSearchActive
+    }
+
     private lazy var scopeControl: UISegmentedControl = {
-        let control = UISegmentedControl(items: ["Connections", "Following"])
+        let control = UISegmentedControl(items: ["Connections", "Following", "Inner Circles"])
         control.selectedSegmentIndex = 0
         control.addTarget(self, action: #selector(scopeChanged), for: .valueChanged)
         control.translatesAutoresizingMaskIntoConstraints = false
@@ -101,6 +118,10 @@ class AllUsersListViewController: UIViewController {
     }()
 
     @objc private func scopeInfoTapped() {
+        if peopleScope == .innerCircles {
+            InnerCirclesVisualViewController.presentExplainer(from: self)
+            return
+        }
         // One explanation of the ladder, shared with the ⓘ on section headers
         // and on the privacy pickers.
         RelationshipExplainer.present(from: self)
@@ -108,12 +129,48 @@ class AllUsersListViewController: UIViewController {
 
     @objc private func scopeChanged() {
         peopleScope = PeopleScope(rawValue: scopeControl.selectedSegmentIndex) ?? .connections
+        scopeInfoButton.accessibilityLabel = peopleScope == .innerCircles
+            ? "What are Inner Circles?"
+            : "What are Connections and Following?"
         tableView.reloadData()
+        updateInnerCirclesVisibility(refresh: true)
+        // The rings have their own states; the list's don't apply under them
+        guard !isShowingInnerCircles else { return }
         if visibleSectionsAreEmpty && !isSearchActive {
             showNoConnectionsState()
         } else {
             hideEmptyState()
         }
+    }
+
+    /// Shows the rings for the Inner Circles scope and hides them otherwise.
+    /// A typed search always wins: the parent tab routes every query to this
+    /// list, whatever scope was left selected, and results must not sit
+    /// under the rings.
+    private func updateInnerCirclesVisibility(refresh: Bool = false) {
+        guard listMode == .people, isViewLoaded else { return }
+        guard isShowingInnerCircles else {
+            innerCirclesContainer.isHidden = true
+            return
+        }
+        let isFirstShow = innerCirclesVC.parent == nil
+        if isFirstShow {
+            addChild(innerCirclesVC)
+            innerCirclesContainer.addSubview(innerCirclesVC.view)
+            innerCirclesVC.view.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                innerCirclesVC.view.topAnchor.constraint(equalTo: innerCirclesContainer.topAnchor),
+                innerCirclesVC.view.leadingAnchor.constraint(equalTo: innerCirclesContainer.leadingAnchor),
+                innerCirclesVC.view.trailingAnchor.constraint(equalTo: innerCirclesContainer.trailingAnchor),
+                innerCirclesVC.view.bottomAnchor.constraint(equalTo: innerCirclesContainer.bottomAnchor)
+            ])
+            innerCirclesVC.didMove(toParent: self)
+        }
+        innerCirclesContainer.isHidden = false
+        view.bringSubviewToFront(innerCirclesContainer)
+        // Its first appearance loads by itself; later ones refresh, since
+        // lists are also edited from Settings and the privacy pickers.
+        if refresh && !isFirstShow { innerCirclesVC.loadData() }
     }
 
     private var allUsers: [User] = []
@@ -233,6 +290,7 @@ class AllUsersListViewController: UIViewController {
         view.addSubview(tableView)
         view.addSubview(emptyStateView)
         view.addSubview(loadingIndicator)
+        view.addSubview(innerCirclesContainer)
 
         // The Connections | Following sub-scope only exists on the People tab;
         // the Requests tab keeps its single list.
@@ -251,6 +309,12 @@ class AllUsersListViewController: UIViewController {
                 scopeInfoButton.heightAnchor.constraint(equalToConstant: 28)
             ])
             tableTop = tableView.topAnchor.constraint(equalTo: scopeControl.bottomAnchor, constant: 8)
+            NSLayoutConstraint.activate([
+                innerCirclesContainer.topAnchor.constraint(equalTo: scopeControl.bottomAnchor, constant: 8),
+                innerCirclesContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                innerCirclesContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                innerCirclesContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            ])
         } else {
             tableTop = tableView.topAnchor.constraint(equalTo: view.topAnchor)
         }
@@ -332,6 +396,9 @@ class AllUsersListViewController: UIViewController {
     private var isPeopleRequestInFlight = false
 
     func loadPeople() {
+        // The parent's tab re-tap and pull-to-refresh land here; with the
+        // rings showing, they are what the person is asking to refresh.
+        if isShowingInnerCircles && innerCirclesVC.parent != nil { innerCirclesVC.loadData() }
         // Re-entrancy guard. The parent tab calls this directly on segment
         // switches and tab re-taps, so two runs could overlap — and the second
         // run's /following fetch would die in APIService's 0.5s duplicate
@@ -441,7 +508,7 @@ class AllUsersListViewController: UIViewController {
             return pendingIncomingUsers.isEmpty && pendingOutgoingUsers.isEmpty
         case .people:
             switch peopleScope {
-            case .connections: return connectedUsers.isEmpty
+            case .connections, .innerCircles: return connectedUsers.isEmpty
             case .following: return followingUsers.isEmpty && followsYouUsers.isEmpty
             }
         }
@@ -544,6 +611,7 @@ class AllUsersListViewController: UIViewController {
 
     func updateSearchQuery(_ query: String) {
         searchQuery = query
+        updateInnerCirclesVisibility()
         filterUsers()
         tableView.reloadData()
         searchBeyondNetwork(query)
@@ -588,7 +656,7 @@ class AllUsersListViewController: UIViewController {
             emptySubtitleLabel.text = "Connection requests you send or receive will show up here."
         case .people:
             switch peopleScope {
-            case .connections:
+            case .connections, .innerCircles:
                 emptyImageView.image = UIImage(systemName: "person.2")
                 emptyTitleLabel.text = "No connections yet"
                 emptySubtitleLabel.text = "Connect with people you know to unlock messaging and their network-only circles."
@@ -649,7 +717,8 @@ extension AllUsersListViewController: UITableViewDataSource {
             if !filteredPendingOutgoingUsers.isEmpty { sections.append(.sent) }
         case .people:
             switch peopleScope {
-            case .connections:
+            // A search typed while the rings are showing reads like Connections
+            case .connections, .innerCircles:
                 if !filteredConnectedUsers.isEmpty { sections.append(.connections) }
             case .following:
                 if !filteredFollowingUsers.isEmpty { sections.append(.following) }

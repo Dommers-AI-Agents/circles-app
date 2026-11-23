@@ -73,80 +73,29 @@ final class InnerCircleListsViewController: BaseViewController {
     }
 
     // MARK: - Making and unmaking lists
+    //
+    // The prompts, warnings and writes live in InnerCircleEditing, shared
+    // with the rings on My Network → My People → Inner Circles.
 
     private func newListTapped() {
-        guard lists.count < maxLists else {
-            showError("You can keep up to \(maxLists) lists.")
-            return
-        }
-        AlertPresenter.showTextInput(
-            title: "New list",
-            message: "Name it for the people on it — Family, Gym crew, Work.",
-            placeholder: "Name",
-            confirmTitle: "Create",
-            from: self
-        ) { [weak self] name in
-            guard let self, let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return }
-            self.run("Creating…") { done in
-                InnerCircleService.shared.createList(name: name, userIds: [], completion: done)
-            } then: { [weak self] list in
-                // Straight into choosing who is on it: an empty list is the
-                // same as Private, and nobody means to make one of those.
-                guard let self, let created = (list.lists ?? []).last else { return }
-                self.navigationController?.pushViewController(InnerCircleListViewController(list: created, isNew: true), animated: true)
-            }
+        InnerCircleEditing.promptNewList(existingCount: lists.count, maxLists: maxLists, from: self) { [weak self] list, created in
+            guard let self else { return }
+            self.apply(list)
+            // Straight into choosing who is on it: an empty list is the
+            // same as Private, and nobody means to make one of those.
+            self.navigationController?.pushViewController(InnerCircleListViewController(list: created, isNew: true), animated: true)
         }
     }
 
     private func renameTapped(_ list: InnerCircleNamedList) {
-        AlertPresenter.showTextInput(
-            title: "Rename \(list.name)",
-            message: nil,
-            placeholder: "Name",
-            initialText: list.name,
-            confirmTitle: "Save",
-            from: self
-        ) { [weak self] name in
-            guard let self, let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return }
-            self.run("Saving…") { done in
-                InnerCircleService.shared.updateList(id: list.id, name: name, completion: done)
-            }
+        InnerCircleEditing.promptRename(listId: list.id, currentName: list.name, from: self) { [weak self] list in
+            self?.apply(list)
         }
     }
 
     private func confirmDelete(_ list: InnerCircleNamedList) {
-        let people = list.userIds.count == 1 ? "1 person" : "\(list.userIds.count) people"
-        showConfirmation(
-            title: "Delete \(list.name)?",
-            message: "Anything you've set to this list stops being visible to those \(people), including things they can see now. Nobody is removed from your connections.",
-            confirmTitle: "Delete",
-            isDestructive: true
-        ) { [weak self] in
-            self?.run("Deleting…") { done in
-                InnerCircleService.shared.deleteList(id: list.id, completion: done)
-            }
-        }
-    }
-
-    /// Every write here is the same shape: a spinner, then the fresh lists or
-    /// the server's own words about why not.
-    private func run(_ message: String,
-                     _ work: (@escaping (Result<InnerCircleList, Error>) -> Void) -> Void,
-                     then next: ((InnerCircleList) -> Void)? = nil) {
-        let loading = AlertPresenter.showLoading(message: message, from: self)
-        work { [weak self] result in
-            DispatchQueue.main.async {
-                loading.dismiss(animated: true) {
-                    guard let self = self else { return }
-                    switch result {
-                    case .success(let list):
-                        self.apply(list)
-                        next?(list)
-                    case .failure(let error):
-                        self.showError(error)
-                    }
-                }
-            }
+        InnerCircleEditing.confirmDelete(list, from: self) { [weak self] list in
+            self?.apply(list)
         }
     }
 }
@@ -193,9 +142,7 @@ extension InnerCircleListsViewController: UITableViewDataSource, UITableViewDele
         var content = cell.defaultContentConfiguration()
         content.text = list.name
         let count = list.userIds.count
-        content.secondaryText = count == 0
-            ? "Nobody yet — the same as Private until you add someone"
-            : "\(count) \(count == 1 ? "person" : "people")"
+        content.secondaryText = InnerCircleEditing.summary(memberCount: count)
         content.secondaryTextProperties.color = count == 0 ? Constants.Colors.danger : Constants.Colors.secondaryLabel
         content.image = UIImage(systemName: "person.2.fill")
         content.imageProperties.tintColor = Constants.Colors.primary
