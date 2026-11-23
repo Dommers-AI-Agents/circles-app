@@ -230,7 +230,10 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
         // every open: contexts are reused, and a list tap should still slide.
         context.openedForLaunch = context.hasLaunchTarget
         Task { await widget.refresh(context: context) }
-        open(widget, context: context, animated: !context.openedForLaunch)
+        // Every arrival by id (push, link, Home Screen shortcut) lands on the
+        // page itself: no Widgets list first and then a slide (Wes,
+        // 2026-11-23, the Workouts shortcut). Only a tap in the list slides.
+        open(widget, context: context, animated: false)
     }
 
     /// Moments → postcard: open the postcard page with `photo` already chosen
