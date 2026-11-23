@@ -13,7 +13,8 @@ import UIKit
 /// as `InnerCircleManager` holds it, never from the faces on screen.
 final class InnerCirclesVisualViewController: BaseViewController {
 
-    override var showsLoadingIndicator: Bool { true }
+    /// Only while there is nothing to show yet
+    override var showsLoadingIndicator: Bool { !hasLists }
     override var enablesPullToRefresh: Bool { true }
 
     private let backdrop = FirstRunBackdropView()
@@ -49,6 +50,16 @@ final class InnerCirclesVisualViewController: BaseViewController {
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
+        // Whatever the app already knows shows first, with no spinner over
+        // it (the base class spins only until there is something to show);
+        // loadData then refreshes it.
+        if InnerCircleManager.shared.hasLoaded {
+            let known = InnerCircleManager.shared.list
+            lists = known.lists ?? []
+            maxLists = known.maxLists ?? maxLists
+            maxSize = known.maxSize
+            hasLists = true
+        }
         super.viewDidLoad()
 
         backdrop.translatesAutoresizingMaskIntoConstraints = false
@@ -88,8 +99,7 @@ final class InnerCirclesVisualViewController: BaseViewController {
             guard let self, InnerCircleManager.shared.hasLoaded else { return }
             self.apply(InnerCircleManager.shared.list)
         }
-        // Whatever the app already knows shows first; loadData refreshes it
-        if InnerCircleManager.shared.hasLoaded { apply(InnerCircleManager.shared.list) }
+        render()
     }
 
     deinit {
