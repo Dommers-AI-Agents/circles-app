@@ -1,13 +1,15 @@
 // Free library programs (story times, workshops, concerts, author talks).
 // Each library system in config/eventFeeds.js names its calendar type:
-// BiblioCommons (here), LibCal (libcal.js) or Maricopa County's site
-// (mcldaz.js). One list per system every few hours, shared by everyone;
+// BiblioCommons (here), LibCal (libcal.js), Communico (communico.js),
+// LibraryMarket (librarymarket.js) or Maricopa County's site (mcldaz.js). One list per system every few hours, shared by everyone;
 // each user gets the branches near them (nearbyEventsService).
 const { cached, fetchJson } = require('./cache');
 const { LIBRARY_FEEDS } = require('../../config/eventFeeds');
 const { SERVICE_PROGRAM, NOT_AN_OUTING, stripHtml, dayKey } = require('./libraryCommon');
 const { loadLibcal } = require('./libcal');
 const { loadMcld } = require('./mcldaz');
+const { loadCommunico } = require('./communico');
+const { loadLibraryMarket } = require('./librarymarket');
 const geofire = require('geofire-common');
 
 const GATEWAY = 'https://gateway.bibliocommons.com/v2/libraries';
@@ -75,7 +77,9 @@ async function loadBiblioCommons(feed, { fromDay, toDay }) {
   return [first, ...rest].filter(Boolean).flatMap((payload) => normalizePage(payload, feed));
 }
 
-const LOADERS = { bibliocommons: loadBiblioCommons, libcal: loadLibcal, mcldaz: loadMcld };
+const LOADERS = {
+  bibliocommons: loadBiblioCommons, libcal: loadLibcal, mcldaz: loadMcld, communico: loadCommunico, librarymarket: loadLibraryMarket
+};
 
 /** Library systems whose service area covers (lat, lng). */
 function feedsNear(lat, lng) {

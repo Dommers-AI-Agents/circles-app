@@ -1,6 +1,9 @@
 // What every library calendar adapter shares: text clean-up, the filter
 // for help sessions, branch matching and local-time → UTC.
 
+// Library programs are for the branches near you, not the whole county
+const LIBRARY_REACH_M = 10 * 1609.344;
+
 const stripHtml = (html) => String(html || '')
   .replace(/<[^>]+>/g, ' ')
   .replace(/&nbsp;/g, ' ')
@@ -73,4 +76,4 @@ function libraryEvent({ feed, id, name, description, date, time, branch, imageUr
   };
 }
 
-module.exports = { stripHtml, SERVICE_PROGRAM, NOT_AN_OUTING, matchBranch, zonedToUtc, dayKey, libraryEvent };
+module.exports = { LIBRARY_REACH_M, stripHtml, SERVICE_PROGRAM, NOT_AN_OUTING, matchBranch, zonedToUtc, dayKey, libraryEvent };

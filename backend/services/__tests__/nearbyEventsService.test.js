@@ -187,6 +187,17 @@ describe('merging', () => {
     expect(service.attributionFor([{ source: 'store' }], [])).toBeNull();
   });
 
+  test('why a list has no library programs', () => {
+    const reason = (events, lib, feedCount) => service.libraryGapReason({ events, lib, lat: CLT.lat, lng: CLT.lng, feedCount });
+    const near = libRow('l1', '2026-10-16', '09:30:00', 'Storytime');
+    const far = libRow('l3', '2026-10-16', '10:00:00', 'Far Program', 35.6);
+    expect(reason([near], [near], 1)).toBeNull();
+    expect(reason([], [], 0)).toBe('none'); // no library system here
+    expect(reason([], [], 1)).toBe('empty'); // its calendar gave nothing
+    expect(reason([], [far], 1)).toBe('far'); // no branch within 10 miles
+    expect(reason([], [near], 1)).toBeNull(); // today's programs have ended
+  });
+
   test('no location → empty feed', async () => {
     expect(await service.getLocalFeed(NaN, 1)).toEqual({ events: [], markets: [], attribution: null });
   });

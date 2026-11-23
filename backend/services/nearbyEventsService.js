@@ -16,8 +16,7 @@ const MAX_TICKETMASTER = 14;
 const MAX_LIBRARY = 10;
 // A busy library day shouldn't bury tonight's shows
 const MAX_LIBRARY_PER_DAY = 3;
-// Library programs are for the branches near you, not the whole county
-const LIBRARY_RADIUS_M = 10 * 1609.344;
+const { LIBRARY_REACH_M: LIBRARY_RADIUS_M } = require('./localEvents/libraryCommon');
 
 const withDistance = (event, lat, lng) => ({
   ...event,
@@ -103,8 +102,27 @@ const settle = (promise, label) => promise.catch((err) => {
   return [];
 });
 
-/** Everything for the Locals tab's "Happening nearby" around (lat, lng). */
-async function getLocalFeed(lat, lng, { now = new Date(), viewer = null } = {}) {
+/**
+ * Why the list has no library programs, for the weekly coverage report
+ * (pure, tested): 'none' no system covers the spot, 'far' one does but no
+ * branch within reach has a program, 'empty' its calendar came back with
+ * nothing. null when it has some, or programs nearby have simply ended.
+ */
+function libraryGapReason({ events, lib, lat, lng, feedCount }) {
+  if (events.some((e) => e.source === 'library')) return null;
+  if (!feedCount) return 'none';
+  if (!lib.length) return 'empty';
+  const inReach = lib.some((e) => !Number.isFinite(e.lat) || !Number.isFinite(e.lng)
+    || geofire.distanceBetween([lat, lng], [e.lat, e.lng]) * 1000 <= LIBRARY_RADIUS_M);
+  return inReach ? null : 'far';
+}
+
+/**
+ * Everything for the Locals tab's "Happening nearby" around (lat, lng).
+ * `source` says who is asking ('tab', or 'letter' for the weekly email) so
+ * the coverage report can tell opens from letters.
+ */
+async function getLocalFeed(lat, lng, { now = new Date(), viewer = null, source = 'tab' } = {}) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { events: [], markets: [], attribution: null };
   const cell = geofire.geohashForLocation([lat, lng], 5);
   const [store, tm, lib, markets] = await Promise.all([
@@ -115,9 +133,10 @@ async function getLocalFeed(lat, lng, { now = new Date(), viewer = null } = {}) 
       () => farmersMarkets.marketsNear(lat, lng)), 'farmers markets')
   ]);
   const events = mergeEvents({ store, tm, lib }, lat, lng, now);
-  // No library programs near this spot: note it for the weekly report of
-  // places to add a library system next
-  if (!events.some((e) => e.source === 'library')) coverageGaps.recordGap(lat, lng);
+  // No library programs near this spot: note it, and why, for the weekly
+  // report of places to add a library system next
+  const reason = libraryGapReason({ events, lib, lat, lng, feedCount: library.feedsNear(lat, lng).length });
+  if (reason) coverageGaps.recordGap(lat, lng, { reason, source, now: now.getTime() });
   const nearMarkets = markets.map((m) => ({
     ...m,
     distanceMeters: Math.round(geofire.distanceBetween([lat, lng], [m.lat, m.lng]) * 1000)
@@ -169,4 +188,4 @@ async function getNearbyEvents(lat, lng, options) {
   return (await getLocalFeed(lat, lng, options)).events;
 }
 
-module.exports = { getLocalFeed, getNearbyEvents, searchLocalEvents, matchesQuery, mergeEvents, attributionFor };
+module.exports = { getLocalFeed, getNearbyEvents, searchLocalEvents, matchesQuery, mergeEvents, attributionFor, libraryGapReason };

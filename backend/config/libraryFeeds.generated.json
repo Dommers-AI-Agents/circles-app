@@ -1432,5 +1432,788 @@
   },
   "radiusMiles": 21,
   "timeZone": "America/New_York"
+ },
+ {
+  "type": "libcal",
+  "host": "skpl.libcal.com",
+  "calendarId": -1,
+  "name": "South Kingstown Public Library",
+  "center": {
+   "lat": 41.4432,
+   "lng": -71.5231
+  },
+  "radiusMiles": 15,
+  "timeZone": "America/New_York",
+  "branches": [
+   {
+    "name": "Peace Dale Library",
+    "match": [
+     "Peace Dale Library"
+    ],
+    "lat": 41.45103,
+    "lng": -71.4951
+   },
+   {
+    "name": "Kingston Free Library",
+    "match": [
+     "Kingston Free Library"
+    ],
+    "lat": 41.48065,
+    "lng": -71.52523
+   },
+   {
+    "name": "Robert Beverly Hale Library",
+    "match": [
+     "Robert Beverly Hale Library"
+    ],
+    "lat": 41.39797,
+    "lng": -71.54895
+   }
+  ]
+ },
+ {
+  "type": "libcal",
+  "host": "charlottecountyfl.libcal.com",
+  "calendarId": -1,
+  "name": "Charlotte County Library System",
+  "center": {
+   "lat": 26.9723,
+   "lng": -82.205
+  },
+  "radiusMiles": 19,
+  "timeZone": "America/New_York",
+  "branches": [
+   {
+    "name": "Mid-County",
+    "match": [
+     "Mid-County"
+    ],
+    "lat": 27.00148,
+    "lng": -82.12249
+   },
+   {
+    "name": "Englewood",
+    "match": [
+     "Englewood"
+    ],
+    "lat": 26.96061,
+    "lng": -82.35763
+   },
+   {
+    "name": "Punta Gorda",
+    "match": [
+     "Punta Gorda"
+    ],
+    "lat": 26.9548,
+    "lng": -82.13486
+   }
+  ]
+ },
+ {
+  "type": "communico",
+  "host": "visit.lacountylibrary.org",
+  "imageBase": "https://static.libnet.info/images/events/lacountylibrary/",
+  "name": "LA County Library",
+  "center": {
+   "lat": 34.0403,
+   "lng": -118.1822
+  },
+  "radiusMiles": 55,
+  "timeZone": "America/Los_Angeles",
+  "branches": [
+   {
+    "name": "A C Bilbrew Library",
+    "match": [
+     "A C Bilbrew Library"
+    ],
+    "lat": 33.91585,
+    "lng": -118.23053
+   },
+   {
+    "name": "Acton Agua Dulce Library",
+    "match": [
+     "Acton Agua Dulce Library"
+    ],
+    "lat": 34.49503,
+    "lng": -118.1975
+   },
+   {
+    "name": "Agoura Hills Library",
+    "match": [
+     "Agoura Hills Library"
+    ],
+    "lat": 34.14451,
+    "lng": -118.77587
+   },
+   {
+    "name": "Alondra Library",
+    "match": [
+     "Alondra Library"
+    ],
+    "lat": 33.88793,
+    "lng": -118.07831
+   },
+   {
+    "name": "Angelo M. Iacoboni Library",
+    "match": [
+     "Angelo M. Iacoboni Library"
+    ],
+    "lat": 33.84875,
+    "lng": -118.13333
+   },
+   {
+    "name": "Anthony Quinn Library",
+    "match": [
+     "Anthony Quinn Library"
+    ],
+    "lat": 34.04079,
+    "lng": -118.18002
+   },
+   {
+    "name": "Artesia Library",
+    "match": [
+     "Artesia Library"
+    ],
+    "lat": 33.8606,
+    "lng": -118.0791
+   },
+   {
+    "name": "Baldwin Park Library",
+    "match": [
+     "Baldwin Park Library"
+    ],
+    "lat": 34.08799,
+    "lng": -117.96509
+   },
+   {
+    "name": "Bell Express Library",
+    "match": [
+     "Bell Express Library"
+    ],
+    "lat": 33.9785,
+    "lng": -118.18857
+   },
+   {
+    "name": "Bell Gardens Library",
+    "match": [
+     "Bell Gardens Library"
+    ],
+    "lat": 33.96668,
+    "lng": -118.15054
+   },
+   {
+    "name": "Carson Library",
+    "match": [
+     "Carson Library"
+    ],
+    "lat": 33.83211,
+    "lng": -118.27633
+   },
+   {
+    "name": "Castaic Library",
+    "match": [
+     "Castaic Library"
+    ],
+    "lat": 34.49581,
+    "lng": -118.62695
+   },
+   {
+    "name": "Charter Oak Library",
+    "match": [
+     "Charter Oak Library"
+    ],
+    "lat": 34.10612,
+    "lng": -117.85312
+   },
+   {
+    "name": "Chet Holifield Library",
+    "match": [
+     "Chet Holifield Library"
+    ],
+    "lat": 33.99335,
+    "lng": -118.12007
+   },
+   {
+    "name": "City Terrace Library",
+    "match": [
+     "City Terrace Library"
+    ],
+    "lat": 34.05595,
+    "lng": -118.17806
+   },
+   {
+    "name": "Claremont Helen Renwick Library",
+    "match": [
+     "Claremont Helen Renwick Library"
+    ],
+    "lat": 34.09605,
+    "lng": -117.71597
+   },
+   {
+    "name": "Clifton M. Brakensiek Library",
+    "match": [
+     "Clifton M. Brakensiek Library"
+    ],
+    "lat": 33.88245,
+    "lng": -118.12143
+   },
+   {
+    "name": "Compton Library",
+    "match": [
+     "Compton Library"
+    ],
+    "lat": 33.89547,
+    "lng": -118.22586
+   },
+   {
+    "name": "Cudahy Library",
+    "match": [
+     "Cudahy Library"
+    ],
+    "lat": 33.95948,
+    "lng": -118.17459
+   },
+   {
+    "name": "Culver City Julian Dixon Library",
+    "match": [
+     "Culver City Julian Dixon Library"
+    ],
+    "lat": 34.00751,
+    "lng": -118.39702
+   },
+   {
+    "name": "Diamond Bar Library",
+    "match": [
+     "Diamond Bar Library"
+    ],
+    "lat": 33.99901,
+    "lng": -117.8308
+   },
+   {
+    "name": "Duarte Library",
+    "match": [
+     "Duarte Library"
+    ],
+    "lat": 34.13817,
+    "lng": -117.97794
+   },
+   {
+    "name": "East Los Angeles Library",
+    "match": [
+     "East Los Angeles Library"
+    ],
+    "lat": 34.03392,
+    "lng": -118.15978
+   },
+   {
+    "name": "East Rancho Dominguez Library",
+    "match": [
+     "East Rancho Dominguez Library"
+    ],
+    "lat": 33.8964,
+    "lng": -118.19757
+   },
+   {
+    "name": "El Camino Real Library",
+    "match": [
+     "El Camino Real Library"
+    ],
+    "lat": 34.02375,
+    "lng": -118.17775
+   },
+   {
+    "name": "El Monte Library",
+    "match": [
+     "El Monte Library"
+    ],
+    "lat": 34.06695,
+    "lng": -118.03562
+   },
+   {
+    "name": "Florence Library",
+    "match": [
+     "Florence Library"
+    ],
+    "lat": 33.96786,
+    "lng": -118.24802
+   },
+   {
+    "name": "Gardena Mayme Dear Library",
+    "match": [
+     "Gardena Mayme Dear Library"
+    ],
+    "lat": 33.88219,
+    "lng": -118.30758
+   },
+   {
+    "name": "George Nye, Jr. Library",
+    "match": [
+     "George Nye, Jr. Library"
+    ],
+    "lat": 33.84645,
+    "lng": -118.10245
+   },
+   {
+    "name": "Graham Library",
+    "match": [
+     "Graham Library"
+    ],
+    "lat": 33.95989,
+    "lng": -118.23834
+   },
+   {
+    "name": "Hacienda Heights Library",
+    "match": [
+     "Hacienda Heights Library"
+    ],
+    "lat": 33.99354,
+    "lng": -117.96412
+   },
+   {
+    "name": "Hawaiian Gardens Library",
+    "match": [
+     "Hawaiian Gardens Library"
+    ],
+    "lat": 33.83125,
+    "lng": -118.078
+   },
+   {
+    "name": "Hawthorne Library",
+    "match": [
+     "Hawthorne Library"
+    ],
+    "lat": 33.91724,
+    "lng": -118.35424
+   },
+   {
+    "name": "Hermosa Beach Library",
+    "match": [
+     "Hermosa Beach Library"
+    ],
+    "lat": 33.86426,
+    "lng": -118.39554
+   },
+   {
+    "name": "Hollydale Library",
+    "match": [
+     "Hollydale Library"
+    ],
+    "lat": 33.91771,
+    "lng": -118.16869
+   },
+   {
+    "name": "La Ca\u00f1ada Flintridge Library",
+    "match": [
+     "La Ca\u00f1ada Flintridge Library"
+    ],
+    "lat": 34.20283,
+    "lng": -118.19405
+   },
+   {
+    "name": "La Crescenta Library",
+    "match": [
+     "La Crescenta Library"
+    ],
+    "lat": 34.22474,
+    "lng": -118.24033
+   },
+   {
+    "name": "La Mirada Library",
+    "match": [
+     "La Mirada Library"
+    ],
+    "lat": 33.9059,
+    "lng": -118.01079
+   },
+   {
+    "name": "La Puente Library",
+    "match": [
+     "La Puente Library"
+    ],
+    "lat": 34.01918,
+    "lng": -117.9509
+   },
+   {
+    "name": "La Verne Library",
+    "match": [
+     "La Verne Library"
+    ],
+    "lat": 34.11135,
+    "lng": -117.7643
+   },
+   {
+    "name": "Lake Los Angeles Library",
+    "match": [
+     "Lake Los Angeles Library"
+    ],
+    "lat": 34.61682,
+    "lng": -117.82805
+   },
+   {
+    "name": "Lancaster Library",
+    "match": [
+     "Lancaster Library"
+    ],
+    "lat": 34.69854,
+    "lng": -118.14032
+   },
+   {
+    "name": "Lawndale Library",
+    "match": [
+     "Lawndale Library"
+    ],
+    "lat": 33.89854,
+    "lng": -118.35423
+   },
+   {
+    "name": "Leland R. Weaver Library",
+    "match": [
+     "Leland R. Weaver Library"
+    ],
+    "lat": 33.94415,
+    "lng": -118.20152
+   },
+   {
+    "name": "Lennox Library",
+    "match": [
+     "Lennox Library"
+    ],
+    "lat": 33.93835,
+    "lng": -118.35202
+   },
+   {
+    "name": "Littlerock Library",
+    "match": [
+     "Littlerock Library"
+    ],
+    "lat": 34.51988,
+    "lng": -117.98876
+   },
+   {
+    "name": "Live Oak Library",
+    "match": [
+     "Live Oak Library"
+    ],
+    "lat": 34.10693,
+    "lng": -118.03178
+   },
+   {
+    "name": "Lloyd Taber-Marina del Rey Library",
+    "match": [
+     "Lloyd Taber-Marina del Rey Library"
+    ],
+    "lat": 33.9829,
+    "lng": -118.44313
+   },
+   {
+    "name": "Lomita Library",
+    "match": [
+     "Lomita Library"
+    ],
+    "lat": 33.80531,
+    "lng": -118.31914
+   },
+   {
+    "name": "Los Nietos Library",
+    "match": [
+     "Los Nietos Library"
+    ],
+    "lat": 33.96509,
+    "lng": -118.07234
+   },
+   {
+    "name": "Lynwood Library",
+    "match": [
+     "Lynwood Library"
+    ],
+    "lat": 33.92716,
+    "lng": -118.19913
+   },
+   {
+    "name": "Malibu Library",
+    "match": [
+     "Malibu Library"
+    ],
+    "lat": 34.03654,
+    "lng": -118.68757
+   },
+   {
+    "name": "Manhattan Beach Library",
+    "match": [
+     "Manhattan Beach Library"
+    ],
+    "lat": 33.88688,
+    "lng": -118.41036
+   },
+   {
+    "name": "Masao W. Satow Library",
+    "match": [
+     "Masao W. Satow Library"
+    ],
+    "lat": 33.90004,
+    "lng": -118.32694
+   },
+   {
+    "name": "Maywood Library",
+    "match": [
+     "Maywood Library"
+    ],
+    "lat": 33.98777,
+    "lng": -118.18899
+   },
+   {
+    "name": "Norwalk Library",
+    "match": [
+     "Norwalk Library"
+    ],
+    "lat": 33.91662,
+    "lng": -118.06938
+   },
+   {
+    "name": "Paramount Library",
+    "match": [
+     "Paramount Library"
+    ],
+    "lat": 33.88572,
+    "lng": -118.161
+   },
+   {
+    "name": "Pico Rivera Library",
+    "match": [
+     "Pico Rivera Library"
+    ],
+    "lat": 33.99196,
+    "lng": -118.08923
+   },
+   {
+    "name": "Quartz Hill Library",
+    "match": [
+     "Quartz Hill Library"
+    ],
+    "lat": 34.64309,
+    "lng": -118.21967
+   },
+   {
+    "name": "Rosemead Library",
+    "match": [
+     "Rosemead Library"
+    ],
+    "lat": 34.08027,
+    "lng": -118.0772
+   },
+   {
+    "name": "Rowland Heights Library",
+    "match": [
+     "Rowland Heights Library"
+    ],
+    "lat": 33.98441,
+    "lng": -117.88859
+   },
+   {
+    "name": "San Fernando Library",
+    "match": [
+     "San Fernando Library"
+    ],
+    "lat": 34.28557,
+    "lng": -118.43866
+   },
+   {
+    "name": "San Gabriel Library",
+    "match": [
+     "San Gabriel Library"
+    ],
+    "lat": 34.09584,
+    "lng": -118.09924
+   },
+   {
+    "name": "Sorensen Library",
+    "match": [
+     "Sorensen Library"
+    ],
+    "lat": 33.97951,
+    "lng": -118.06248
+   },
+   {
+    "name": "South El Monte Library",
+    "match": [
+     "South El Monte Library"
+    ],
+    "lat": 34.04479,
+    "lng": -118.04663
+   },
+   {
+    "name": "South Whittier Library",
+    "match": [
+     "South Whittier Library"
+    ],
+    "lat": 33.92556,
+    "lng": -118.0245
+   },
+   {
+    "name": "Stevenson Ranch Library",
+    "match": [
+     "Stevenson Ranch Library"
+    ],
+    "lat": 34.39327,
+    "lng": -118.57285
+   },
+   {
+    "name": "Sunkist Library",
+    "match": [
+     "Sunkist Library"
+    ],
+    "lat": 34.05526,
+    "lng": -117.9768
+   },
+   {
+    "name": "Temple City Library",
+    "match": [
+     "Temple City Library"
+    ],
+    "lat": 34.10835,
+    "lng": -118.05722
+   },
+   {
+    "name": "Topanga Library",
+    "match": [
+     "Topanga Library"
+    ],
+    "lat": 34.08994,
+    "lng": -118.60348
+   },
+   {
+    "name": "View Park Bebe Moore Campbell Library",
+    "match": [
+     "View Park Bebe Moore Campbell Library"
+    ],
+    "lat": 33.99297,
+    "lng": -118.34111
+   },
+   {
+    "name": "Walnut Library",
+    "match": [
+     "Walnut Library"
+    ],
+    "lat": 34.02672,
+    "lng": -117.8416
+   },
+   {
+    "name": "West Covina Library",
+    "match": [
+     "West Covina Library"
+    ],
+    "lat": 34.07112,
+    "lng": -117.94062
+   },
+   {
+    "name": "West Hollywood Library",
+    "match": [
+     "West Hollywood Library"
+    ],
+    "lat": 34.08184,
+    "lng": -118.38379
+   },
+   {
+    "name": "Westlake Village Library",
+    "match": [
+     "Westlake Village Library"
+    ],
+    "lat": 34.14464,
+    "lng": -118.79846
+   },
+   {
+    "name": "Willowbrook Library",
+    "match": [
+     "Willowbrook Library"
+    ],
+    "lat": 33.92616,
+    "lng": -118.23933
+   },
+   {
+    "name": "Wiseburn Library",
+    "match": [
+     "Wiseburn Library"
+    ],
+    "lat": 33.90976,
+    "lng": -118.3736
+   },
+   {
+    "name": "Woodcrest Library",
+    "match": [
+     "Woodcrest Library"
+    ],
+    "lat": 33.93984,
+    "lng": -118.29995
+   }
+  ]
+ },
+ {
+  "type": "librarymarket",
+  "host": "www.bossierlibrary.org",
+  "name": "Bossier Parish Libraries",
+  "center": {
+   "lat": 32.5864,
+   "lng": -93.6273
+  },
+  "radiusMiles": 32,
+  "timeZone": "America/Chicago",
+  "branches": [
+   {
+    "name": "Aulds",
+    "match": [
+     "Aulds Library Branch"
+    ],
+    "lat": 32.48188,
+    "lng": -93.66887
+   },
+   {
+    "name": "Benton",
+    "match": [
+     "Benton Library Branch"
+    ],
+    "lat": 32.68037,
+    "lng": -93.74045
+   },
+   {
+    "name": "Central Library Complex",
+    "match": [
+     "Central Library Complex"
+    ],
+    "lat": 32.527,
+    "lng": -93.7157
+   },
+   {
+    "name": "East 80",
+    "match": [
+     "East 80 Library Branch"
+    ],
+    "lat": 32.5578,
+    "lng": -93.61343
+   },
+   {
+    "name": "Haughton",
+    "match": [
+     "Haughton Library Branch"
+    ],
+    "lat": 32.53366,
+    "lng": -93.50552
+   },
+   {
+    "name": "Plain Dealing",
+    "match": [
+     "Plain Dealing Library Branch"
+    ],
+    "lat": 32.90658,
+    "lng": -93.69346
+   },
+   {
+    "name": "Tooke",
+    "match": [
+     "Tooke Library Branch"
+    ],
+    "lat": 32.41732,
+    "lng": -93.45358
+   }
+  ]
  }
 ]

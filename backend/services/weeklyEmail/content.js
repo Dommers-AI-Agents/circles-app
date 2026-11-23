@@ -159,7 +159,7 @@ async function localsFor(user) {
   const coords = await effectiveCoords(user.id, user);
   if (!coords) return null;
   const { getLocalFeed } = require('../nearbyEventsService');
-  const feed = await getLocalFeed(coords.latitude, coords.longitude);
+  const feed = await getLocalFeed(coords.latitude, coords.longitude, { source: 'letter' });
   const events = (feed.events || []).slice(0, 3).map((e) => ({
     name: e.name, date: e.startLocalDate, time: e.startLocalTime || null, venue: e.venueName || null,
     image: e.imageUrl || null, url: e.url || null
