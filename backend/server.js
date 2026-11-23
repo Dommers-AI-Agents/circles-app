@@ -191,6 +191,7 @@ app.use('/api/upload', express.json({ limit: '2mb' }));
 app.use('/api/users/subscription', express.json({ limit: '2mb' }));
 app.use('/api/widgets/postcard/mail/upload', express.json({ limit: '8mb' }));
 app.use('/api/widgets/workouts/history', express.json({ limit: '3mb' }));
+app.use('/api/widgets/meds/scan', express.json({ limit: '12mb' })); // label photos, base64
 app.use('/api/import', express.json({ limit: '5mb' }));
 app.use('/api/users/contacts', express.json({ limit: '5mb' }));
 // Store-owner scans: up to 4 photos as base64 (≤ 8 MB decoded, services/scan/images)

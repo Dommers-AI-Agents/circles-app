@@ -23,6 +23,7 @@ const fridgeMail = require('../controllers/widgets/fridgeMailController');
 const care = require('../controllers/widgets/careCheckinController');
 const quotes = require('../controllers/widgets/quotesController');
 const workoutFeed = require('../controllers/widgets/workoutFeedController');
+const medScan = require('../controllers/widgets/medScanController');
 const { getMyInnerCircleLists } = require('../controllers/users/innerCircleController');
 
 const router = express.Router();
@@ -262,5 +263,9 @@ router.get('/nextbar/rounds', nextBarRounds.listRounds);
 router.get('/nextbar/rounds/:id', nextBarRounds.getRound);
 router.post('/nextbar/rounds/:id/vote', nextBarRounds.vote);
 router.post('/nextbar/rounds/:id/close', nextBarRounds.closeRound);
+
+// Medications: label photos → draft reminders (paid read; dailyBudget aiScan,
+// 12 MB body parser in server.js). Nothing saved, photos not kept.
+router.post('/meds/scan', perUserLimit({ bucket: 'med-scan', windowMs: 3600000, max: 20 }), medScan.scan);
 
 module.exports = router;

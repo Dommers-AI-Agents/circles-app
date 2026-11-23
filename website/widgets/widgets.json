@@ -232,10 +232,12 @@
      "tagline": "A reminder for every dose, and one tap to log it.",
      "features": [
       "Add each medication with its dose and the times you take it",
+      "Or snap your prescription labels: AI reads the medicine, dose and directions and suggests the reminders, and you check every one before it's added",
       "A reminder at each time; tap Took it right from the notification, or snooze 10 minutes",
       "Today's doses at a glance, with anything missed flagged after two hours",
       "How many doses you took over the last 7 days and this month",
-      "Private: only you see it"
+      "Private: only you see it. Label photos are read and discarded, never kept",
+      "A convenience, not medical advice: you're responsible for checking every medicine, dose and time"
      ]
     },
     {
