@@ -1,17 +1,17 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>New Store Kit</title>
-<!-- One page: how to make a new store's kit, from the 3D print to the NFC tag, QR label and window sticker (Wes, 2026-11-21; window sticker added 2026-11-23).
+<!-- One page: how to make a new store's kit, window sticker and paper stands first (enough to run a store), then the Totem with its NFC tag and QR label (Wes, 2026-11-21; reordered 2026-11-23).
      PDF: Chrome headless → website/favcircles.com/kit-8fd2638e871f/store-setup-checklist.pdf (Sales kit). -->
 <style>
   @page { size: Letter; margin: 0.4in 0.5in; }
   :root { --pink: #f4567f; --ink: #1d1b22; --muted: #5d5a66; --line: #e6e2ea; }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 9.2pt/1.27 "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); background: #fff; }
+  body { margin: 0; font: 9.8pt/1.32 "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); background: #fff; }
   header { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 2.5px solid var(--pink); padding-bottom: 6px; margin-bottom: 9px; }
   h1 { font-size: 19pt; margin: 0; letter-spacing: -0.3px; }
   header .tag { color: var(--muted); font-size: 9pt; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 22px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 22px; }
   section { break-inside: avoid; }
   h2 { font-size: 11pt; margin: 0 0 4px; display: flex; gap: 7px; align-items: center; }
   h2 .n { background: var(--pink); color: #fff; border-radius: 50%; width: 19px; height: 19px; display: inline-grid; place-items: center; font-size: 9.5pt; flex: none; }
@@ -26,106 +26,100 @@
   .box { border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: #fbf8fa; }
   .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 18px; }
   .plain li::before { border: none; content: "•"; top: -1px; left: 4px; color: var(--pink); font-weight: 700; }
+  .part { border-left: 3px solid var(--pink); padding: 2px 0 2px 9px; font-size: 10pt; margin-top: 2px; }
   footer { margin-top: 7px; color: var(--muted); font-size: 8.3pt; display: flex; justify-content: space-between; }
 </style></head>
 <body>
-<header><h1>Making a new store's kit</h1><span class="tag">Totem · NFC tag · QR label · window sticker · signs</span></header>
+<header><h1>Making a new store's kit</h1><span class="tag">Window sticker · paper stands · Totem</span></header>
 
 <div class="grid">
   <section class="full box">
     <h2 style="margin-bottom:3px">Have on hand (per store)</h2>
     <ul class="plain cols">
-      <li>PLA for the ring and base (~100 g)</li>
-      <li>PLA for the heart (~37 g)</li>
-      <li>One 38 mm NTAG213 NFC sticker</li>
-      <li>Avery 8293 round labels (1½ in)</li>
-      <li>Clear tape or laminate for the label</li>
-      <li>Super glue, 4 rubber bumpers</li>
-      <li>Two 1 cm pieces of 1.75 mm filament (dowels)</li>
-      <li>Posca PC-3M paint pen (white or black)</li>
-      <li>Card stock + Letter paper for signs</li>
       <li>One round FavCircles window sticker</li>
       <li>Avery 22805 square labels (1½ in)</li>
+      <li>Card stock + Letter paper for the stands</li>
       <li>iPhone with FavCircles (super-user)</li>
+      <li>Totem: PLA (~100 g ring and base, ~37 g heart)</li>
+      <li>Totem: Posca PC-3M paint pen, super glue, 4 bumpers</li>
+      <li>Totem: two 1 cm pieces of 1.75 mm filament (dowels)</li>
+      <li>Totem: one 38 mm NTAG213 NFC sticker</li>
+      <li>Totem: Avery 8293 round labels (1½ in), clear tape</li>
     </ul>
   </section>
+
+  <div class="full part"><b>Start here.</b> The window sticker and the paper stands are enough to run a store.</div>
 
   <section>
     <h2><span class="n">1</span>Get the store ready <span class="when">· app, 2 min</span></h2>
     <ul>
       <li>Open the store's page → <span class="path">••• → Store Admin</span>. If it isn't a FavCircles store yet, this creates it (no owner, so they can still claim it).</li>
-      <li>Note its <b>window code</b> (shown on Store Admin). You need it for the QR label.</li>
+      <li>Its <b>window code</b> and <b>register code</b> are shown there.</li>
     </ul>
   </section>
 
   <section>
-    <h2><span class="n">2</span>3D print the Totem <span class="when">· ~4 h of printing</span></h2>
-    <ul>
-      <li>Files: <code>Marketing/mascot/totem-print/bambu/</code>. Same files for every store.</li>
-      <li><b>Totem 1</b> (ring + base, 2 h 45 m): open in Bambu Studio → <b>Print</b> → pick the ring/base color slot.</li>
-      <li>Clear the plate, then <b>Totem 2</b> (heart halves, 1 h 10 m) in the heart color.</li>
-      <li class="note">Tip: <b>Send</b> both files to the printer first, then start each from Bambu Handy when the plate is clear.</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2><span class="n">3</span>Write the NFC tag <span class="when">· app, 1 min</span></h2>
-    <ul>
-      <li><span class="path">Store Admin → NFC stickers → + → Points</span> (older app: "Register"), name it <b>Totem</b>.</li>
-      <li>Hold the top of the iPhone flat on the NFC sticker until it says it's written. The sticker goes in the base, under the QR label.</li>
-      <li>Tap it once to test: it should open the store.</li>
-      <li class="note">Lock it (tap its row → Lock) only once the Totem is finished. Locking is permanent.</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2><span class="n">4</span>Make the QR label <span class="when">· 5 min</span></h2>
-    <ul>
-      <li>The label must open the same link as the tag: <code>api.favcircles.com/s/&lt;window code&gt;?t=totem</code>.</li>
-      <li><span class="path">Settings → Sticker Venues → QR button → Totem QR labels for several stores</span>: tick the stores, <b>Print</b>, enter the first unused label # → one label per store.</li>
-      <li>Print on <b>Avery 8293</b> at <b>Actual size</b> (test on plain paper first). Each store's name prints under its label.</li>
-      <li>Scan one with the iPhone camera, then cover it with clear tape or laminate.</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2><span class="n">5</span>Make the window sticker <span class="when">· 5 min</span></h2>
+    <h2><span class="n">2</span>Make the window sticker <span class="when">· 5 min</span></h2>
     <ul>
       <li>The round window sticker comes with the app-download QR code. The store's own window code goes on top of it.</li>
       <li><span class="path">Settings → Sticker Venues → QR button → Window stickers for several stores</span>: tick the stores, <b>Print</b>, enter the first unused sticker # → one per store.</li>
       <li>Print on <b>Avery 22805</b> at <b>Actual size</b> (test on plain paper first). Each store's name prints under its code.</li>
-      <li>Stick the store's code squarely over the app-download code so none of the old code shows. Scan it with the iPhone camera: it should open the store.</li>
+      <li>Stick the store's code squarely over the app-download code so none of the old code shows.</li>
     </ul>
   </section>
 
   <section>
-    <h2><span class="n">6</span>Assemble <span class="when">· 10 min + glue time</span></h2>
-    <ul>
-      <li>Paint the engraved heart design and <b>JOIN FAVCIRCLES</b> with the Posca pen, wipe the surface with a damp paper towel, let dry.</li>
-      <li>Turn the base over and stick the NFC tag to the ceiling of the round pocket underneath (right under the label recess).</li>
-      <li>Push the two filament dowels into the holes, glue, and press the heart halves together.</li>
-      <li>Glue the heart's stem into the socket at the bottom of the ring.</li>
-      <li>Glue the ring into the base's slot; add the four bumpers underneath.</li>
-      <li>Put the QR label in the round recess on the base, over the tag: one circle to tap or scan.</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2><span class="n">7</span>Print the paper signs <span class="when">· app, 5 min</span></h2>
+    <h2><span class="n">3</span>Print the paper stands <span class="when">· app, 5 min</span></h2>
     <ul>
       <li><span class="path">Store Admin → window code → Share → Print a sign or tent…</span></li>
-      <li><b>Sign</b> for the window, <b>Table tents</b> (on card stock), <b>Counter card</b>; register code the same way for the register card.</li>
-      <li>Optional extra NFC stickers for tables: <span class="path">NFC stickers → + → Window</span>, one per table.</li>
+      <li><b>Table tents</b> (on card stock), <b>Counter card</b>, and a <b>Sign</b> if they want one on paper.</li>
+      <li>Register card: the same way from the <b>register code</b>.</li>
     </ul>
   </section>
 
   <section>
-    <h2><span class="n">8</span>Final check before it leaves <span class="when">· 2 min</span></h2>
+    <h2><span class="n">4</span>Check it <span class="when">· 1 min</span></h2>
     <ul>
-      <li>Tap the Totem's QR label: the store's card opens and the tap shows on <span class="path">NFC stickers</span>.</li>
-      <li>Scan the same label with the camera: same store.</li>
-      <li>Scan the window sticker: same store, not the app download page.</li>
-      <li>Lock the Totem's NFC sticker. Pack the Totem, window sticker, signs, tents and spare labels.</li>
+      <li>Scan the window sticker with the iPhone camera: it opens the store, not the app download page.</li>
+      <li>Scan a table tent: same store.</li>
+      <li>Pack the window sticker, stands and a few spare stickers. <b>The store can run on these.</b></li>
+    </ul>
+  </section>
+
+  <div class="full part"><b>Then the Totem.</b> Print it, put it together, and add the NFC tag and the store's QR label on top.</div>
+
+  <section>
+    <h2><span class="n">5</span>3D print the Totem <span class="when">· ~4 h, hands-off</span></h2>
+    <ul>
+      <li>Open the two files in <code>Marketing/mascot/totem-print/bambu/</code> in Bambu Studio and print them: <b>Totem 1</b> (ring + base), then <b>Totem 2</b> (heart) in the heart color. Same files for every store.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">6</span>Put it together <span class="when">· 10 min + glue time</span></h2>
+    <ul>
+      <li>Paint the engraved heart design and <b>JOIN FAVCIRCLES</b> with the Posca pen, wipe with a damp paper towel, let dry.</li>
+      <li>Dowels into the holes, glue, press the heart halves together.</li>
+      <li>Glue the heart's stem into the ring, the ring into the base's slot; four bumpers underneath.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">7</span>Add the NFC tag <span class="when">· app, 1 min</span></h2>
+    <ul>
+      <li><span class="path">Store Admin → NFC stickers → + → Points</span> (older app: "Register"), name it <b>Totem</b>.</li>
+      <li>Hold the top of the iPhone flat on the NFC sticker until it says it's written. Tap it once to test: it opens the store.</li>
+      <li>Turn the base over and stick the tag to the ceiling of the round pocket underneath, right under the label recess.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">8</span>Add the store's QR label on top <span class="when">· 5 min</span></h2>
+    <ul>
+      <li><span class="path">Settings → Sticker Venues → QR button → Totem QR labels for several stores</span>: tick the stores, <b>Print</b>, enter the first unused label # → one per store.</li>
+      <li>Print on <b>Avery 8293</b> at <b>Actual size</b>. It opens the same link as the tag.</li>
+      <li>Cover it with clear tape and put it in the round recess on the base, over the tag: one circle to tap or scan.</li>
+      <li>Tap it and scan it: same store both ways. Then lock the tag (<span class="path">NFC stickers</span> → its row → Lock; permanent).</li>
     </ul>
   </section>
 </div>

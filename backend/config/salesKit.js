@@ -53,7 +53,7 @@ const SALES_KIT = [
     items: [
       {
         title: 'Making a new store\'s kit',
-        sub: 'One page, start to finish: 3D print the Totem, write its NFC tag, make the QR label and the window sticker, assemble, print the signs, final check.',
+        sub: 'One page: the window sticker and paper stands first (enough to run a store), then the Totem: print it, put it together, add the NFC tag and the store\'s QR label on top.',
         url: `${KIT}/store-setup-checklist.pdf`,
         thumb: `${KIT}/store-setup-checklist.png`,
         action: 'Open PDF to print'
