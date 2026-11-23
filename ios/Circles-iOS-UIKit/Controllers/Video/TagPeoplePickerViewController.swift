@@ -76,11 +76,28 @@ class TagPeoplePickerViewController: BaseViewController {
     @objc private func cancelTapped() { dismiss(animated: true) }
 
     @objc private func doneTapped() {
-        let chosen = people
-            .filter { selectedIds.contains($0.id) }
-            .map { TaggedMomentUser(id: $0.id, displayName: $0.displayName, profilePicture: $0.profilePicture) }
-        onDone?(chosen)
-        dismiss(animated: true)
+        let chosen = Self.chosen(
+            loaded: people.map { TaggedMomentUser(id: $0.id, displayName: $0.displayName, profilePicture: $0.profilePicture) },
+            initialSelection: initialSelection,
+            selectedIds: selectedIds
+        )
+        // Closed first: the caller usually saves, and its "Saving…" alert
+        // can't be presented while this picker is still on screen.
+        let onDone = self.onDone
+        dismiss(animated: true) { onDone?(chosen) }
+    }
+
+    /// What Done hands back: everyone still checked. People who came in
+    /// already selected stay selected until they are unchecked, even if the
+    /// connections haven't loaded (or failed to) — Done on a list that never
+    /// appeared must not read as "nobody", because an Inner Circle save
+    /// replaces the whole list with what comes back.
+    static func chosen(loaded: [TaggedMomentUser],
+                       initialSelection: [TaggedMomentUser],
+                       selectedIds: Set<String>) -> [TaggedMomentUser] {
+        let loadedIds = Set(loaded.map { $0.id })
+        let kept = initialSelection.filter { selectedIds.contains($0.id) && !loadedIds.contains($0.id) }
+        return loaded.filter { selectedIds.contains($0.id) } + kept
     }
 }
 

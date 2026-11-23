@@ -345,9 +345,12 @@ final class InnerCirclesVisualViewController: BaseViewController {
     private func remove(_ person: User, fromListId listId: String) {
         guard let list = current(listId) else { return }
         InnerCircleEditing.confirmRemove(person, listName: list.name, from: self) { [weak self] in
-            // From the list as it stands at the moment of saving, in full
+            // From the list as it stands at the moment of saving, in full —
+            // everyone the server resolved, not just the faces drawn. (The
+            // same ids Settings and the picker send: the server refuses a
+            // save naming anyone who is no longer a connection.)
             guard let self, let latest = self.current(listId) else { return }
-            let userIds = InnerCircleRingLayout.membersAfterRemoving(person.id, from: latest.userIds)
+            let userIds = InnerCircleRingLayout.membersAfterRemoving(person.id, from: latest.users.map { $0.id })
             InnerCircleEditing.setMembers(listId: listId, userIds: userIds, from: self) { [weak self] list in
                 self?.apply(list)
             }

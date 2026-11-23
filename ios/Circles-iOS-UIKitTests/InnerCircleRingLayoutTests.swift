@@ -73,4 +73,23 @@ struct InnerCircleRingLayoutTests {
         #expect(after.contains("u39"))
         #expect(Layout.membersAfterRemoving("nobody", from: all) == all)
     }
+
+    // MARK: - The people picker's Done
+
+    private func person(_ id: String) -> TaggedMomentUser {
+        TaggedMomentUser(id: id, displayName: id, profilePicture: nil)
+    }
+
+    @Test func doneBeforeConnectionsLoadKeepsWhoWasAlreadyOnTheList() {
+        let onList = [person("a"), person("b")]
+        let chosen = TagPeoplePickerViewController.chosen(loaded: [], initialSelection: onList, selectedIds: ["a", "b"])
+        #expect(chosen.map { $0.id } == ["a", "b"])
+    }
+
+    @Test func doneReturnsEveryoneCheckedOnceAndDropsTheUnchecked() {
+        let loaded = [person("a"), person("b"), person("c")]
+        // a was on the list and stays, b was unchecked, c was added
+        let chosen = TagPeoplePickerViewController.chosen(loaded: loaded, initialSelection: [person("a"), person("b")], selectedIds: ["a", "c"])
+        #expect(chosen.map { $0.id } == ["a", "c"])
+    }
 }
