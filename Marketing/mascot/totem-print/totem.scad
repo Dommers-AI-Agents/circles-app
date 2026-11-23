@@ -39,8 +39,8 @@ HEART_DESIGN = "pin_drop";   // Wes picked 2026-11-22: red heart, gold pin, Dark
 BASE_TEXT = "PLACES YOU LOVE"; BASE_TEXT_SIZE = 5.6; BASE_TEXT_Z = 7.2;
 // Wes 2026-11-22: "'Places you Love' across the front. Join ( ) Us across the top, either side of
 // the QR sticker. Favcircles engraved across the arch of the top of the circle enclosing the heart."
-// The round label is the "( )": JOIN [label] US
-TOP_WORDS = ["JOIN", "US"]; TOP_TEXT_SIZE = 7; TOP_GAP = 4.5;   // gap between a word and the label's edge
+// The round label is the "( )": SIGN [label] UP
+TOP_WORDS = ["SIGN", "UP"]; TOP_TEXT_SIZE = 7; TOP_GAP = 4.5;   // gap between a word and the label's edge
 RING_TEXT = "FAVCIRCLES"; RING_TEXT_SIZE = 6; RING_TEXT_R = 48;  // on the ring's front face, over the top
 // Character (Wes 2026-11-22: "more little pin drops to look like a map of pins on either side of
 // Favcircles along the ring"; a logo "stamp of authenticity"):
@@ -362,7 +362,7 @@ module crown2d() {
   translate([0, -5]) square([13, 1.6], center = true);
 }
 
-// JOIN and US on the base top, either side of the round label
+// SIGN and UP on the base top, either side of the round label
 module base_top_text2d() {
   translate([-(LABEL_D / 2 + TOP_GAP), LABEL_Y]) text(TOP_WORDS[0], size = TOP_TEXT_SIZE, font = FONT, halign = "right", valign = "center", spacing = 1.08);
   translate([LABEL_D / 2 + TOP_GAP, LABEL_Y]) text(TOP_WORDS[1], size = TOP_TEXT_SIZE, font = FONT, halign = "left", valign = "center", spacing = 1.08);
