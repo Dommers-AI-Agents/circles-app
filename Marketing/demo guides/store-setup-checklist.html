@@ -1,17 +1,17 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>New Store Kit</title>
-<!-- One page: how to make a new store's kit, from the 3D print to the NFC tag and QR label (Wes, 2026-11-21).
+<!-- One page: how to make a new store's kit, from the 3D print to the NFC tag, QR label and window sticker (Wes, 2026-11-21; window sticker added 2026-11-23).
      PDF: Chrome headless → website/favcircles.com/kit-8fd2638e871f/store-setup-checklist.pdf (Sales kit). -->
 <style>
-  @page { size: Letter; margin: 0.45in 0.5in; }
+  @page { size: Letter; margin: 0.4in 0.5in; }
   :root { --pink: #f4567f; --ink: #1d1b22; --muted: #5d5a66; --line: #e6e2ea; }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 9.6pt/1.3 "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); background: #fff; }
+  body { margin: 0; font: 9.2pt/1.27 "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); background: #fff; }
   header { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 2.5px solid var(--pink); padding-bottom: 6px; margin-bottom: 9px; }
   h1 { font-size: 19pt; margin: 0; letter-spacing: -0.3px; }
   header .tag { color: var(--muted); font-size: 9pt; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 22px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 22px; }
   section { break-inside: avoid; }
   h2 { font-size: 11pt; margin: 0 0 4px; display: flex; gap: 7px; align-items: center; }
   h2 .n { background: var(--pink); color: #fff; border-radius: 50%; width: 19px; height: 19px; display: inline-grid; place-items: center; font-size: 9.5pt; flex: none; }
@@ -29,7 +29,7 @@
   footer { margin-top: 7px; color: var(--muted); font-size: 8.3pt; display: flex; justify-content: space-between; }
 </style></head>
 <body>
-<header><h1>Making a new store's kit</h1><span class="tag">Totem · NFC tag · QR label · signs</span></header>
+<header><h1>Making a new store's kit</h1><span class="tag">Totem · NFC tag · QR label · window sticker · signs</span></header>
 
 <div class="grid">
   <section class="full box">
@@ -44,6 +44,8 @@
       <li>Two 1 cm pieces of 1.75 mm filament (dowels)</li>
       <li>Posca PC-3M paint pen (white or black)</li>
       <li>Card stock + Letter paper for signs</li>
+      <li>One round FavCircles window sticker</li>
+      <li>Avery 22805 square labels (1½ in)</li>
       <li>iPhone with FavCircles (super-user)</li>
     </ul>
   </section>
@@ -87,7 +89,17 @@
   </section>
 
   <section>
-    <h2><span class="n">5</span>Assemble <span class="when">· 10 min + glue time</span></h2>
+    <h2><span class="n">5</span>Make the window sticker <span class="when">· 5 min</span></h2>
+    <ul>
+      <li>The round window sticker comes with the app-download QR code. The store's own window code goes on top of it.</li>
+      <li><span class="path">Settings → Sticker Venues → QR button → Window stickers for several stores</span>: tick the stores, <b>Print</b>, enter the first unused sticker # → one per store.</li>
+      <li>Print on <b>Avery 22805</b> at <b>Actual size</b> (test on plain paper first). Each store's name prints under its code.</li>
+      <li>Stick the store's code squarely over the app-download code so none of the old code shows. Scan it with the iPhone camera: it should open the store.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">6</span>Assemble <span class="when">· 10 min + glue time</span></h2>
     <ul>
       <li>Paint the engraved heart design and <b>JOIN FAVCIRCLES</b> with the Posca pen, wipe the surface with a damp paper towel, let dry.</li>
       <li>Turn the base over and stick the NFC tag to the ceiling of the round pocket underneath (right under the label recess).</li>
@@ -99,7 +111,7 @@
   </section>
 
   <section>
-    <h2><span class="n">6</span>Print the paper signs <span class="when">· app, 5 min</span></h2>
+    <h2><span class="n">7</span>Print the paper signs <span class="when">· app, 5 min</span></h2>
     <ul>
       <li><span class="path">Store Admin → window code → Share → Print a sign or tent…</span></li>
       <li><b>Sign</b> for the window, <b>Table tents</b> (on card stock), <b>Counter card</b>; register code the same way for the register card.</li>
@@ -107,12 +119,13 @@
     </ul>
   </section>
 
-  <section class="full">
-    <h2><span class="n">7</span>Final check before it leaves <span class="when">· 2 min</span></h2>
-    <ul class="cols" style="gap:0 18px">
-      <li>Tap the QR label: the store's card opens and the tap shows on <span class="path">NFC stickers</span>.</li>
+  <section>
+    <h2><span class="n">8</span>Final check before it leaves <span class="when">· 2 min</span></h2>
+    <ul>
+      <li>Tap the Totem's QR label: the store's card opens and the tap shows on <span class="path">NFC stickers</span>.</li>
       <li>Scan the same label with the camera: same store.</li>
-      <li>Lock the Totem's NFC sticker. Pack the Totem, signs, tents and spare labels.</li>
+      <li>Scan the window sticker: same store, not the app download page.</li>
+      <li>Lock the Totem's NFC sticker. Pack the Totem, window sticker, signs, tents and spare labels.</li>
     </ul>
   </section>
 </div>
