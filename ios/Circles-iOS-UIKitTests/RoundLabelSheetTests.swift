@@ -1,39 +1,57 @@
 import Testing
 @testable import Circles_iOS
 
-struct TotemLabelSheetTests {
+struct RoundLabelSheetTests {
+    private func totem(_ ids: [String], startAt: Int = 1) -> RoundLabelSheet {
+        RoundLabelSheet(design: .totem, venueIds: ids, startAt: startAt)
+    }
+
     @Test func queryNamesMatchTheServer() {
-        let sheet = TotemLabelSheet(venueIds: ["a", "b"], startAt: 5)
-        #expect(sheet.queryParams == ["venueIds": "a,b", "startAt": "5"])
+        #expect(totem(["a", "b"], startAt: 5).queryParams == ["venueIds": "a,b", "startAt": "5"])
+        #expect(RoundLabelSheet(design: .table, venueIds: ["a"], startAt: 2).queryParams == ["venueIds": "a", "startAt": "2"])
+    }
+
+    @Test func eachDesignHasItsOwnEndpoint() {
+        #expect(RoundLabelSheet.Design.totem.endpoint == "rewards/stickers/totem")
+        #expect(RoundLabelSheet.Design.table.endpoint == "rewards/stickers/table")
     }
 
     @Test func twentyLabelsToASheet() {
-        #expect(TotemLabelSheet.perSheet == 20)
-        #expect(TotemLabelSheet(venueIds: []).sheetCount == 0)
-        #expect(TotemLabelSheet(venueIds: Array(repeating: "x", count: 20)).sheetCount == 1)
-        #expect(TotemLabelSheet(venueIds: ["a"], startAt: 20).sheetCount == 1)
-        #expect(TotemLabelSheet(venueIds: ["a", "b"], startAt: 20).sheetCount == 2)
-        #expect(TotemLabelSheet(venueIds: Array(repeating: "x", count: 21)).sheetCount == 2)
+        #expect(RoundLabelSheet.perSheet == 20)
+        #expect(totem([]).sheetCount == 0)
+        #expect(totem(Array(repeating: "x", count: 20)).sheetCount == 1)
+        #expect(totem(["a"], startAt: 20).sheetCount == 1)
+        #expect(totem(["a", "b"], startAt: 20).sheetCount == 2)
+        #expect(totem(Array(repeating: "x", count: 21)).sheetCount == 2)
     }
 
     @Test func startPositionIsOneToTwenty() {
-        #expect(TotemLabelSheet.startPosition(from: " 7 ") == 7)
-        #expect(TotemLabelSheet.startPosition(from: "20") == 20)
-        #expect(TotemLabelSheet.startPosition(from: "0") == nil)
-        #expect(TotemLabelSheet.startPosition(from: "21") == nil)
-        #expect(TotemLabelSheet.startPosition(from: "x") == nil)
-        #expect(TotemLabelSheet.startPosition(from: nil) == nil)
+        #expect(RoundLabelSheet.startPosition(from: " 7 ") == 7)
+        #expect(RoundLabelSheet.startPosition(from: "20") == 20)
+        #expect(RoundLabelSheet.startPosition(from: "0") == nil)
+        #expect(RoundLabelSheet.startPosition(from: "21") == nil)
+        #expect(RoundLabelSheet.startPosition(from: "x") == nil)
+        #expect(RoundLabelSheet.startPosition(from: nil) == nil)
     }
 
-    @Test func fileNameSaysTheStock() {
-        #expect(TotemLabelSheet(venueIds: ["a"]).fileName == "FavCircles Totem labels - 1 store - Avery 8293.pdf")
-        #expect(TotemLabelSheet(venueIds: ["a", "b"]).fileName == "FavCircles Totem labels - 2 stores - Avery 8293.pdf")
+    @Test func fileNameSaysWhatAndTheStock() {
+        #expect(totem(["a"]).fileName == "FavCircles Totem labels - 1 store - Avery 8293.pdf")
+        #expect(totem(["a", "b"]).fileName == "FavCircles Totem labels - 2 stores - Avery 8293.pdf")
+        #expect(RoundLabelSheet(design: .table, venueIds: ["a", "b"]).fileName == "FavCircles table stickers - 2 stores - Avery 8293.pdf")
     }
 
     @Test func pickerLimitsFollowTheSheet() {
         #expect(StorePickPrint.windowStickers.perSheet == 24)
-        #expect(StorePickPrint.totemLabels.perSheet == 20)
-        #expect(StorePickPrint.totemLabels.maxStores == 100)
-        #expect(StorePickPrint.totemLabels.startMessage(count: 1).contains("Avery 8293"))
+        #expect(StorePickPrint.windowStickers.roundDesign == nil)
+        for pick in [StorePickPrint.totemLabels, .tableStickers] {
+            #expect(pick.perSheet == 20)
+            #expect(pick.maxStores == 100)
+            #expect(pick.startMessage(count: 1).contains("Avery 8293"))
+        }
+        #expect(StorePickPrint.totemLabels.roundDesign == .totem)
+        #expect(StorePickPrint.tableStickers.roundDesign == .table)
+        #expect(StorePickPrint.totemLabels.startTitle == "Start at label #")
+        #expect(StorePickPrint.tableStickers.startTitle == "Start at sticker #")
+        #expect(StorePickPrint.tableStickers.startMessage(count: 2).contains("2 round stickers"))
     }
 }

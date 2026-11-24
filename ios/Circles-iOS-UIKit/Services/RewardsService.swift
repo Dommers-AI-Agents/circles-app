@@ -41,9 +41,9 @@ class RewardsService {
         }
     }
 
-    /// Super-user: one round Totem QR label per store on Avery 8293
-    func downloadTotemLabels(_ sheet: TotemLabelSheet, completion: @escaping (Result<Data, Error>) -> Void) {
-        apiService.requestData(endpoint: "rewards/stickers/totem", queryParams: sheet.queryParams) { result in
+    /// Super-user: one round label per store on Avery 8293 (Totem QR labels or table stickers)
+    func downloadRoundLabels(_ sheet: RoundLabelSheet, completion: @escaping (Result<Data, Error>) -> Void) {
+        apiService.requestData(endpoint: sheet.design.endpoint, queryParams: sheet.queryParams) { result in
             completion(result.mapError { $0 as Error })
         }
     }

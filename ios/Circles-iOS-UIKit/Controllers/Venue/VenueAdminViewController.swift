@@ -5,8 +5,8 @@ import UIKit
 /// (VenueAdminDetailViewController); from here you can also sign up a new
 /// venue and grant super-user access to other users. The QR button prints
 /// sticker sheets: window codes for picked stores (StoreStickerSheet), round
-/// Totem QR labels for picked stores (TotemLabelSheet) or the generic App Clip
-/// code for coasters (CoasterStickerSheet).
+/// Totem QR labels or table stickers for picked stores (RoundLabelSheet) or the
+/// generic App Clip code for coasters (CoasterStickerSheet).
 class VenueAdminViewController: BaseViewController {
 
     // MARK: - Properties
@@ -333,6 +333,7 @@ extension VenueAdminViewController {
             actions: [
                 ("Window stickers for several stores…", .default, { [weak self] in self?.startStickerPicking(.windowStickers) }),
                 ("Totem QR labels for several stores…", .default, { [weak self] in self?.startStickerPicking(.totemLabels) }),
+                ("Table stickers for several stores…", .default, { [weak self] in self?.startStickerPicking(.tableStickers) }),
                 ("Coaster stickers (2 per coaster)…", .default, { [weak self] in self?.askCoasterCount() })
             ],
             from: self,
@@ -366,7 +367,7 @@ extension VenueAdminViewController {
     @objc private func printStickersTapped() {
         let count = stickerPicks.count
         AlertPresenter.showTextInput(
-            title: pickPrint == .totemLabels ? "Start at label #" : "Start at sticker #",
+            title: pickPrint.startTitle,
             message: pickPrint.startMessage(count: count),
             initialText: "1",
             keyboardType: .numberPad,
@@ -374,19 +375,18 @@ extension VenueAdminViewController {
             from: self
         ) { [weak self] text in
             guard let self, let text else { return }
-            switch self.pickPrint {
-            case .windowStickers:
+            if let design = self.pickPrint.roundDesign {
+                guard let start = RoundLabelSheet.startPosition(from: text) else {
+                    self.showError("Pick a spot from 1 to \(RoundLabelSheet.perSheet).")
+                    return
+                }
+                self.downloadRoundLabels(RoundLabelSheet(design: design, venueIds: self.stickerPicks, startAt: start))
+            } else {
                 guard let start = StoreStickerSheet.startPosition(from: text) else {
                     self.showError("Pick a sticker from 1 to \(StoreStickerSheet.perSheet).")
                     return
                 }
                 self.downloadStickers(StoreStickerSheet(venueIds: self.stickerPicks, startAt: start))
-            case .totemLabels:
-                guard let start = TotemLabelSheet.startPosition(from: text) else {
-                    self.showError("Pick a label from 1 to \(TotemLabelSheet.perSheet).")
-                    return
-                }
-                self.downloadTotemLabels(TotemLabelSheet(venueIds: self.stickerPicks, startAt: start))
             }
         }
     }
@@ -408,9 +408,9 @@ extension VenueAdminViewController {
         }
     }
 
-    private func downloadTotemLabels(_ sheet: TotemLabelSheet) {
-        let loading = AlertPresenter.showLoading(message: "Building your labels…", from: self)
-        RewardsService.shared.downloadTotemLabels(sheet) { [weak self] result in
+    private func downloadRoundLabels(_ sheet: RoundLabelSheet) {
+        let loading = AlertPresenter.showLoading(message: "Building your \(sheet.design == .totem ? "labels" : "stickers")…", from: self)
+        RewardsService.shared.downloadRoundLabels(sheet) { [weak self] result in
             DispatchQueue.main.async {
                 loading.dismiss(animated: true) {
                     guard let self else { return }

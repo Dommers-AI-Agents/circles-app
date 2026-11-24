@@ -77,14 +77,25 @@ struct CoasterStickerSheet: Equatable {
     }
 }
 
-/// Totem QR labels: one 1½ in round label per picked store for the Totem's
-/// base, on Avery 8293 / Presta 94506 (`GET rewards/stickers/totem`). Each
-/// links to the store's window code + `?t=totem`, the same link as the
-/// Totem's NFC sticker (Wes, 2026-11-22: never 20 labels of one store).
-struct TotemLabelSheet: Equatable {
+/// Round 1½ in labels on Avery 8293 / Presta 94506, one per picked store:
+/// - Totem QR labels for the Totem's base (`GET rewards/stickers/totem`): the
+///   store's window code + `?t=totem`, the same link as the Totem's NFC
+///   sticker (Wes, 2026-11-22: never 20 labels of one store).
+/// - Table stickers (`GET rewards/stickers/table`): "Psst… the regulars scan
+///   this" in cream, the store's window code (Wes, 2026-11-24).
+struct RoundLabelSheet: Equatable {
+    enum Design: String, Equatable {
+        case totem, table
+
+        var endpoint: String { "rewards/stickers/\(rawValue)" }
+        /// What the file and the prompts call them
+        var noun: String { self == .totem ? "Totem labels" : "table stickers" }
+    }
+
     static let perSheet = 20
     static let maxStores = 100
 
+    var design: Design
     /// Store ids in the order they were picked (that's the order they print)
     var venueIds: [String]
     /// 1 is the top-left label; later positions skip labels already used
@@ -108,7 +119,7 @@ struct TotemLabelSheet: Equatable {
     }
 
     var fileName: String {
-        "FavCircles Totem labels - \(venueIds.count) \(venueIds.count == 1 ? "store" : "stores") - Avery 8293.pdf"
+        "FavCircles \(design.noun) - \(venueIds.count) \(venueIds.count == 1 ? "store" : "stores") - Avery 8293.pdf"
     }
 }
 
@@ -116,20 +127,23 @@ struct TotemLabelSheet: Equatable {
 enum StorePickPrint: Equatable {
     case windowStickers
     case totemLabels
+    case tableStickers
 
-    var maxStores: Int {
+    /// The round-label design, or nil for the square window stickers
+    var roundDesign: RoundLabelSheet.Design? {
         switch self {
-        case .windowStickers: return StoreStickerSheet.maxStores
-        case .totemLabels: return TotemLabelSheet.maxStores
+        case .windowStickers: return nil
+        case .totemLabels: return .totem
+        case .tableStickers: return .table
         }
     }
 
-    var perSheet: Int {
-        switch self {
-        case .windowStickers: return StoreStickerSheet.perSheet
-        case .totemLabels: return TotemLabelSheet.perSheet
-        }
-    }
+    var maxStores: Int { roundDesign == nil ? StoreStickerSheet.maxStores : RoundLabelSheet.maxStores }
+
+    var perSheet: Int { roundDesign == nil ? StoreStickerSheet.perSheet : RoundLabelSheet.perSheet }
+
+    /// The start-position prompt's title
+    var startTitle: String { self == .totemLabels ? "Start at label #" : "Start at sticker #" }
 
     /// The start-position prompt's message for `count` picked stores
     func startMessage(count: Int) -> String {
@@ -138,6 +152,8 @@ enum StorePickPrint: Equatable {
             return "\(count) \(count == 1 ? "sticker" : "stickers"), one per store, on Avery 22805. 1 is the top-left sticker; start later to skip ones already used."
         case .totemLabels:
             return "\(count) round \(count == 1 ? "label" : "labels"), one per store, on Avery 8293. 1 is the top-left label; start later to skip ones already used. Each opens the store like its Totem's NFC tag."
+        case .tableStickers:
+            return "\(count) round \(count == 1 ? "sticker" : "stickers"), one per store, on Avery 8293. 1 is the top-left sticker; start later to skip ones already used. Each says \"Psst… the regulars scan this\" and opens the store; the store's name prints on the backing under it."
         }
     }
 }
