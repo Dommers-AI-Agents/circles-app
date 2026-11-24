@@ -509,7 +509,29 @@ function drawTotemLabel(doc, cx, cy, url, name) {
   }
 }
 
-async function renderTotemLabels(venues, { startAt = 1 } = {}) {
+// Table stickers (Wes, 2026-11-24): "Psst… the regulars scan this", cream,
+// on the same round labels and sheet as the Totem's, one per store. The link
+// is the store's plain window code. The sticker doesn't say whose it is, so
+// the store's name on the backing is the only way to tell them apart.
+function drawTableSticker(doc, cx, cy, url, name) {
+  roundLabelArt.drawTableSticker(doc, cx, cy, url);
+  if (name) {
+    doc.font('Helvetica').fontSize(6).fillColor(GUIDE_TEXT)
+      .text(name, cx - IN * 0.95, cy + TOTEM_SHEET.diameter / 2 + 0.09 * IN, { width: IN * 1.9, align: 'center', lineBreak: false, ellipsis: true, height: 8 });
+  }
+}
+
+const ROUND_LABELS = {
+  totem: { url: totemUrl, draw: drawTotemLabel },
+  table: { url: (code) => rewardService.stickerUrl(code), draw: drawTableSticker }
+};
+
+const renderTotemLabels = (venues, options) => renderRoundLabels('totem', venues, options);
+const renderTableStickers = (venues, options) => renderRoundLabels('table', venues, options);
+
+// One round label per store, in the order given, from any label on the sheet
+async function renderRoundLabels(design, venues, { startAt = 1 } = {}) {
+  const { url, draw } = ROUND_LABELS[design];
   const start = Number(startAt);
   if (!Number.isInteger(start) || start < 1 || start > TOTEM_LABELS_PER_SHEET) {
     throw new ServiceError(400, 'BAD_START', `startAt must be 1 to ${TOTEM_LABELS_PER_SHEET}`);
@@ -519,7 +541,7 @@ async function renderTotemLabels(venues, { startAt = 1 } = {}) {
     throw new ServiceError(400, 'TOO_MANY_STORES', `At most ${MAX_TOTEM_LABELS} stores at a time`);
   }
   const entries = venues.map((venue) => ({
-    url: totemUrl(codeFor('window', venue)),
+    url: url(codeFor('window', venue)),
     name: String(venue.venueName || '').trim()
   }));
   const { cols, pitch, firstX, firstY } = TOTEM_SHEET;
@@ -531,7 +553,7 @@ async function renderTotemLabels(venues, { startAt = 1 } = {}) {
   entries.forEach((entry, i) => {
     if (i === 0) { doc.addPage(); slot = start - 1; header(); }
     else if (slot >= TOTEM_LABELS_PER_SHEET) { doc.addPage(); slot = 0; header(); }
-    drawTotemLabel(doc, firstX + (slot % cols) * pitch, firstY + Math.floor(slot / cols) * pitch, entry.url, entry.name);
+    draw(doc, firstX + (slot % cols) * pitch, firstY + Math.floor(slot / cols) * pitch, entry.url, entry.name);
     slot += 1;
   });
   return pdfToBuffer(doc);
@@ -591,7 +613,7 @@ const registerCardPDF = (venue) => renderPDF(venue, { kind: 'register', format: 
 const tableTentPDF = (venue) => renderPDF(venue, { kind: 'register', format: 'tent', qr: 'medium' });
 
 module.exports = {
-  renderPDF, renderStoreStickers, renderCoasterStickers, renderTotemLabels, totemUrl,
+  renderPDF, renderStoreStickers, renderCoasterStickers, renderTotemLabels, renderTableStickers, totemUrl,
   TOTEM_LABELS_PER_SHEET, MAX_TOTEM_LABELS, TOTEM_SHEET, TOTEM_TAG, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
   STICKERS_PER_SHEET, MAX_STORE_STICKERS, COASTER_STICKERS_PER_SHEET, MAX_COASTERS, STICKER_SHEETS,
   windowSignPDF, registerCardPDF, tableTentPDF

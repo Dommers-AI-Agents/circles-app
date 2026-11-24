@@ -66,6 +66,26 @@ describe('roundLabelArt', () => {
     doc.end();
   });
 
+  test('the table sticker keeps its words clear of the code and inside the ring', () => {
+    const T = art.TABLE_STICKER;
+    const doc = new PDFDocument({ size: [120, 120], margin: 0 });
+    expect(art.drawTableSticker(doc, 60, 60, 'https://api.favcircles.com/s/WIN12345').modules).toBe(29);
+    doc.font(T.font).fontSize(T.bottomSize);
+    const up = doc._font.ascender / 1000 * T.bottomSize;
+    const down = -doc._font.descender / 1000 * T.bottomSize;
+    const ringInner = T.diameter / 2 - T.ringInset - T.ringWidth / 2;
+    // bottom words: tops two code dots clear of the code's corners, tails inside the ring
+    expect(T.bottomRadius - up - T.qr / Math.SQRT2).toBeGreaterThanOrEqual(2 * T.qr / 29);
+    expect(T.bottomRadius + down).toBeLessThanOrEqual(ringInner);
+    // top word: its capital stands outward from the baseline, still inside the ring
+    const capHeight = doc._font.font.capHeight / doc._font.font.unitsPerEm * T.topSize;
+    expect(capHeight).toBeGreaterThan(0.5 * T.topSize);
+    expect(T.topRadius + capHeight).toBeLessThanOrEqual(ringInner - 0.5 * art.MM);
+    expect(T.topRadius).toBeGreaterThan(T.qr / 2 + 2 * art.MM);
+    expect([T.top, T.bottom]).toEqual(['Psst…', 'the regulars scan this']);
+    doc.end();
+  });
+
   test('the Totem label has no ring, and its words are not the code\'s colour', () => {
     const L = art.TOTEM_LABEL;
     expect(L.ringWidth).toBeUndefined();

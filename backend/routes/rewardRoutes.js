@@ -25,6 +25,7 @@ const {
   printStoreStickers,
   printCoasterStickers,
   printTotemLabels,
+  printTableStickers,
   getVenueAdminDetail,
   syncAppClipExperiences
 } = require('../controllers/venues/venueAdminController');
@@ -146,6 +147,7 @@ router.get('/venues', requireSuperUser, listVenues);
 router.get('/stickers/print', requireSuperUser, printStoreStickers); // many stores' codes on one Avery sheet
 router.get('/stickers/coasters', requireSuperUser, printCoasterStickers); // the generic App Clip code, 2 per coaster
 router.get('/stickers/totem', requireSuperUser, printTotemLabels); // round Totem QR labels, one per store (Avery 8293)
+router.get('/stickers/table', requireSuperUser, printTableStickers); // round table stickers, one per store (Avery 8293)
 router.post('/superusers', requireSuperUser, setSuperUser);
 router.post('/venues/:venueId/owner', requireSuperUser, setVenueOwner);
 // Literal segment, like by-place: a super-user gets (or mints) the codes for any place

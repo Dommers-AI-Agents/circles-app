@@ -270,11 +270,19 @@ exports.printStoreStickers = async (req, res) => {
   }
 };
 
-// @desc    Totem QR labels: one 1½ in round label per picked store, on Avery
-//          8293 / Presta 94506, linking to the store's "totem" NFC sticker
+// @desc    Round 1½ in labels on Avery 8293 / Presta 94506, one per picked
+//          store, from any label on the sheet:
+//          Totem QR labels, linking to the store's "totem" NFC sticker, and
+//          table stickers ("Psst… the regulars scan this"), the window code
 // @route   GET /api/rewards/stickers/totem?venueIds=a,b&startAt=1
+// @route   GET /api/rewards/stickers/table?venueIds=a,b&startAt=1
 // @access  Super user
-exports.printTotemLabels = async (req, res) => {
+const ROUND_LABEL_PRINTS = {
+  totem: { render: printAssetService.renderTotemLabels, file: 'Totem labels', failed: 'Could not build the Totem labels' },
+  table: { render: printAssetService.renderTableStickers, file: 'table stickers', failed: 'Could not build the table stickers' }
+};
+const printRoundLabels = (design) => async (req, res) => {
+  const { render, file, failed } = ROUND_LABEL_PRINTS[design];
   try {
     const ids = String(req.query.venueIds || '').split(',').map(s => s.trim()).filter(Boolean);
     const unique = [...new Set(ids)];
@@ -284,14 +292,16 @@ exports.printTotemLabels = async (req, res) => {
     const docs = await getDocsById(STICKER_COLLECTIONS.STICKER_VENUES, unique);
     const venues = unique.filter(id => docs.has(id)).map(id => ({ venueId: id, ...docs.get(id).data() }));
     if (venues.length < unique.length) throw new ServiceError(404, 'STORE_NOT_FOUND', 'One of those stores no longer exists');
-    const pdf = await printAssetService.renderTotemLabels(venues, { startAt: req.query.startAt || 1 });
+    const pdf = await render(venues, { startAt: req.query.startAt || 1 });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="FavCircles Totem labels - ${venues.length} ${venues.length === 1 ? 'store' : 'stores'} - Avery 8293.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="FavCircles ${file} - ${venues.length} ${venues.length === 1 ? 'store' : 'stores'} - Avery 8293.pdf"`);
     res.send(pdf);
   } catch (error) {
-    sendServiceError(res, error, { log: 'Totem labels', fallbackCode: 'PRINT_FAILED', fallbackMessage: 'Could not build the Totem labels' });
+    sendServiceError(res, error, { log: `Round labels (${design})`, fallbackCode: 'PRINT_FAILED', fallbackMessage: failed });
   }
 };
+exports.printTotemLabels = printRoundLabels('totem');
+exports.printTableStickers = printRoundLabels('table');
 
 // @desc    Coaster stickers: the generic "Join FavCircles" App Clip code on
 //          ¾ in Avery 94102 squares, two per coaster (one each side)

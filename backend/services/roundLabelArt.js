@@ -9,6 +9,7 @@
 // (Marketing/table-sticker/make.js) use arcText from here too.
 //
 // Everything is in PDF points; MM converts. Nothing here reads the database.
+const path = require('path');
 const QRCode = require('qrcode');
 
 const MM = 72 / 25.4;
@@ -31,6 +32,30 @@ const TOTEM_LABEL = {
   noName: 'FAVCIRCLES',       // a label that belongs to no store
   words: '#1A365D',           // navy, the Totem's Dark Blue
   ink: '#1d1b22'              // the code stays near-black: it has to scan
+};
+
+// The table sticker (Wes, 2026-11-24: "Do the 'Psst, regulars scan this' in the
+// cream design"): the same 1½ in circle, cream with a navy ring, "Psst…" over
+// the top, the store's window code, "the regulars scan this" round the bottom.
+// Proportions from the mock-ups (Marketing/table-sticker/make.js, options A + D)
+// with the code a little smaller so the bottom words clear its corners.
+const TABLE_STICKER = {
+  diameter: 38.1 * MM,
+  bleed: 1 * MM,              // cream runs past the cut, so a sheet printed a little off shows no white edge
+  qr: 18.5 * MM,
+  ringInset: 0.75 * MM,
+  ringWidth: 0.6 * MM,
+  font: path.join(__dirname, '../assets/fonts/Gelasio-Bold.ttf'),
+  top: 'Psst…',
+  topRadius: 14.57 * MM,      // baseline; the letters stand outward from it
+  topSize: 3.86 * MM,
+  topSpacing: 0.075 * MM,
+  bottom: 'the regulars scan this',
+  bottomRadius: 17.0 * MM,    // baseline; the letters stand inward from it
+  bottomSize: 2.8 * MM,
+  bottomSpacing: 0.06 * MM,
+  cream: '#FFFBF0',
+  navy: '#1A365D'
 };
 
 const ELLIPSIS = '…';
@@ -156,4 +181,19 @@ function drawTotemLabel(doc, cx, cy, url, name) {
   return { modules: modules.size, name: bottom.text, nameSize: bottom.size };
 }
 
-module.exports = { MM, TOTEM_LABEL, arcLength, fitArcText, measureWith, arcText, drawModules, totemNameLine, drawTotemLabel };
+/** One table sticker centred on (cx, cy), opening `url` (the store's window code). */
+function drawTableSticker(doc, cx, cy, url) {
+  const T = TABLE_STICKER;
+  const r = T.diameter / 2;
+  doc.save();
+  doc.circle(cx, cy, r + T.bleed).fill(T.cream);
+  doc.circle(cx, cy, r - T.ringInset).lineWidth(T.ringWidth).strokeColor(T.navy).stroke();
+  const modules = QRCode.create(url, { errorCorrectionLevel: 'M' }).modules;
+  drawModules(doc, modules, cx - T.qr / 2, cy - T.qr / 2, T.qr, T.navy);
+  arcText(doc, T.top, cx, cy, T.topRadius, { font: T.font, size: T.topSize, color: T.navy, spacing: T.topSpacing });
+  arcText(doc, T.bottom, cx, cy, T.bottomRadius, { font: T.font, size: T.bottomSize, color: T.navy, bottom: true, spacing: T.bottomSpacing });
+  doc.restore();
+  return { modules: modules.size };
+}
+
+module.exports = { MM, TOTEM_LABEL, TABLE_STICKER, drawTableSticker, arcLength, fitArcText, measureWith, arcText, drawModules, totemNameLine, drawTotemLabel };

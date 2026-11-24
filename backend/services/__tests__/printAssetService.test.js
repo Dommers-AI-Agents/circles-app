@@ -96,6 +96,19 @@ describe('printAssetService', () => {
     expect(t.firstY + (t.rows - 1) * t.pitch).toBe(9.5 * 72);
   });
 
+  test('table stickers: the same round sheet, one per store, linking to the plain window code', async () => {
+    const stores = Array.from({ length: 21 }, (_, i) => ({ ...venue, venueId: `v${i}`, windowCode: `W${i}` }));
+    const pageCount = (pdf) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length;
+    const one = await svc.renderTableStickers(stores.slice(0, 1));
+    expect(mediaBox(one)).toEqual([612, 792]);
+    expect(pageCount(one)).toBe(1);
+    expect(pageCount(await svc.renderTableStickers(stores.slice(0, 2), { startAt: 20 }))).toBe(2);
+    expect(pageCount(await svc.renderTableStickers(stores))).toBe(2);
+    await expect(svc.renderTableStickers(stores.slice(0, 1), { startAt: 21 })).rejects.toMatchObject({ status: 400 });
+    await expect(svc.renderTableStickers([])).rejects.toMatchObject({ status: 400 });
+    await expect(svc.renderTableStickers([{ ...venue, windowCode: null }])).rejects.toMatchObject({ status: 404 });
+  });
+
   test('sticker sheets match Avery\'s templates', () => {
     const { avery22805: big, avery94102: small } = svc.STICKER_SHEETS;
     // Every sheet's columns and rows fit the letter page with equal side margins
