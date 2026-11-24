@@ -42,6 +42,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
             setupTabBarAppearance()
         }
         
+        refreshMeTabAvatar()
         setupBadgeObservers()
         setupNotificationObservers()
         setupOfflineBanner()
@@ -238,7 +239,42 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         }
     }
 
+    /// The Me tab wears your profile picture instead of the `person` glyph
+    /// (Wes, 2026-11-24). The item is mutated in place so its badge survives;
+    /// the selected state gets a ring because a photo can't take the tint.
+    @objc private func refreshMeTabAvatar() {
+        guard let item = viewControllers?.last?.tabBarItem else { return }
+        let diameter: CGFloat = isRunningOnMac ? 22 : 26
+        guard let avatar = MeAvatar.image(diameter: diameter) else {
+            // Signed out: back to the glyph
+            let glyph = isRunningOnMac
+                ? UIImage(systemName: "person.circle.fill",
+                          withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .medium))
+                : UIImage(systemName: "person")
+            item.image = glyph
+            item.selectedImage = nil
+            return
+        }
+        item.image = avatar
+        item.selectedImage = MeAvatar.image(
+            diameter: diameter,
+            ring: Constants.Colors.primary.resolvedColor(with: traitCollection)
+        )
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        // The ring colour is baked into the image, so redraw it for light/dark
+        if previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            refreshMeTabAvatar()
+        }
+    }
+
     private func setupNotificationObservers() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(refreshMeTabAvatar), name: .meAvatarDidChange, object: nil
+        )
+
         // Handle navigation from push notifications
         NotificationCenter.default.addObserver(
             self,

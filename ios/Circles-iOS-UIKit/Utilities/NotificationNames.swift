@@ -114,6 +114,10 @@ extension Notification.Name {
 
     static let circleDeleted = Notification.Name("circleDeleted")
 
+    /// The signed-in person, or their profile picture, changed (or the picture
+    /// finished downloading). Every "Me" control redraws its avatar (MeAvatar).
+    static let meAvatarDidChange = Notification.Name("meAvatarDidChange")
+
     static let userBlocked = Notification.Name("userBlocked")
     static let userUnblocked = Notification.Name("userUnblocked")
 

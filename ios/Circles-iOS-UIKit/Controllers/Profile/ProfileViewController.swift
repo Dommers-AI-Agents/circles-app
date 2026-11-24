@@ -754,7 +754,7 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         config.imagePlacement = .top
         config.imagePadding = 0
         config.contentInsets = NSDirectionalEdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0)
-        config.image = UIImage(systemName: "person", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        config.image = MeAvatar.chipImage(isActive: false)
         var title = AttributedString("Me")
         title.font = UIFont.systemFont(ofSize: 9, weight: .medium)
         config.attributedTitle = title
@@ -1926,13 +1926,14 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
         filterPlaces()
     }
 
+    @objc func meAvatarDidChange() {
+        updateMapMyPlacesChipAppearance()
+    }
+
     func updateMapMyPlacesChipAppearance() {
         let isActive = selectedConnectionId == "my_places_only"
         var config = mapMyPlacesChipButton.configuration ?? .plain()
-        config.image = UIImage(
-            systemName: isActive ? "person.fill" : "person",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
-        )
+        config.image = MeAvatar.chipImage(isActive: isActive)
         config.baseForegroundColor = isActive ? .white : Constants.Colors.label
         mapMyPlacesChipButton.configuration = config
         mapMyPlacesChipButton.backgroundColor = isActive ? Constants.Colors.primary : Constants.Colors.secondaryBackground.withAlphaComponent(0.9)
@@ -2763,6 +2764,10 @@ class ProfileViewController: BaseViewController, PlaceSearchable, FullScreenMapV
     }
     
     func setupNotificationObservers() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(meAvatarDidChange), name: .meAvatarDidChange, object: nil
+        )
+
         // Premium resolves asynchronously after launch, so the badge and the
         // AI-organize wand must both react to it rather than being computed at
         // whatever moment their screen happened to build.

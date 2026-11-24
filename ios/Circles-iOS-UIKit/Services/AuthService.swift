@@ -145,7 +145,14 @@ class AuthService {
     private let authProviderKey = "authProvider"
     
     // Authentication state
-    private var _currentUser: User?
+    private var _currentUser: User? {
+        didSet {
+            // The "Me" tab and chips wear this person's face (MeAvatar)
+            guard oldValue?.id != _currentUser?.id
+                    || oldValue?.profilePicture != _currentUser?.profilePicture else { return }
+            NotificationCenter.default.postOnMain(name: .meAvatarDidChange)
+        }
+    }
     
     // Public getter for current user
     var currentUser: User? {

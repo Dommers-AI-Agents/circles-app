@@ -628,7 +628,7 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         config.imagePlacement = .top
         config.imagePadding = 0
         config.contentInsets = NSDirectionalEdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0)
-        config.image = UIImage(systemName: "person", withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        config.image = MeAvatar.chipImage(isActive: false)
         var title = AttributedString("Me")
         title.font = UIFont.systemFont(ofSize: 9, weight: .medium)
         config.attributedTitle = title
@@ -935,6 +935,9 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         // Drop the new pin as soon as an add launched from the "+" chip saves
         // (the presenter's own refresh reconciles later)
         if isPresentedModally && showFilters {
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(meAvatarDidChange), name: .meAvatarDidChange, object: nil
+            )
             NotificationCenter.default.addObserver(
                 self,
                 selector: #selector(handlePlaceAddedFromMap(_:)),
@@ -1752,14 +1755,15 @@ class FullScreenMapViewController: UIViewController, MKMapViewDelegate, UITableV
         selectConnection(selectedConnectionId == HomePlaceFilter.myPlacesOnlyId ? nil : HomePlaceFilter.myPlacesOnlyId)
     }
 
+    @objc private func meAvatarDidChange() {
+        updateMyPlacesChipAppearance()
+    }
+
     private func updateMyPlacesChipAppearance() {
         guard isPresentedModally && showFilters && viewMode == .allPlaces else { return }
         let isActive = selectedConnectionId == HomePlaceFilter.myPlacesOnlyId
         var config = myPlacesChipButton.configuration ?? .plain()
-        config.image = UIImage(
-            systemName: isActive ? "person.fill" : "person",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
-        )
+        config.image = MeAvatar.chipImage(isActive: isActive)
         config.baseForegroundColor = .white
         myPlacesChipButton.configuration = config
         myPlacesChipButton.backgroundColor = isActive ? Constants.Colors.primary : UIColor.black.withAlphaComponent(0.6)
