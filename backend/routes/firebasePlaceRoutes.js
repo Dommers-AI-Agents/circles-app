@@ -21,6 +21,7 @@ const {
   getPlaceComments,
   addPlaceComment,
   deletePlaceComment,
+  editPlaceComment,
   likeComment,
   addPlaceCommentReply,
   getPlaceCommentReplies,
@@ -135,6 +136,7 @@ router.route('/:id/comments')
   .post(addPlaceComment);
 
 router.route('/:placeId/comments/:commentId')
+  .patch(editPlaceComment)
   .delete(deletePlaceComment);
 
 router.route('/:placeId/comments/:commentId/like')

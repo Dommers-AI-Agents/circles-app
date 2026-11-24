@@ -258,37 +258,35 @@ extension PlaceCommentsViewController: UITableViewDelegate, UITableViewDataSourc
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "CommentCell", for: indexPath) as! CommentCell
         let comment = comments[indexPath.row]
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        let canDelete = comment.userId == currentUserId || place.addedBy == currentUserId
-        cell.configure(with: comment, canDelete: canDelete)
+        // "More" shows for anything the viewer may do: edit or delete
+        cell.configure(with: comment, canDelete: !comment.allowedActions(on: place).isEmpty)
         cell.delegate = self
         return cell
     }
     
     func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
-        let comment = comments[indexPath.row]
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        
-        // User can delete if they are the comment author or the place owner
-        return comment.userId == currentUserId || place.addedBy == currentUserId
+        return comments[indexPath.row].allowedActions(on: place).contains(.delete)
     }
     
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         let comment = comments[indexPath.row]
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        
-        // Only show delete if user can delete
-        guard comment.userId == currentUserId || place.addedBy == currentUserId else {
-            return nil
-        }
-        
+        let allowed = comment.allowedActions(on: place)
+        guard allowed.contains(.delete) else { return nil }
+
         let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completionHandler in
             self?.deleteComment(at: indexPath, completionHandler: completionHandler)
         }
         deleteAction.backgroundColor = .systemRed
         deleteAction.image = UIImage(systemName: "trash")
-        
-        return UISwipeActionsConfiguration(actions: [deleteAction])
+        guard allowed.contains(.edit) else { return UISwipeActionsConfiguration(actions: [deleteAction]) }
+
+        let editAction = UIContextualAction(style: .normal, title: "Edit") { [weak self] _, _, completionHandler in
+            completionHandler(true)
+            self?.editComment(comment)
+        }
+        editAction.backgroundColor = Constants.Colors.primary
+        editAction.image = UIImage(systemName: "pencil")
+        return UISwipeActionsConfiguration(actions: [deleteAction, editAction])
     }
     
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -302,6 +300,19 @@ extension PlaceCommentsViewController: UITableViewDelegate, UITableViewDataSourc
         }
     }
     
+    /// The saved copy of an edited comment takes its row's place; the place
+    /// page behind refetches its own cards.
+    private func commentEdited(_ saved: PlaceComment) {
+        guard let row = comments.firstIndex(where: { $0.id == saved.id }) else { return }
+        comments[row] = saved
+        tableView.reloadRows(at: [IndexPath(row: row, section: 0)], with: .automatic)
+        onCommentsUpdated?(comments.count)
+    }
+
+    private func editComment(_ comment: PlaceComment) {
+        PlaceCommentMenu.edit(comment, on: place, from: self) { [weak self] saved in self?.commentEdited(saved) }
+    }
+
     private func deleteComment(at indexPath: IndexPath, completionHandler: @escaping (Bool) -> Void) {
         let comment = comments[indexPath.row]
         
@@ -530,9 +541,7 @@ class CommentCell: UITableViewCell {
         }
         
         // Format time
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        timeLabel.text = formatter.localizedString(for: comment.createdAt, relativeTo: Date())
+        timeLabel.text = comment.timeLine
         
         // Load avatar if available
         if let user = comment.user, let urlString = user.profilePicture, URL(string: urlString) != nil {
@@ -593,20 +602,14 @@ protocol CommentCellDelegate: AnyObject {
 // MARK: - CommentCellDelegate
 extension PlaceCommentsViewController: CommentCellDelegate {
     func commentCell(_ cell: CommentCell, didTapMoreButton comment: PlaceComment) {
-        let deleteAction: (title: String, style: UIAlertAction.Style, handler: () -> Void) = (
-            title: "Delete Comment",
-            style: .destructive,
-            handler: { [weak self] in
-                guard let indexPath = self?.tableView.indexPath(for: cell) else { return }
-                self?.deleteComment(at: indexPath) { _ in }
+        PlaceCommentMenu.present(
+            for: comment, on: place, from: self, sourceView: cell,
+            onEdited: { [weak self] saved in self?.commentEdited(saved) },
+            onDelete: { [weak self] in
+                // Looked up now: rows can have moved while the sheet was open
+                guard let self, let row = self.comments.firstIndex(where: { $0.id == comment.id }) else { return }
+                self.deleteComment(at: IndexPath(row: row, section: 0)) { _ in }
             }
-        )
-        
-        AlertPresenter.showActionSheet(
-            actions: [deleteAction],
-            from: self,
-            sourceView: cell,
-            sourceRect: cell.bounds
         )
     }
     

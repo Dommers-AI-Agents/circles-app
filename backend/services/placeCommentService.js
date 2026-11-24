@@ -13,6 +13,9 @@ const { ensureGlobalPlaceLink } = require('./globalPlaceResolver');
 const { projectPublicUser } = require('./publicUserProjection');
 const notificationService = require('./notificationService');
 const piggyBankService = require('./piggyBankService');
+const { ServiceError } = require('../utils/serviceError');
+const { nowIso } = require('../utils/ids');
+const { commentPermissions, MAX_COMMENT_LENGTH } = require('./placeCommentRules');
 
 const db = getFirestore();
 
@@ -87,4 +90,54 @@ async function postPlaceComment({ placeDoc, userId, text, source = null, checkIn
   return { comment, piggyBank };
 }
 
-module.exports = { postPlaceComment };
+// New words on a comment, by its author (Wes, 2026-11-24). Likes, replies,
+// the coin and the notifications it earned stay as they were; `editedAt`
+// marks it. The feed row that quotes the comment gets the new words too. A
+// check-in's own note is the record of that visit and is left alone.
+async function editPlaceComment({ placeId, commentId, userId, text }) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) throw new ServiceError(400, 'TEXT_REQUIRED', 'Comment text is required');
+  if (trimmed.length > MAX_COMMENT_LENGTH) {
+    throw new ServiceError(400, 'TEXT_TOO_LONG', `Keep it under ${MAX_COMMENT_LENGTH} characters`);
+  }
+  const commentRef = db.collection('placeComments').doc(commentId);
+  const [commentDoc, placeDoc] = await Promise.all([
+    commentRef.get(),
+    db.collection(COLLECTIONS.PLACES).doc(placeId).get()
+  ]);
+  if (!commentDoc.exists) throw new ServiceError(404, 'COMMENT_NOT_FOUND', 'Comment not found');
+  if (!placeDoc.exists) throw new ServiceError(404, 'PLACE_NOT_FOUND', 'Place not found');
+  const comment = serializeDoc(commentDoc);
+  const place = serializeDoc(placeDoc);
+  const { belongs, canEdit } = commentPermissions({ comment, place, placeId, userId });
+  if (!belongs) throw new ServiceError(400, 'WRONG_PLACE', 'Comment does not belong to this place');
+  if (!canEdit) throw new ServiceError(403, 'NOT_AUTHOR', 'Only the person who wrote a comment can edit it');
+
+  const before = comment.text || null;
+  if (before !== trimmed) {
+    await commentRef.update({ text: trimmed, editedAt: nowIso() });
+    // The feed quotes the comment: same lookup as a delete (commentId on new
+    // rows, the old words on rows from before it was stamped)
+    try {
+      const hits = await db.collection('activities')
+        .where('type', '==', 'place_commented')
+        .where('actorId', '==', String(comment.userId))
+        .where('targetId', '==', comment.placeId)
+        .get();
+      const byId = hits.docs.filter((doc) => doc.data().metadata?.commentId === commentId);
+      const matches = byId.length > 0
+        ? byId
+        : hits.docs.filter((doc) => !doc.data().metadata?.commentId && (doc.data().metadata?.comment || null) === before);
+      await Promise.all(matches.map((doc) => doc.ref.update({ 'metadata.comment': trimmed, 'metadata.commentId': commentId })));
+    } catch (err) {
+      console.error('⚠️ Edited comment: feed row not updated:', err.message);
+    }
+  }
+
+  const updated = serializeDoc(await commentRef.get());
+  const userDoc = await db.collection(COLLECTIONS.USERS).doc(String(comment.userId)).get();
+  if (userDoc.exists) updated.user = projectPublicUser(serializeDoc(userDoc));
+  return updated;
+}
+
+module.exports = { postPlaceComment, editPlaceComment };

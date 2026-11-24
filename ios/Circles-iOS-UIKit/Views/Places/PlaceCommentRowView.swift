@@ -3,16 +3,22 @@ import UIKit
 /// One comment in the place page's inline comments section: avatar, name
 /// (badged OWNER for the venue's verified owner), relative time, the text,
 /// and a heart with its count. The page handles the like request; the row
-/// reports the tap and applies the result.
+/// reports the tap and applies the result. A comment the viewer may edit or
+/// delete also has a "more" button (Wes, 2026-11-24: "I don't even see a
+/// delete option"); the page decides what it opens.
 final class PlaceCommentRowView: UIView {
     /// The heart was tapped; the button is passed so the caller can disable
     /// and animate it around the request.
     var onLikeTapped: ((UIButton) -> Void)?
+    /// The "more" button was tapped; the button is passed to anchor the menu
+    var onMoreTapped: ((UIView) -> Void)?
 
+    private let moreButton = UIButton.iconButton(systemName: "ellipsis", pointSize: 15)
     private let likeButton = UIButton(type: .system)
     private let likeCountLabel = UILabel()
 
-    init(comment: PlaceComment) {
+    /// `showsMore`: the viewer may edit or delete this comment
+    init(comment: PlaceComment, showsMore: Bool = false) {
         super.init(frame: .zero)
         backgroundColor = Constants.Colors.background
         layer.cornerRadius = 8
@@ -72,9 +78,7 @@ final class PlaceCommentRowView: UIView {
         }
 
         let timeLabel = UILabel()
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        timeLabel.text = formatter.localizedString(for: comment.createdAt, relativeTo: Date())
+        timeLabel.text = comment.timeLine
         timeLabel.font = UIFont.systemFont(ofSize: 12)
         timeLabel.textColor = Constants.Colors.secondaryLabel
 
@@ -104,8 +108,15 @@ final class PlaceCommentRowView: UIView {
         commentLabel.numberOfLines = 0
         commentLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        // More (edit / delete), only on a comment the viewer may change
+        moreButton.tintColor = Constants.Colors.secondaryLabel
+        moreButton.isHidden = !showsMore
+        moreButton.accessibilityLabel = "More"
+        moreButton.addTarget(self, action: #selector(moreTapped), for: .touchUpInside)
+
         // Add subviews
         addSubview(userInfoStack)
+        addSubview(moreButton)
         addSubview(likeButton)
         addSubview(likeCountLabel)
         addSubview(commentLabel)
@@ -120,6 +131,13 @@ final class PlaceCommentRowView: UIView {
 
             likeCountLabel.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor),
             likeCountLabel.trailingAnchor.constraint(equalTo: likeButton.leadingAnchor, constant: -4),
+
+            // A full-size touch target left of the heart and its count
+            moreButton.centerYAnchor.constraint(equalTo: likeButton.centerYAnchor),
+            moreButton.trailingAnchor.constraint(equalTo: likeCountLabel.leadingAnchor, constant: -6),
+            moreButton.widthAnchor.constraint(equalToConstant: 44),
+            moreButton.heightAnchor.constraint(equalToConstant: 44),
+            userInfoStack.trailingAnchor.constraint(lessThanOrEqualTo: moreButton.leadingAnchor, constant: -4),
 
             commentLabel.topAnchor.constraint(equalTo: userInfoStack.bottomAnchor, constant: 8),
             commentLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
@@ -139,5 +157,9 @@ final class PlaceCommentRowView: UIView {
 
     @objc private func likeTapped() {
         onLikeTapped?(likeButton)
+    }
+
+    @objc private func moreTapped() {
+        onMoreTapped?(moreButton)
     }
 }

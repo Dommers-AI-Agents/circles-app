@@ -3463,10 +3463,25 @@ extension PlaceDetailViewController {
     }
     
     private func createInlineCommentView(_ comment: PlaceComment) -> UIView {
-        let row = PlaceCommentRowView(comment: comment)
+        let row = PlaceCommentRowView(comment: comment, showsMore: !comment.allowedActions(on: place).isEmpty)
         row.onLikeTapped = { [weak self, weak row] button in
             guard let self = self, let row = row else { return }
             self.toggleInlineCommentLike(commentId: comment.id, sender: button, row: row)
+        }
+        // Edit / Delete right on the card: with three comments or fewer there
+        // is no "View all", so the comments screen is easy to miss
+        row.onMoreTapped = { [weak self] anchor in
+            guard let self = self else { return }
+            // The list can have been reloaded since this row was built
+            let current = self.displayedComments.first { $0.id == comment.id } ?? comment
+            PlaceCommentMenu.present(
+                for: current, on: self.place, from: self, sourceView: anchor,
+                onEdited: { [weak self] _ in self?.fetchCommentCount() },
+                onDelete: { [weak self] in
+                    guard let self = self else { return }
+                    PlaceCommentMenu.confirmDelete(current, on: self.place, from: self) { [weak self] in self?.fetchCommentCount() }
+                }
+            )
         }
         return row
     }

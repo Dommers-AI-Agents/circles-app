@@ -15,6 +15,7 @@ const rewardService = require('../../services/rewardService');
 const piggyBankService = require('../../services/piggyBankService');
 const { getGlobalSocial } = require('../../services/placeReadService');
 const { canViewCircleFor } = require('../../services/circleAccess');
+const { sendServiceError } = require('../../utils/serviceError');
 const { canViewCircle } = require('../../services/visibility');
 const { makeViewerContext } = require('../../services/viewerContext');
 const { getInnerCircleGrantorLists } = require('../../utils/networkAccess');
@@ -556,9 +557,24 @@ exports.addPlaceComment = async (req, res, next) => {
   }
 };
 
+// @desc    Edit your own comment on a place
+// @route   PATCH /api/places/:placeId/comments/:commentId   body { text }
+// @access  Private (the comment's author)
+exports.editPlaceComment = async (req, res) => {
+  try {
+    const { editPlaceComment } = require('../../services/placeCommentService');
+    const comment = await editPlaceComment({
+      placeId: req.params.placeId, commentId: req.params.commentId, userId: req.user.uid, text: req.body.text
+    });
+    res.status(200).json({ success: true, data: comment });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'Edit place comment', fallbackCode: 'EDIT_FAILED', fallbackMessage: 'Could not save the comment' });
+  }
+};
+
 // @desc    Delete a comment from a place
 // @route   DELETE /api/places/:placeId/comments/:commentId
-// @access  Private (comment owner or place owner)
+// @access  Private (the comment's author, or the owner of the save it was written on)
 exports.deletePlaceComment = async (req, res, next) => {
   try {
     const { placeId, commentId } = req.params;
@@ -590,25 +606,19 @@ exports.deletePlaceComment = async (req, res, next) => {
 
     const place = serializeDoc(placeDoc);
 
-    // Comments are global per venue: the comment belongs here if it was made
-    // on this copy OR on any copy of the same venue
-    const sameVenue = comment.globalPlaceId && place.globalPlaceId &&
-      comment.globalPlaceId === place.globalPlaceId;
-    if (comment.placeId !== placeId && !sameVenue) {
+    // Who may delete: the comment's author, or the owner of the very save it
+    // was written on. Having saved the same venue gives no say over other
+    // people's comments (2026-11-24: any saver could delete any comment by
+    // naming their own save of the venue).
+    const { commentPermissions } = require('../../services/placeCommentRules');
+    const { belongs, canDelete } = commentPermissions({ comment, place, placeId, userId });
+    if (!belongs) {
       return res.status(400).json({
         success: false,
         message: 'Comment does not belong to this place'
       });
     }
-
-    // Check if user can delete the comment
-    // User can delete if they are:
-    // 1. The comment author
-    // 2. The place owner
-    const isCommentAuthor = comment.userId === userId;
-    const isPlaceOwner = place.addedBy === userId;
-
-    if (!isCommentAuthor && !isPlaceOwner) {
+    if (!canDelete) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete this comment'

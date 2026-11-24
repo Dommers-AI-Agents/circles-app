@@ -1645,6 +1645,19 @@ class PlaceService {
         )
     }
     
+    /// New words on your own comment (or reply); answers the saved comment
+    func editPlaceComment(placeId: String, commentId: String, text: String, completion: @escaping (Result<PlaceComment, Error>) -> Void) {
+        api.request(
+            endpoint: "places/\(placeId)/comments/\(commentId)",
+            method: .patch,
+            body: ["text": text],
+            requiresAuth: true,
+            completion: createAPICompletion { (result: Result<PlaceCommentResponse, Error>) in
+                completion(result.map { $0.data })
+            }
+        )
+    }
+
     func deletePlaceComment(placeId: String, commentId: String, completion: @escaping (Result<Void, Error>) -> Void) {
         api.request(
             endpoint: "places/\(placeId)/comments/\(commentId)",
@@ -1853,10 +1866,20 @@ struct PlaceComment: Codable, Identifiable {
     /// True when the author is the venue's verified owner — renders the
     /// "Owner" badge so replies read as the store speaking
     let isVenueOwner: Bool?
+    /// When its author last changed the words; nil for a comment never edited
+    private(set) var editedAt: Date? = nil
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
-        case placeId, userId, text, likes, likesCount, parentCommentId, replyCount, createdAt, user, isVenueOwner
+        case placeId, userId, text, likes, likesCount, parentCommentId, replyCount, createdAt, user, isVenueOwner, editedAt
+    }
+
+    /// The saved copy of an edited comment, with what only the list knew: the
+    /// author's details and the OWNER badge (the edit answers the comment alone)
+    func keepingDetails(of old: PlaceComment) -> PlaceComment {
+        PlaceComment(id: id, placeId: placeId, userId: userId, text: text, likes: likes, likesCount: likesCount,
+                     parentCommentId: parentCommentId, replyCount: replyCount ?? old.replyCount, createdAt: createdAt,
+                     user: user ?? old.user, isVenueOwner: isVenueOwner ?? old.isVenueOwner, editedAt: editedAt)
     }
     
     // Helper properties

@@ -267,8 +267,6 @@ extension PlaceCommentRepliesViewController: UITableViewDelegate, UITableViewDat
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "CommentCell", for: indexPath) as! CommentCell
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        
         if indexPath.section == 0 {
             // Parent comment
             let canDelete = false // Don't allow deleting parent comment from reply view
@@ -276,8 +274,7 @@ extension PlaceCommentRepliesViewController: UITableViewDelegate, UITableViewDat
         } else {
             // Reply
             let reply = replies[indexPath.row]
-            let canDelete = reply.userId == currentUserId || place.addedBy == currentUserId
-            cell.configure(with: reply, canDelete: canDelete)
+            cell.configure(with: reply, canDelete: !reply.allowedActions(on: place).isEmpty)
         }
         
         cell.delegate = self
@@ -288,11 +285,7 @@ extension PlaceCommentRepliesViewController: UITableViewDelegate, UITableViewDat
         // Only allow editing replies, not the parent comment
         guard indexPath.section == 1 else { return false }
         
-        let reply = replies[indexPath.row]
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        
-        // User can delete if they are the reply author or the place owner
-        return reply.userId == currentUserId || place.addedBy == currentUserId
+        return replies[indexPath.row].allowedActions(on: place).contains(.delete)
     }
     
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
@@ -300,22 +293,33 @@ extension PlaceCommentRepliesViewController: UITableViewDelegate, UITableViewDat
         guard indexPath.section == 1 else { return nil }
         
         let reply = replies[indexPath.row]
-        let currentUserId = AuthService.shared.getUserId() ?? ""
-        
-        // Only show delete if user can delete
-        guard reply.userId == currentUserId || place.addedBy == currentUserId else {
-            return nil
-        }
-        
+        let allowed = reply.allowedActions(on: place)
+        guard allowed.contains(.delete) else { return nil }
+
         let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completionHandler in
             self?.deleteReply(at: indexPath, completionHandler: completionHandler)
         }
         deleteAction.backgroundColor = .systemRed
         deleteAction.image = UIImage(systemName: "trash")
-        
-        return UISwipeActionsConfiguration(actions: [deleteAction])
+        guard allowed.contains(.edit) else { return UISwipeActionsConfiguration(actions: [deleteAction]) }
+
+        let editAction = UIContextualAction(style: .normal, title: "Edit") { [weak self] _, _, completionHandler in
+            completionHandler(true)
+            guard let self else { return }
+            PlaceCommentMenu.edit(reply, on: self.place, from: self) { [weak self] saved in self?.replyEdited(saved) }
+        }
+        editAction.backgroundColor = Constants.Colors.primary
+        editAction.image = UIImage(systemName: "pencil")
+        return UISwipeActionsConfiguration(actions: [deleteAction, editAction])
     }
     
+    /// The saved copy of an edited reply takes its row's place
+    private func replyEdited(_ saved: PlaceComment) {
+        guard let row = replies.firstIndex(where: { $0.id == saved.id }) else { return }
+        replies[row] = saved
+        tableView.reloadRows(at: [IndexPath(row: row, section: 1)], with: .automatic)
+    }
+
     private func deleteReply(at indexPath: IndexPath, completionHandler: @escaping (Bool) -> Void) {
         let reply = replies[indexPath.row]
         
@@ -351,20 +355,13 @@ extension PlaceCommentRepliesViewController: UITextFieldDelegate {
 extension PlaceCommentRepliesViewController: CommentCellDelegate {
     func commentCell(_ cell: CommentCell, didTapMoreButton comment: PlaceComment) {
         guard let indexPath = tableView.indexPath(for: cell), indexPath.section == 1 else { return }
-        
-        let deleteAction: (title: String, style: UIAlertAction.Style, handler: () -> Void) = (
-            title: "Delete Reply",
-            style: .destructive,
-            handler: { [weak self] in
-                self?.deleteReply(at: indexPath) { _ in }
+        PlaceCommentMenu.present(
+            for: comment, on: place, from: self, sourceView: cell,
+            onEdited: { [weak self] saved in self?.replyEdited(saved) },
+            onDelete: { [weak self] in
+                guard let self, let row = self.replies.firstIndex(where: { $0.id == comment.id }) else { return }
+                self.deleteReply(at: IndexPath(row: row, section: 1)) { _ in }
             }
-        )
-        
-        AlertPresenter.showActionSheet(
-            actions: [deleteAction],
-            from: self,
-            sourceView: cell,
-            sourceRect: cell.bounds
         )
     }
     
