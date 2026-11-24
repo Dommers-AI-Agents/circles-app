@@ -109,6 +109,18 @@ describe('printAssetService', () => {
     await expect(svc.renderTableStickers([{ ...venue, windowCode: null }])).rejects.toMatchObject({ status: 404 });
   });
 
+  test('table stickers print for clear labels too; Totem labels have the one stock', async () => {
+    const store = [{ ...venue, venueId: 'v1', windowCode: 'W1' }];
+    const cream = await svc.renderTableStickers(store);
+    const clear = await svc.renderTableStickers(store, { stock: 'clear' });
+    expect(mediaBox(clear)).toEqual([612, 792]);
+    expect(clear.equals(cream)).toBe(false);
+    expect(svc.roundLabelStock('table', 'clear').file).toBe('Avery 94506 clear');
+    expect(svc.roundLabelStock('table').file).toBe('Avery 8293');
+    await expect(svc.renderTableStickers(store, { stock: 'gold' })).rejects.toMatchObject({ status: 400, code: 'BAD_STOCK' });
+    await expect(svc.renderTotemLabels(store, { stock: 'clear' })).rejects.toMatchObject({ status: 400, code: 'BAD_STOCK' });
+  });
+
   test('table stickers: several of each store, one for every table; a Totem label stays one per store', async () => {
     const stores = Array.from({ length: 5 }, (_, i) => ({ ...venue, venueId: `v${i}`, windowCode: `W${i}` }));
     const pageCount = (pdf) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length;

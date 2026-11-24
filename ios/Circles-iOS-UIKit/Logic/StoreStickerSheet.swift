@@ -83,7 +83,8 @@ struct CoasterStickerSheet: Equatable {
 ///   sticker (Wes, 2026-11-22: never 20 labels of one store).
 /// - Table stickers (`GET rewards/stickers/table`): "Psst… regulars scan
 ///   this" in cream, the store's window code (Wes, 2026-11-24), `copies` of
-///   each store's: one for every table.
+///   each store's: one for every table. On clear labels (`stock`) the cream
+///   is left out, so only the words and the code show on the table.
 struct RoundLabelSheet: Equatable {
     enum Design: String, Equatable {
         case totem, table
@@ -91,6 +92,17 @@ struct RoundLabelSheet: Equatable {
         var endpoint: String { "rewards/stickers/\(rawValue)" }
         /// What the file and the prompts call them
         var noun: String { self == .totem ? "Totem labels" : "table stickers" }
+    }
+
+    /// The label sheet a print is for (table stickers only; a Totem label
+    /// has no background to leave out)
+    enum Stock: String, Equatable, CaseIterable {
+        case white, clear
+
+        /// What the sheet is sold as
+        var sheetName: String { self == .white ? "Avery 8293" : "Avery 94506 clear" }
+        /// The choice's row when asking which labels are in the printer
+        var choiceTitle: String { self == .white ? "White labels (cream sticker)" : "Clear labels (only the print shows)" }
     }
 
     static let perSheet = 20
@@ -106,10 +118,16 @@ struct RoundLabelSheet: Equatable {
     var startAt: Int = 1
     /// How many of each store's (table stickers only; a Totem has one base)
     var copies: Int = 1
+    /// Which labels are in the printer (table stickers only)
+    var stock: Stock = .white
+
+    /// The stock the print uses: a Totem label is always the white sheet
+    var printStock: Stock { design == .table ? stock : .white }
 
     var queryParams: [String: String] {
         var params = ["venueIds": venueIds.joined(separator: ","), "startAt": String(startAt)]
         if design == .table { params["copies"] = String(copies) }
+        if printStock == .clear { params["stock"] = Stock.clear.rawValue }
         return params
     }
 
@@ -141,7 +159,7 @@ struct RoundLabelSheet: Equatable {
 
     var fileName: String {
         let each = design == .table && copies > 1 ? ", \(copies) each" : ""
-        return "FavCircles \(design.noun) - \(venueIds.count) \(venueIds.count == 1 ? "store" : "stores")\(each) - Avery 8293.pdf"
+        return "FavCircles \(design.noun) - \(venueIds.count) \(venueIds.count == 1 ? "store" : "stores")\(each) - \(printStock.sheetName).pdf"
     }
 }
 
@@ -173,9 +191,12 @@ enum StorePickPrint: Equatable {
         return "One sticker for every table. How many for \(whose)? A sheet holds \(RoundLabelSheet.perSheet); up to \(RoundLabelSheet.maxCopies(stores: count))."
     }
 
+    /// The "which labels" prompt's message (table stickers only)
+    static let stockMessage = "Which labels are in the printer? On clear labels the cream is left out, so the code needs a light table to scan."
+
     /// The start-position prompt's message for `count` picked stores
-    /// (`copies` of each, table stickers only)
-    func startMessage(count: Int, copies: Int = 1) -> String {
+    /// (`copies` of each on `stock`, table stickers only)
+    func startMessage(count: Int, copies: Int = 1, stock: RoundLabelSheet.Stock = .white) -> String {
         switch self {
         case .windowStickers:
             return "\(count) \(count == 1 ? "sticker" : "stickers"), one per store, on Avery 22805. 1 is the top-left sticker; start later to skip ones already used."
@@ -184,7 +205,7 @@ enum StorePickPrint: Equatable {
         case .tableStickers:
             let total = count * copies
             let split = copies == 1 ? "one per store" : (count == 1 ? "all for one store" : "\(copies) for each of \(count) stores")
-            return "\(total) round \(total == 1 ? "sticker" : "stickers"), \(split), on Avery 8293. 1 is the top-left sticker; start later to skip ones already used. Each says \"Psst… regulars scan this\" and opens the store; the store's name prints on the backing under it."
+            return "\(total) round \(total == 1 ? "sticker" : "stickers"), \(split), on \(stock.sheetName). 1 is the top-left sticker; start later to skip ones already used. Each says \"Psst… regulars scan this\" and opens the store; the store's name prints on the backing under it."
         }
     }
 }

@@ -180,12 +180,16 @@ function drawTotemLabel(doc, cx, cy, url, name) {
   return { modules: modules.size, name: bottom.text, nameSize: bottom.size };
 }
 
-/** One table sticker centred on (cx, cy), opening `url` (the store's window code). */
-function drawTableSticker(doc, cx, cy, url) {
+/**
+ * One table sticker centred on (cx, cy), opening `url` (the store's window code).
+ * `clear`: for transparent label stock (Wes, 2026-11-24: "so all you see is the
+ * print, not the colored background"): no cream, only the words and the code.
+ */
+function drawTableSticker(doc, cx, cy, url, { clear = false } = {}) {
   const T = TABLE_STICKER;
   const r = T.diameter / 2;
   doc.save();
-  doc.circle(cx, cy, r + T.bleed).fill(T.cream);
+  if (!clear) doc.circle(cx, cy, r + T.bleed).fill(T.cream);
   const modules = QRCode.create(url, { errorCorrectionLevel: 'M' }).modules;
   drawModules(doc, modules, cx - T.qr / 2, cy - T.qr / 2, T.qr, T.navy);
   arcText(doc, T.top, cx, cy, T.topRadius, { font: T.font, size: T.topSize, color: T.navy, spacing: T.topSpacing });

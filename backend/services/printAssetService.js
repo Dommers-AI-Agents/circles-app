@@ -518,25 +518,42 @@ function drawTotemLabel(doc, cx, cy, url, name) {
 // for each table), a store's copies side by side. The link
 // is the store's plain window code. The sticker doesn't say whose it is, so
 // the store's name on the backing is the only way to tell them apart.
-function drawTableSticker(doc, cx, cy, url, name) {
-  roundLabelArt.drawTableSticker(doc, cx, cy, url);
+function drawTableSticker(doc, cx, cy, url, name, { clear = false } = {}) {
+  roundLabelArt.drawTableSticker(doc, cx, cy, url, { clear });
   if (name) {
     doc.font('Helvetica').fontSize(6).fillColor(GUIDE_TEXT)
       .text(name, cx - IN * 0.95, cy + TOTEM_SHEET.diameter / 2 + 0.09 * IN, { width: IN * 1.9, align: 'center', lineBreak: false, ellipsis: true, height: 8 });
   }
 }
 
-const ROUND_LABELS = {
-  totem: { url: totemUrl, draw: drawTotemLabel, maxCopies: 1 },
-  table: { url: (code) => rewardService.stickerUrl(code), draw: drawTableSticker, maxCopies: MAX_TABLE_COPIES }
+// Table stickers also print for clear label stock: the same sheet in Avery's
+// Glossy Clear, with no cream behind the print (Wes, 2026-11-24: "transparent
+// stickers so all you see is the print"). The Totem label has no background
+// to drop, so it has the one stock.
+const ROUND_STOCKS = {
+  white: { label: TOTEM_SHEET.label, file: 'Avery 8293' },
+  clear: { label: 'Avery 94506 Glossy Clear (1½ in round, 20 per sheet)', file: 'Avery 94506 clear' }
 };
+const ROUND_LABELS = {
+  totem: { url: totemUrl, draw: drawTotemLabel, maxCopies: 1, stocks: ['white'] },
+  table: { url: (code) => rewardService.stickerUrl(code), draw: drawTableSticker, maxCopies: MAX_TABLE_COPIES, stocks: ['white', 'clear'] }
+};
+/** The label stock a round-label print names in its file name; 400 when the design doesn't print on it. */
+function roundLabelStock(design, stock = 'white') {
+  if (!ROUND_LABELS[design].stocks.includes(stock)) {
+    throw new ServiceError(400, 'BAD_STOCK', `stock must be ${ROUND_LABELS[design].stocks.join(' or ')}`);
+  }
+  return ROUND_STOCKS[stock];
+}
 
 const renderTotemLabels = (venues, options) => renderRoundLabels('totem', venues, options);
 const renderTableStickers = (venues, options) => renderRoundLabels('table', venues, options);
 
 // Round labels for each store, in the order given, from any label on the sheet
-async function renderRoundLabels(design, venues, { startAt = 1, copies = 1 } = {}) {
+async function renderRoundLabels(design, venues, { startAt = 1, copies = 1, stock = 'white' } = {}) {
   const { url, draw, maxCopies } = ROUND_LABELS[design];
+  const sheetLabel = roundLabelStock(design, stock).label;
+  const clear = stock === 'clear';
   const each = Number(copies);
   if (!Number.isInteger(each) || each < 1 || each > maxCopies) {
     throw new ServiceError(400, 'BAD_COPIES', maxCopies === 1 ? 'These print one per store' : `copies must be 1 to ${maxCopies}`);
@@ -559,13 +576,13 @@ async function renderRoundLabels(design, venues, { startAt = 1, copies = 1 } = {
   const { cols, pitch, firstX, firstY } = TOTEM_SHEET;
   const doc = new PDFDocument({ size: GEOMETRY.stickers.page, margin: 0, autoFirstPage: false });
   const header = () => doc.fillColor(GUIDE_TEXT).font('Helvetica').fontSize(7)
-    .text(`${TOTEM_SHEET.label} · print at 100% / Actual size · try one on plain paper first`,
+    .text(`${sheetLabel} · print at 100% / Actual size · try one on plain paper first`,
       0, 0.22 * IN, { width: GEOMETRY.stickers.page[0], align: 'center', lineBreak: false });
   let slot = 0;
   entries.forEach((entry, i) => {
     if (i === 0) { doc.addPage(); slot = start - 1; header(); }
     else if (slot >= TOTEM_LABELS_PER_SHEET) { doc.addPage(); slot = 0; header(); }
-    draw(doc, firstX + (slot % cols) * pitch, firstY + Math.floor(slot / cols) * pitch, entry.url, entry.name);
+    draw(doc, firstX + (slot % cols) * pitch, firstY + Math.floor(slot / cols) * pitch, entry.url, entry.name, { clear });
     slot += 1;
   });
   return pdfToBuffer(doc);
@@ -625,7 +642,7 @@ const registerCardPDF = (venue) => renderPDF(venue, { kind: 'register', format: 
 const tableTentPDF = (venue) => renderPDF(venue, { kind: 'register', format: 'tent', qr: 'medium' });
 
 module.exports = {
-  renderPDF, renderStoreStickers, renderCoasterStickers, renderTotemLabels, renderTableStickers, totemUrl,
+  renderPDF, renderStoreStickers, renderCoasterStickers, renderTotemLabels, renderTableStickers, roundLabelStock, totemUrl,
   TOTEM_LABELS_PER_SHEET, MAX_TOTEM_LABELS, MAX_TABLE_COPIES, MAX_ROUND_LABELS, TOTEM_SHEET, TOTEM_TAG, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
   STICKERS_PER_SHEET, MAX_STORE_STICKERS, COASTER_STICKERS_PER_SHEET, MAX_COASTERS, STICKER_SHEETS,
   windowSignPDF, registerCardPDF, tableTentPDF

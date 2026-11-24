@@ -381,15 +381,28 @@ extension VenueAdminViewController {
                 self.showError("Enter 1 to \(RoundLabelSheet.maxCopies(stores: count)).")
                 return
             }
-            self.askStickerStart(copies: copies)
+            self.askStickerStock(copies: copies)
         }
     }
 
-    private func askStickerStart(copies: Int) {
+    /// Table stickers print on white labels (cream) or clear ones (print only)
+    private func askStickerStock(copies: Int) {
+        AlertPresenter.showActionSheet(
+            title: "Which labels?",
+            message: StorePickPrint.stockMessage,
+            actions: RoundLabelSheet.Stock.allCases.map { stock in
+                (title: stock.choiceTitle, style: .default, handler: { [weak self] in self?.askStickerStart(copies: copies, stock: stock) })
+            },
+            from: self,
+            barButtonItem: printStickersButton
+        )
+    }
+
+    private func askStickerStart(copies: Int, stock: RoundLabelSheet.Stock = .white) {
         let count = stickerPicks.count
         AlertPresenter.showTextInput(
             title: pickPrint.startTitle,
-            message: pickPrint.startMessage(count: count, copies: copies),
+            message: pickPrint.startMessage(count: count, copies: copies, stock: stock),
             initialText: "1",
             keyboardType: .numberPad,
             confirmTitle: "Print",
@@ -401,7 +414,7 @@ extension VenueAdminViewController {
                     self.showError("Pick a spot from 1 to \(RoundLabelSheet.perSheet).")
                     return
                 }
-                self.downloadRoundLabels(RoundLabelSheet(design: design, venueIds: self.stickerPicks, startAt: start, copies: copies))
+                self.downloadRoundLabels(RoundLabelSheet(design: design, venueIds: self.stickerPicks, startAt: start, copies: copies, stock: stock))
             } else {
                 guard let start = StoreStickerSheet.startPosition(from: text) else {
                     self.showError("Pick a sticker from 1 to \(StoreStickerSheet.perSheet).")

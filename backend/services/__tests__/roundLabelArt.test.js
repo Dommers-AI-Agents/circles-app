@@ -87,6 +87,19 @@ describe('roundLabelArt', () => {
     doc.end();
   });
 
+  test('on clear stock the table sticker is only its print: no cream circle', () => {
+    const PDFDocument = require('pdfkit');
+    const circles = (options) => {
+      const doc = new PDFDocument({ size: [200, 200], margin: 0 });
+      const circle = jest.spyOn(doc, 'circle');
+      art.drawTableSticker(doc, 100, 100, 'https://api.favcircles.com/s/K7QM2XP', options);
+      doc.end();
+      return circle.mock.calls.length;
+    };
+    expect(circles()).toBe(1);
+    expect(circles({ clear: true })).toBe(0);
+  });
+
   test('the Totem label has no ring, and its words are not the code\'s colour', () => {
     const L = art.TOTEM_LABEL;
     expect(L.ringWidth).toBeUndefined();

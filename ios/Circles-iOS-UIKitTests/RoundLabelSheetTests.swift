@@ -25,6 +25,20 @@ struct RoundLabelSheetTests {
         #expect(totem(Array(repeating: "x", count: 21)).sheetCount == 2)
     }
 
+    @Test func clearLabelsAreATableStickerChoice() {
+        let clear = RoundLabelSheet(design: .table, venueIds: ["a"], startAt: 1, copies: 4, stock: .clear)
+        #expect(clear.queryParams["stock"] == "clear")
+        #expect(clear.fileName == "FavCircles table stickers - 1 store, 4 each - Avery 94506 clear.pdf")
+        // White is the server's default: nothing extra is sent
+        #expect(RoundLabelSheet(design: .table, venueIds: ["a"]).queryParams["stock"] == nil)
+        // A Totem label has no background to leave out
+        let totemSheet = RoundLabelSheet(design: .totem, venueIds: ["a"], stock: .clear)
+        #expect(totemSheet.queryParams["stock"] == nil)
+        #expect(totemSheet.fileName.hasSuffix("Avery 8293.pdf"))
+        #expect(StorePickPrint.tableStickers.startMessage(count: 1, copies: 4, stock: .clear).contains("on Avery 94506 clear"))
+        #expect(StorePickPrint.tableStickers.startMessage(count: 1, copies: 4).contains("on Avery 8293"))
+    }
+
     @Test func tableStickersComeSeveralToAStore() {
         let twelve = RoundLabelSheet(design: .table, venueIds: ["a", "b"], startAt: 1, copies: 12)
         #expect(twelve.queryParams["copies"] == "12")
