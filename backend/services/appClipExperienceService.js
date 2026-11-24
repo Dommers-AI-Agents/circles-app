@@ -106,8 +106,9 @@ function copyFor(venue, kind, { live = true } = {}) {
     // us!"; the words under it are his sentence "Never forget your favorite
     // places. Join us on FavCircles." split to Apple's 30/56-character title
     // and subtitle. The title is also the camera's pill right after a scan.
+    // Wes, 2026-11-24: "get rid of the 'us'": the title is "Join FavCircles".
     return {
-      title: 'Join us on FavCircles',
+      title: 'Join FavCircles',
       subtitle: 'Never forget your favorite places.',
       hook: ['Love it here?', 'Save us!'],
       lead: null

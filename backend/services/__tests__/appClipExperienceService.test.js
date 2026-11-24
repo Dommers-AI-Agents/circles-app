@@ -33,10 +33,10 @@ describe('appClipExperienceService copy', () => {
     expect([meta.format, meta.width, meta.height]).toEqual(['jpeg', 1800, 1200]);
   });
 
-  test('the generic join card: "Love it here? Save us!" in the picture, "Never forget your favorite places. Join us on FavCircles." under it (Wes, 2026-11-21)', async () => {
+  test('the generic join card: "Love it here? Save us!" in the picture, "Join FavCircles" / "Never forget your favorite places." under it (Wes, 2026-11-21; "us" dropped 2026-11-24)', async () => {
     for (const kind of svc.KINDS) {
       const copy = svc.copyFor({ venueName: 'FavCircles', genericJoin: true }, kind);
-      expect(copy.title).toBe('Join us on FavCircles');
+      expect(copy.title).toBe('Join FavCircles');
       expect(copy.subtitle).toBe('Never forget your favorite places.');
       expect(copy.hook).toEqual(['Love it here?', 'Save us!']);
       expect(copy.title.length).toBeLessThanOrEqual(svc.TITLE_MAX);
