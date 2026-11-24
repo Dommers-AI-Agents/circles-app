@@ -96,6 +96,8 @@ class InnerCircleListViewController: BaseViewController {
             guard let self else { return }
             self.listName = (list.lists ?? []).first { $0.id == listId }?.name ?? self.listName
             self.title = self.listName
+            // Each row's menu says "Remove from <name>"
+            self.tableView.reloadData()
         }
     }
 
@@ -141,6 +143,10 @@ class InnerCircleListViewController: BaseViewController {
         }
     }
 
+    private func viewProfile(_ person: User) {
+        navigationController?.pushViewController(ProfileViewController(user: person), animated: true)
+    }
+
     private func confirmRemove(_ person: User) {
         InnerCircleEditing.confirmRemove(person, listName: listName, from: self) { [weak self] in
             self?.remove(person)
@@ -170,38 +176,34 @@ class InnerCircleListViewController: BaseViewController {
 }
 
 extension InnerCircleListViewController: UITableViewDataSource, UITableViewDelegate {
-    // 0: what the tier means. 1: the members. 2: add.
-    func numberOfSections(in tableView: UITableView) -> Int { 3 }
+    // 0: add, with what the tier means under it. 1: the members, each with
+    // a ••• button for View profile / Remove (Wes, 2026-11-24: add at the
+    // top, actions on the row).
+    private enum Section: Int { case add, members }
+
+    func numberOfSections(in tableView: UITableView) -> Int { 2 }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        switch section {
-        case 0: return 0
-        case 1: return members.count
-        default: return 1
-        }
+        section == Section.members.rawValue ? members.count : 1
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard section == 1 else { return nil }
-        return members.isEmpty ? nil : "\(members.count) of \(maxSize)"
+        guard section == Section.members.rawValue, !members.isEmpty else { return nil }
+        return "\(members.count) of \(maxSize)"
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        switch section {
-        case 0:
-            return "People here can see anything you set to Inner Circle — circles, places, moments and check-ins. "
-                + "Only your connections can be added, and removing someone takes back what they could already see."
-        case 2:
-            return members.isEmpty
-                ? "Until you add someone, Inner Circle shows the same thing Private does: only you."
-                : nil
-        default:
-            return nil
+        guard section == Section.add.rawValue else { return nil }
+        var text = "People here can see anything you set to Inner Circle — circles, places, moments and check-ins. "
+            + "Only your connections can be added, and removing someone takes back what they could already see."
+        if members.isEmpty {
+            text += "\n\nUntil you add someone, Inner Circle shows the same thing Private does: only you."
         }
+        return text
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        if indexPath.section == 2 {
+        if indexPath.section == Section.add.rawValue {
             let cell = tableView.dequeueReusableCell(withIdentifier: "add")
                 ?? UITableViewCell(style: .default, reuseIdentifier: "add")
             var content = cell.defaultContentConfiguration()
@@ -223,6 +225,7 @@ extension InnerCircleListViewController: UITableViewDataSource, UITableViewDeleg
         content.imageProperties.maximumSize = CGSize(width: 34, height: 34)
         content.imageProperties.tintColor = Constants.Colors.primary.withAlphaComponent(0.4)
         cell.contentConfiguration = content
+        cell.accessoryView = makeActionsButton(for: person)
         if let urlString = person.profilePicture {
             ImageService.shared.loadImage(from: urlString) { [weak tableView] image in
                 guard let image = image,
@@ -238,14 +241,39 @@ extension InnerCircleListViewController: UITableViewDataSource, UITableViewDeleg
         return cell
     }
 
+    /// The ••• on a member's row. Built fresh per row (cells are reused) and
+    /// holding the person, not the row, since rows shift after a removal.
+    private func makeActionsButton(for person: User) -> UIButton {
+        let button = UIButton.iconButton(systemName: "ellipsis.circle", pointSize: 20)
+        button.tintColor = Constants.Colors.primary
+        // An accessory view is placed by frame, not Auto Layout
+        button.translatesAutoresizingMaskIntoConstraints = true
+        button.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
+        button.accessibilityLabel = "More for \(person.displayName)"
+        button.showsMenuAsPrimaryAction = true
+        let profile = UIAction(title: "View profile", image: UIImage(systemName: "person.crop.circle")) { [weak self] _ in
+            self?.viewProfile(person)
+        }
+        let remove = UIAction(title: "Remove from \(listName)", image: UIImage(systemName: "person.badge.minus"),
+                              attributes: .destructive) { [weak self] _ in
+            self?.confirmRemove(person)
+        }
+        button.menu = UIMenu(children: [profile, remove])
+        return button
+    }
+
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        if indexPath.section == 2 { addPeopleTapped() }
+        if indexPath.section == Section.add.rawValue {
+            addPeopleTapped()
+        } else {
+            viewProfile(members[indexPath.row])
+        }
     }
 
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath)
         -> UISwipeActionsConfiguration? {
-        guard indexPath.section == 1 else { return nil }
+        guard indexPath.section == Section.members.rawValue else { return nil }
         let person = members[indexPath.row]
         let remove = UIContextualAction(style: .destructive, title: "Remove") { [weak self] _, _, done in
             self?.confirmRemove(person)
