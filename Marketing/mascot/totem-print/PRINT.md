@@ -26,7 +26,7 @@ That makes `stores/<code>-totem/`: the store's plate 1 (its maker's mark says MA
 ## Tap and scan
 1. Store Admin → NFC stickers → + → Points → "Totem". Write that sticker (38 mm round NTAG) with the app.
 2. Stick it on the ceiling of the pocket under the base.
-3. Print `stores/<code>-totem/sheet.pdf` on Avery 8293 at Actual size and put the store's label in the round recess on top.
+3. Make the store's label: `./make-totem.sh <windowCode> totem "Store Name"` (or in the app: Settings → Sticker Venues → QR button → Totem QR labels for several stores). It says TAP OR SCAN round the top and the store's name round the bottom. Print `stores/<code>-totem/sheet.pdf` on Avery 8293 at Actual size and put the label in the round recess on top.
 4. Test: tap a phone on the label and scan the QR. Both should open the store.
 
 ## Versions

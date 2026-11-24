@@ -4,7 +4,8 @@
 #       → stl/*.stl and bambu/*.3mf (P1S, 0.16 mm Fine): plate 1 ring + base in Dark Blue PLA Matte,
 #         plate 2 both heart halves in Red PLA Basic. The maker's mark under the base says No. 0001.
 #   ./make-totem.sh <windowCode> [tag] ["Store Name"] [number]
-#       → stores/<code>-<tag>/: the store's QR label sheet (Avery 8293), and when a name is given, that
+#       → stores/<code>-<tag>/: the store's QR label sheet (Avery 8293): "TAP OR SCAN" round the top, the
+#         store's name round the bottom (FAVCIRCLES when no name is given). With a name it also builds that
 #         store's own ring + base plate, its maker's mark reading "MADE FOR <NAME>" and "No. <number>".
 #       (tag = the base's NFC sticker, default "totem": Store Admin → NFC stickers → + → Points → "Totem")
 set -e
@@ -18,7 +19,7 @@ slice() { local out=$1 name=$2 fil=$3; shift 3
 }
 if [[ -n $1 ]]; then
   TAG=${2:-totem}; OUT=$HERE/stores/$1-$TAG
-  node $HERE/../favvy-print/make-label.js "https://api.favcircles.com/s/$1?t=$TAG" $OUT
+  node $HERE/../favvy-print/make-label.js "https://api.favcircles.com/s/$1?t=$TAG" $OUT "${3:-}"
   if [[ -n $3 ]]; then
     NAME=${(U)3}; NO=${4:-0001}
     openscad --backend Manifold -D 'part="base"' -D "MAKER_FOR=\"$NAME\"" -D "MAKER_NO=\"$NO\"" --export-format binstl -o $OUT/base.stl totem.scad >/dev/null 2>&1

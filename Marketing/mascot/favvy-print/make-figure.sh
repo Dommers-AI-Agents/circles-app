@@ -7,7 +7,7 @@
 # The link (QR label + NFC sticker): https://api.favcircles.com/s/<code>?t=<tag>
 # Output in bambu/<code>[-<tag>]/:
 #   favvy-mono.stl, Favvy <code>.3mf (P1S, 0.16 mm Fine, any one filament)
-#   label/label.svg|png (1.5 in round, for Sticker Mule) and label/sheet.pdf
+#   label/label.pdf|png (1.5 in round, for Sticker Mule) and label/sheet.pdf
 #   (US Letter, 20 labels: print at 100%, laminate, 1.5 in circle punch)
 # COLOR=1 also writes the old four-filament STLs (QR printed in plastic).
 set -e

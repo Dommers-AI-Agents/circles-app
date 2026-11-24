@@ -3,6 +3,7 @@
 const B = require('path').join(__dirname, '../../backend');
 const PDFDocument = require(B + '/node_modules/pdfkit');
 const QRCode = require(B + '/node_modules/qrcode');
+const { arcText } = require(B + '/services/roundLabelArt'); // words round the edge: one drawing, shared with the Totem label
 const fs = require('fs');
 const path = require('path');
 const [url, storeName, outDir] = process.argv.slice(2);
@@ -27,28 +28,6 @@ function drawQR(doc, x, y, size, dark) {
     }
   }
   doc.fill(dark);
-}
-
-/** Text along a circle, centred at the top (or bottom) of it. `r` is the baseline's radius. */
-function arcText(doc, text, cx, cy, r, { font, size, color, bottom = false, spacing = 0 }) {
-  doc.font(font).fontSize(size).fillColor(color);
-  const asc = doc._font.ascender / 1000 * size;
-  const widths = [...text].map((ch) => doc.widthOfString(ch) + spacing);
-  const total = widths.reduce((a, b) => a + b, 0) - spacing;
-  let at = -total / 2;
-  [...text].forEach((ch, i) => {
-    const w = widths[i] - spacing;
-    const a = (at + w / 2) / r; // radians from the top (or bottom) centre
-    at += widths[i];
-    doc.save();
-    if (bottom) {
-      doc.translate(cx + r * Math.sin(a), cy + r * Math.cos(a)).rotate(-a * 180 / Math.PI);
-    } else {
-      doc.translate(cx + r * Math.sin(a), cy - r * Math.cos(a)).rotate(a * 180 / Math.PI);
-    }
-    doc.text(ch, -w / 2, -asc, { lineBreak: false });
-    doc.restore();
-  });
 }
 
 /** A heart `w` wide centred on (cx, cy). */

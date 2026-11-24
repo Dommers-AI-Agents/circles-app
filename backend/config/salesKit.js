@@ -71,7 +71,7 @@ const SALES_KIT = [
       },
       {
         title: 'Totem QR labels (Join FavCircles)',
-        sub: 'Generic round 1.5 in labels (favcircles.com/s/JOINUS) for demo Totems. A store\'s own labels print from the app, one per store, starting at any label: Settings → Sticker Venues → QR button → Totem QR labels for several stores. Avery 8293 or Presta 94506, print at Actual size; try one on plain paper first. The base\'s NFC tag is written from Store Admin → NFC stickers → + → Points, named Totem.',
+        sub: 'Generic round 1.5 in labels (favcircles.com/s/JOINUS) for demo Totems: TAP OR SCAN round the top, FAVCIRCLES round the bottom. A store\'s own labels carry its name there and print from the app, one per store, starting at any label: Settings → Sticker Venues → QR button → Totem QR labels for several stores. Avery 8293 or Presta 94506, print at Actual size; try one on plain paper first. The base\'s NFC tag is written from Store Admin → NFC stickers → + → Points, named Totem.',
         url: `${KIT}/totem-qr-labels.pdf`,
         thumb: `${KIT}/totem-qr-labels.png`,
         action: 'Open PDF to print'

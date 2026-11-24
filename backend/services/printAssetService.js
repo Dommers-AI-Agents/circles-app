@@ -27,6 +27,7 @@ const path = require('path');
 const rewardProgress = require('./rewardProgress');
 const { coverJPEG } = require('./storeCoverPhoto');
 const rewardConfig = require('../config/rewardConfig');
+const roundLabelArt = require('./roundLabelArt');
 
 // The FavCircles palette (the App Clip card's): navy and blue, the yellow
 // call-to-action pill, warm white
@@ -488,40 +489,23 @@ async function renderStoreStickers(venues, { kind = 'window', startAt = 1 } = {}
 // Totem's base, on Avery 8293 / Presta 94506 (4 × 5, 2 in pitch, centred on
 // Letter). The label sits over the base's NFC sticker, so its link is the same
 // one the sticker carries: the window code + ?t=totem (the "Totem" Points
-// sticker's tag). Drawn exactly like Marketing/mascot/favvy-print/make-label.js:
-// pink ring, 21 mm code, "TAP OR SCAN". The store's name prints small under
-// each label, on the backing that peels away, so the sheet says whose is whose.
-const MM = IN / 25.4;
+// sticker's tag). The drawing is services/roundLabelArt.js, shared with the Mac
+// scripts: pink ring, "TAP OR SCAN" round the top, the code, the store's name
+// round the bottom (Wes, 2026-11-24). The name also prints small under each
+// label, on the backing that peels away, in full.
 const TOTEM_TAG = 'totem';
-const TOTEM_SHEET = { label: 'Avery 8293 or Presta 94506 (1½ in round, 20 per sheet)', diameter: 38.1 * MM,
+const TOTEM_SHEET = { label: 'Avery 8293 or Presta 94506 (1½ in round, 20 per sheet)', diameter: roundLabelArt.TOTEM_LABEL.diameter,
   cols: 4, rows: 5, pitch: 2 * IN, firstX: 1.25 * IN, firstY: 1.5 * IN };
 const TOTEM_LABELS_PER_SHEET = TOTEM_SHEET.cols * TOTEM_SHEET.rows;
 const MAX_TOTEM_LABELS = 100;
-const TOTEM_PINK = '#f4567f';
-const TOTEM_INK = '#1d1b22';
-const TOTEM_QR = 21 * MM;
 
 const totemUrl = (code) => `${rewardService.stickerUrl(code)}?t=${TOTEM_TAG}`;
 
 function drawTotemLabel(doc, cx, cy, url, name) {
-  const r = TOTEM_SHEET.diameter / 2;
-  doc.save();
-  doc.circle(cx, cy, r).fill('#FFFFFF');
-  doc.circle(cx, cy, r - 0.5 * MM).lineWidth(0.8 * MM).strokeColor(TOTEM_PINK).stroke();
-  doc.restore();
-  // drawQR keeps one quiet module inside its square; size it so the dark
-  // modules span exactly 21 mm, 1.8 mm above centre as on the printed labels
-  const modules = QRCode.create(url, { errorCorrectionLevel: 'M' }).modules;
-  const cell = TOTEM_QR / modules.size;
-  drawQR(doc, { modules, dark: TOTEM_INK }, cx - TOTEM_QR / 2 - cell * QR_MARGIN,
-    cy - TOTEM_QR / 2 - 1.8 * MM - cell * QR_MARGIN, TOTEM_QR + cell * QR_MARGIN * 2);
-  // "TAP OR SCAN": 2.7 mm type, baseline 13.6 mm below centre
-  const size = 2.7 * MM;
-  doc.font('Helvetica-Bold').fontSize(size).fillColor(TOTEM_INK);
-  doc.text('TAP OR SCAN', cx - r, cy + 13.6 * MM - size * 0.77, { width: 2 * r, align: 'center', lineBreak: false, characterSpacing: 0.2 * MM });
+  roundLabelArt.drawTotemLabel(doc, cx, cy, url, name);
   if (name) {
     doc.font('Helvetica').fontSize(6).fillColor(GUIDE_TEXT)
-      .text(name, cx - IN * 0.95, cy + r + 0.07 * IN, { width: IN * 1.9, align: 'center', lineBreak: false, ellipsis: true, height: 8 });
+      .text(name, cx - IN * 0.95, cy + TOTEM_SHEET.diameter / 2 + 0.07 * IN, { width: IN * 1.9, align: 'center', lineBreak: false, ellipsis: true, height: 8 });
   }
 }
 
@@ -536,7 +520,7 @@ async function renderTotemLabels(venues, { startAt = 1 } = {}) {
   }
   const entries = venues.map((venue) => ({
     url: totemUrl(codeFor('window', venue)),
-    name: String(venue.venueName || '').trim() || 'Store'
+    name: String(venue.venueName || '').trim()
   }));
   const { cols, pitch, firstX, firstY } = TOTEM_SHEET;
   const doc = new PDFDocument({ size: GEOMETRY.stickers.page, margin: 0, autoFirstPage: false });
