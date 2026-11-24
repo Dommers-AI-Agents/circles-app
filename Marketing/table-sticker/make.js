@@ -1,4 +1,4 @@
-// PICKED 2026-11-24: D's words ("Psst… / the regulars scan this") in A's cream + navy ring. The real one is
+// PICKED 2026-11-24: D's words ("Psst… / the regulars scan this") in A's cream, with no ring (he asked for the line to go). The real one is
 // drawTableSticker in backend/services/roundLabelArt.js; it prints from Sticker Venues → QR button → Table stickers.
 // Table sticker mock-ups (Wes, 2026-11-23): a half-dollar-size round sticker
 // with a store's Window code and a few words. usage: node make.js <url> <store name> <outDir>

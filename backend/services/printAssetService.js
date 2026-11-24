@@ -509,7 +509,7 @@ function drawTotemLabel(doc, cx, cy, url, name) {
   }
 }
 
-// Table stickers (Wes, 2026-11-24): "Psst… the regulars scan this", cream,
+// Table stickers (Wes, 2026-11-24): "Psst… the regulars scan this", plain cream (no ring),
 // on the same round labels and sheet as the Totem's, one per store. The link
 // is the store's plain window code. The sticker doesn't say whose it is, so
 // the store's name on the backing is the only way to tell them apart.
