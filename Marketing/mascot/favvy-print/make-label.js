@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The round QR label that goes over the NFC sticker on a Totem's base (or in a
 // Favvy figure's recess): "TAP OR SCAN" round the top, the code, the store's
-// name round the bottom, FavCircles pink ring (Wes, 2026-11-24). The drawing is
+// name round the bottom, words in navy, no ring (Wes, 2026-11-24). The drawing is
 // backend/services/roundLabelArt.js, the same one the app's "Totem QR labels"
 // sheet prints. Writes:
 //   <out>/label.pdf   one label, exact size (for Sticker Mule: 1.5 in circle)

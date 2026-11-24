@@ -490,8 +490,8 @@ async function renderStoreStickers(venues, { kind = 'window', startAt = 1 } = {}
 // Letter). The label sits over the base's NFC sticker, so its link is the same
 // one the sticker carries: the window code + ?t=totem (the "Totem" Points
 // sticker's tag). The drawing is services/roundLabelArt.js, shared with the Mac
-// scripts: pink ring, "TAP OR SCAN" round the top, the code, the store's name
-// round the bottom (Wes, 2026-11-24). The name also prints small under each
+// scripts: "TAP OR SCAN" round the top, the code, the store's name round the
+// bottom, words in navy, no ring (Wes, 2026-11-24). The name also prints small under each
 // label, on the backing that peels away, in full.
 const TOTEM_TAG = 'totem';
 const TOTEM_SHEET = { label: 'Avery 8293 or Presta 94506 (1½ in round, 20 per sheet)', diameter: roundLabelArt.TOTEM_LABEL.diameter,

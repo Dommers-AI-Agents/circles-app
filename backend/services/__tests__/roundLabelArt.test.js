@@ -43,12 +43,11 @@ describe('roundLabelArt', () => {
     expect(art.arcLength(measure(one.text, 5), 0)).toBeLessThanOrEqual(room);
   });
 
-  test('the Totem label keeps its words clear of the code and inside the ring', () => {
+  test('the Totem label keeps its words clear of the code and in from the cut edge', () => {
     const L = art.TOTEM_LABEL;
     const corner = L.qr / Math.SQRT2;
     const module33 = L.qr / 33; // a store link is a 33 × 33 code
     expect(L.bandInner - corner).toBeGreaterThanOrEqual(2 * module33); // two quiet modules at the corners
-    expect(L.bandOuter).toBeLessThanOrEqual(L.diameter / 2 - L.ringInset - L.ringWidth / 2 - 0.5 * art.MM);
     expect(L.diameter / 2 - L.bandOuter).toBeGreaterThanOrEqual(1.5 * art.MM); // type stays 1.5 mm in from the cut
     // Top and bottom words cannot run into each other
     expect(L.topMaxAngle + L.nameMaxAngle).toBeLessThan(180 - 20);
@@ -65,5 +64,11 @@ describe('roundLabelArt', () => {
     expect(long.nameSize).toBeLessThan(art.TOTEM_LABEL.size);
     expect(draw('Tommy\'s Tavern + Tap Morristown New Jersey').name).toBe('TOMMY\'S TAVERN + TAP…');
     doc.end();
+  });
+
+  test('the Totem label has no ring, and its words are not the code\'s colour', () => {
+    const L = art.TOTEM_LABEL;
+    expect(L.ringWidth).toBeUndefined();
+    expect(L.words).not.toBe(L.ink);
   });
 });

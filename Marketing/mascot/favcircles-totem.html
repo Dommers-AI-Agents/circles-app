@@ -163,7 +163,6 @@ function labelTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 512;
   const g = c.getContext('2d');
   g.fillStyle = '#fff'; g.beginPath(); g.arc(256, 256, 256, 0, Math.PI * 2); g.fill();
-  g.strokeStyle = '#f0607f'; g.lineWidth = 12; g.beginPath(); g.arc(256, 256, 248, 0, Math.PI * 2); g.stroke();
   if (window.qrcode) {
     const q = qrcode(0, 'M'); q.addData('https://api.favcircles.com/s/JOINUS?t=favvy'); q.make();
     const n = q.getModuleCount(), size = 262, m = size / n, x0 = 256 - size / 2, y0 = 256 - size / 2;
@@ -172,7 +171,7 @@ function labelTexture() {
   }
   // Words round the edge, as on the printed label (backend/services/roundLabelArt.js):
   // TAP OR SCAN over the top, the store's name (FAVCIRCLES here) round the bottom
-  g.fillStyle = '#1d1b22'; g.font = '700 39px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  g.fillStyle = '#1A365D'; g.font = '700 39px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
   const arc = (text, r, bottom) => {
     const gap = 3.4, w = [...text].map((ch) => g.measureText(ch).width + gap);
     let at = -(w.reduce((a, b) => a + b, 0) - gap) / 2;

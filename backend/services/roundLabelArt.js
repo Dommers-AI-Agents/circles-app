@@ -1,7 +1,9 @@
 // Round QR labels with words running round the edge (Wes, 2026-11-24).
 //
-// The Totem label: a 1½ in circle, "TAP OR SCAN" over the top, the code in the
-// middle, the store's name round the bottom. One drawing, used by the app's
+// The Totem label: a plain white 1½ in circle, "TAP OR SCAN" over the top, the
+// code in the middle, the store's name round the bottom; the words in navy, no
+// ring (Wes, 2026-11-24: "do the writing in a different color and get rid of
+// the red ring"). One drawing, used by the app's
 // "Totem QR labels" sheet (printAssetService) and by the Mac scripts
 // (Marketing/mascot/favvy-print/make-label.js). The table-sticker mock-ups
 // (Marketing/table-sticker/make.js) use arcText from here too.
@@ -14,11 +16,9 @@ const MM = 72 / 25.4;
 const TOTEM_LABEL = {
   diameter: 38.1 * MM,        // 1½ in, Avery 8293 / Presta 94506
   qr: 19.5 * MM,              // dark modules span this, centred on the label
-  ringInset: 0.5 * MM,        // pink ring's centre line, in from the cut edge
-  ringWidth: 0.8 * MM,
-  // The words live in a band between the code's corners and the ring:
-  // 15.3 mm to 17.4 mm from the centre (the corners reach 13.8 mm, the ring
-  // starts at 18.15 mm, the cut edge is at 19.05 mm).
+  // The words live in a band between the code's corners and the cut edge:
+  // 15.3 mm to 17.4 mm from the centre (the corners reach 13.8 mm, the cut
+  // edge is at 19.05 mm, so a sheet printed 1 mm off still keeps its words).
   bandInner: 15.3 * MM,
   bandOuter: 17.4 * MM,
   font: 'Helvetica-Bold',
@@ -29,8 +29,8 @@ const TOTEM_LABEL = {
   topMaxAngle: 50,            // degrees either side of the top
   nameMaxAngle: 62,           // degrees either side of the bottom
   noName: 'FAVCIRCLES',       // a label that belongs to no store
-  pink: '#f4567f',
-  ink: '#1d1b22'
+  words: '#1A365D',           // navy, the Totem's Dark Blue
+  ink: '#1d1b22'              // the code stays near-black: it has to scan
 };
 
 const ELLIPSIS = '…';
@@ -135,7 +135,7 @@ function totemNameLine(doc, name) {
 }
 
 /**
- * One Totem label centred on (cx, cy): white circle, pink ring, "TAP OR SCAN"
+ * One Totem label centred on (cx, cy): white circle, "TAP OR SCAN"
  * round the top, the code for `url`, the store's name round the bottom.
  */
 function drawTotemLabel(doc, cx, cy, url, name) {
@@ -143,16 +143,15 @@ function drawTotemLabel(doc, cx, cy, url, name) {
   const r = L.diameter / 2;
   doc.save();
   doc.circle(cx, cy, r).fill('#FFFFFF');
-  doc.circle(cx, cy, r - L.ringInset).lineWidth(L.ringWidth).strokeColor(L.pink).stroke();
   const modules = QRCode.create(url, { errorCorrectionLevel: 'M' }).modules;
   drawModules(doc, modules, cx - L.qr / 2, cy - L.qr / 2, L.qr, L.ink);
   const top = fitArcText(L.top, {
     measure: measureWith(doc, L.font), radius: L.bandInner, maxAngle: L.topMaxAngle,
     size: L.size, minSize: L.minSize, spacing: L.spacing
   });
-  arcText(doc, top.text, cx, cy, L.bandInner, { font: L.font, size: top.size, color: L.ink, spacing: L.spacing });
+  arcText(doc, top.text, cx, cy, L.bandInner, { font: L.font, size: top.size, color: L.words, spacing: L.spacing });
   const bottom = totemNameLine(doc, name);
-  arcText(doc, bottom.text, cx, cy, L.bandOuter, { font: L.font, size: bottom.size, color: L.ink, bottom: true, spacing: L.spacing });
+  arcText(doc, bottom.text, cx, cy, L.bandOuter, { font: L.font, size: bottom.size, color: L.words, bottom: true, spacing: L.spacing });
   doc.restore();
   return { modules: modules.size, name: bottom.text, nameSize: bottom.size };
 }
