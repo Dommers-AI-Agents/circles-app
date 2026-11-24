@@ -83,7 +83,7 @@ describe('roundLabelArt', () => {
     expect(capHeight).toBeGreaterThan(0.5 * T.topSize);
     expect(T.topRadius + capHeight).toBeLessThanOrEqual(edge);
     expect(T.topRadius).toBeGreaterThan(T.qr / 2 + 2 * art.MM);
-    expect([T.top, T.bottom]).toEqual(['Psst…', 'the regulars scan this']);
+    expect([T.top, T.bottom]).toEqual(['Psst…', 'regulars scan this']);
     doc.end();
   });
 

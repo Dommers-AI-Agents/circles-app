@@ -81,7 +81,7 @@ struct CoasterStickerSheet: Equatable {
 /// - Totem QR labels for the Totem's base (`GET rewards/stickers/totem`): the
 ///   store's window code + `?t=totem`, the same link as the Totem's NFC
 ///   sticker (Wes, 2026-11-22: never 20 labels of one store).
-/// - Table stickers (`GET rewards/stickers/table`): "Psst… the regulars scan
+/// - Table stickers (`GET rewards/stickers/table`): "Psst… regulars scan
 ///   this" in cream, the store's window code (Wes, 2026-11-24), `copies` of
 ///   each store's: one for every table.
 struct RoundLabelSheet: Equatable {
@@ -184,7 +184,7 @@ enum StorePickPrint: Equatable {
         case .tableStickers:
             let total = count * copies
             let split = copies == 1 ? "one per store" : (count == 1 ? "all for one store" : "\(copies) for each of \(count) stores")
-            return "\(total) round \(total == 1 ? "sticker" : "stickers"), \(split), on Avery 8293. 1 is the top-left sticker; start later to skip ones already used. Each says \"Psst… the regulars scan this\" and opens the store; the store's name prints on the backing under it."
+            return "\(total) round \(total == 1 ? "sticker" : "stickers"), \(split), on Avery 8293. 1 is the top-left sticker; start later to skip ones already used. Each says \"Psst… regulars scan this\" and opens the store; the store's name prints on the backing under it."
         }
     }
 }

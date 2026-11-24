@@ -1,4 +1,4 @@
-// PICKED 2026-11-24: D's words ("Psst… / the regulars scan this") in A's cream, with no ring (he asked for the line to go). The real one is
+// PICKED 2026-11-24: D's words ("Psst… / regulars scan this") in A's cream, with no ring (he asked for the line to go). The real one is
 // drawTableSticker in backend/services/roundLabelArt.js; it prints from Sticker Venues → QR button → Table stickers.
 // Table sticker mock-ups (Wes, 2026-11-23): a half-dollar-size round sticker
 // with a store's Window code and a few words. usage: node make.js <url> <store name> <outDir>
@@ -44,7 +44,7 @@ const VARIANTS = [
   { key: 'A', name: 'Cream', words: 'Love it here?', bg: CREAM, ring: NAVY, text: NAVY, qr: NAVY, heart: PINK },
   { key: 'B', name: 'Night', words: 'Love it here?', bg: NAVY, text: CREAM, qr: INK, tile: '#FFFFFF', heart: PINK },
   { key: 'C', name: 'Pink ring', words: 'Found a favorite?', bg: '#FFFFFF', ring: PINK, text: INK, qr: INK, heart: PINK },
-  { key: 'D', name: 'Psst', words: 'Psst…', under: 'the regulars scan this', bg: CREAM, ring: YELLOW, text: NAVY, qr: NAVY }
+  { key: 'D', name: 'Psst', words: 'Psst…', under: 'regulars scan this', bg: CREAM, ring: YELLOW, text: NAVY, qr: NAVY }
 ];
 
 /** One sticker of `diameter` centred on (cx, cy). Everything scales from the diameter. */

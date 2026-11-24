@@ -37,7 +37,7 @@ const TOTEM_LABEL = {
 // The table sticker (Wes, 2026-11-24: "Do the 'Psst, regulars scan this' in the
 // cream design"): the same 1½ in circle, plain cream, no ring (Wes, same day:
 // "get rid of the red circle line"), navy words and code, "Psst…" over
-// the top, the store's window code, "the regulars scan this" round the bottom.
+// the top, the store's window code, "regulars scan this" round the bottom.
 // Proportions from the mock-ups (Marketing/table-sticker/make.js, options A + D)
 // with the code a little smaller so the bottom words clear its corners.
 const TABLE_STICKER = {
@@ -49,7 +49,7 @@ const TABLE_STICKER = {
   topRadius: 14.57 * MM,      // baseline; the letters stand outward from it
   topSize: 3.86 * MM,
   topSpacing: 0.075 * MM,
-  bottom: 'the regulars scan this',
+  bottom: 'regulars scan this',
   bottomRadius: 17.0 * MM,    // baseline; the letters stand inward from it
   bottomSize: 2.8 * MM,
   bottomSpacing: 0.06 * MM,

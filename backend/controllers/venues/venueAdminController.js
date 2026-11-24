@@ -273,7 +273,7 @@ exports.printStoreStickers = async (req, res) => {
 // @desc    Round 1½ in labels on Avery 8293 / Presta 94506, one per picked
 //          store, from any label on the sheet:
 //          Totem QR labels, linking to the store's "totem" NFC sticker, and
-//          table stickers ("Psst… the regulars scan this"), the window code
+//          table stickers ("Psst… regulars scan this"), the window code
 // @route   GET /api/rewards/stickers/totem?venueIds=a,b&startAt=1
 // @route   GET /api/rewards/stickers/table?venueIds=a,b&startAt=1&copies=12
 //          (copies: that many of each store's, one for every table)
