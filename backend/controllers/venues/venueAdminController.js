@@ -275,7 +275,8 @@ exports.printStoreStickers = async (req, res) => {
 //          Totem QR labels, linking to the store's "totem" NFC sticker, and
 //          table stickers ("Psst… the regulars scan this"), the window code
 // @route   GET /api/rewards/stickers/totem?venueIds=a,b&startAt=1
-// @route   GET /api/rewards/stickers/table?venueIds=a,b&startAt=1
+// @route   GET /api/rewards/stickers/table?venueIds=a,b&startAt=1&copies=12
+//          (copies: that many of each store's, one for every table)
 // @access  Super user
 const ROUND_LABEL_PRINTS = {
   totem: { render: printAssetService.renderTotemLabels, file: 'Totem labels', failed: 'Could not build the Totem labels' },
@@ -292,9 +293,10 @@ const printRoundLabels = (design) => async (req, res) => {
     const docs = await getDocsById(STICKER_COLLECTIONS.STICKER_VENUES, unique);
     const venues = unique.filter(id => docs.has(id)).map(id => ({ venueId: id, ...docs.get(id).data() }));
     if (venues.length < unique.length) throw new ServiceError(404, 'STORE_NOT_FOUND', 'One of those stores no longer exists');
-    const pdf = await render(venues, { startAt: req.query.startAt || 1 });
+    const copies = Number(req.query.copies || 1);
+    const pdf = await render(venues, { startAt: req.query.startAt || 1, copies });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="FavCircles ${file} - ${venues.length} ${venues.length === 1 ? 'store' : 'stores'} - Avery 8293.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="FavCircles ${file} - ${venues.length} ${venues.length === 1 ? 'store' : 'stores'}${copies > 1 ? `, ${copies} each` : ''} - Avery 8293.pdf"`);
     res.send(pdf);
   } catch (error) {
     sendServiceError(res, error, { log: `Round labels (${design})`, fallbackCode: 'PRINT_FAILED', fallbackMessage: failed });

@@ -109,6 +109,20 @@ describe('printAssetService', () => {
     await expect(svc.renderTableStickers([{ ...venue, windowCode: null }])).rejects.toMatchObject({ status: 404 });
   });
 
+  test('table stickers: several of each store, one for every table; a Totem label stays one per store', async () => {
+    const stores = Array.from({ length: 5 }, (_, i) => ({ ...venue, venueId: `v${i}`, windowCode: `W${i}` }));
+    const pageCount = (pdf) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length;
+    expect(pageCount(await svc.renderTableStickers(stores.slice(0, 1), { copies: 20 }))).toBe(1);
+    expect(pageCount(await svc.renderTableStickers(stores.slice(0, 1), { copies: 20, startAt: 2 }))).toBe(2);
+    expect(pageCount(await svc.renderTableStickers(stores.slice(0, 2), { copies: '12' }))).toBe(2);
+    expect(pageCount(await svc.renderTableStickers(stores.slice(0, 4), { copies: svc.MAX_TABLE_COPIES }))).toBe(20);
+    for (const copies of [0, 1.5, 'x', svc.MAX_TABLE_COPIES + 1]) {
+      await expect(svc.renderTableStickers(stores.slice(0, 1), { copies })).rejects.toMatchObject({ status: 400, code: 'BAD_COPIES' });
+    }
+    await expect(svc.renderTableStickers(stores, { copies: 100 })).rejects.toMatchObject({ status: 400, code: 'TOO_MANY_LABELS' });
+    await expect(svc.renderTotemLabels(stores.slice(0, 1), { copies: 2 })).rejects.toMatchObject({ status: 400, code: 'BAD_COPIES' });
+  });
+
   test('sticker sheets match Avery\'s templates', () => {
     const { avery22805: big, avery94102: small } = svc.STICKER_SHEETS;
     // Every sheet's columns and rows fit the letter page with equal side margins

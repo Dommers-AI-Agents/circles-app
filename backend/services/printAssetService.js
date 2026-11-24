@@ -498,6 +498,10 @@ const TOTEM_SHEET = { label: 'Avery 8293 or Presta 94506 (1½ in round, 20 per s
   cols: 4, rows: 5, pitch: 2 * IN, firstX: 1.25 * IN, firstY: 1.5 * IN };
 const TOTEM_LABELS_PER_SHEET = TOTEM_SHEET.cols * TOTEM_SHEET.rows;
 const MAX_TOTEM_LABELS = 100;
+// Table stickers go one to a table, so a store can have several of its own
+// (Wes, 2026-11-24: "add a copies choice"). A Totem has one base: one label.
+const MAX_TABLE_COPIES = 100;
+const MAX_ROUND_LABELS = 400; // 20 sheets
 
 const totemUrl = (code) => `${rewardService.stickerUrl(code)}?t=${TOTEM_TAG}`;
 
@@ -510,7 +514,8 @@ function drawTotemLabel(doc, cx, cy, url, name) {
 }
 
 // Table stickers (Wes, 2026-11-24): "Psst… the regulars scan this", plain cream (no ring),
-// on the same round labels and sheet as the Totem's, one per store. The link
+// on the same round labels and sheet as the Totem's, `copies` per store (one
+// for each table), a store's copies side by side. The link
 // is the store's plain window code. The sticker doesn't say whose it is, so
 // the store's name on the backing is the only way to tell them apart.
 function drawTableSticker(doc, cx, cy, url, name) {
@@ -522,16 +527,20 @@ function drawTableSticker(doc, cx, cy, url, name) {
 }
 
 const ROUND_LABELS = {
-  totem: { url: totemUrl, draw: drawTotemLabel },
-  table: { url: (code) => rewardService.stickerUrl(code), draw: drawTableSticker }
+  totem: { url: totemUrl, draw: drawTotemLabel, maxCopies: 1 },
+  table: { url: (code) => rewardService.stickerUrl(code), draw: drawTableSticker, maxCopies: MAX_TABLE_COPIES }
 };
 
 const renderTotemLabels = (venues, options) => renderRoundLabels('totem', venues, options);
 const renderTableStickers = (venues, options) => renderRoundLabels('table', venues, options);
 
-// One round label per store, in the order given, from any label on the sheet
-async function renderRoundLabels(design, venues, { startAt = 1 } = {}) {
-  const { url, draw } = ROUND_LABELS[design];
+// Round labels for each store, in the order given, from any label on the sheet
+async function renderRoundLabels(design, venues, { startAt = 1, copies = 1 } = {}) {
+  const { url, draw, maxCopies } = ROUND_LABELS[design];
+  const each = Number(copies);
+  if (!Number.isInteger(each) || each < 1 || each > maxCopies) {
+    throw new ServiceError(400, 'BAD_COPIES', maxCopies === 1 ? 'These print one per store' : `copies must be 1 to ${maxCopies}`);
+  }
   const start = Number(startAt);
   if (!Number.isInteger(start) || start < 1 || start > TOTEM_LABELS_PER_SHEET) {
     throw new ServiceError(400, 'BAD_START', `startAt must be 1 to ${TOTEM_LABELS_PER_SHEET}`);
@@ -540,7 +549,10 @@ async function renderRoundLabels(design, venues, { startAt = 1 } = {}) {
   if (venues.length > MAX_TOTEM_LABELS) {
     throw new ServiceError(400, 'TOO_MANY_STORES', `At most ${MAX_TOTEM_LABELS} stores at a time`);
   }
-  const entries = venues.map((venue) => ({
+  if (venues.length * each > MAX_ROUND_LABELS) {
+    throw new ServiceError(400, 'TOO_MANY_LABELS', `At most ${MAX_ROUND_LABELS} at a time: fewer stores or fewer of each`);
+  }
+  const entries = venues.flatMap((venue) => Array(each).fill({
     url: url(codeFor('window', venue)),
     name: String(venue.venueName || '').trim()
   }));
@@ -614,7 +626,7 @@ const tableTentPDF = (venue) => renderPDF(venue, { kind: 'register', format: 'te
 
 module.exports = {
   renderPDF, renderStoreStickers, renderCoasterStickers, renderTotemLabels, renderTableStickers, totemUrl,
-  TOTEM_LABELS_PER_SHEET, MAX_TOTEM_LABELS, TOTEM_SHEET, TOTEM_TAG, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
+  TOTEM_LABELS_PER_SHEET, MAX_TOTEM_LABELS, MAX_TABLE_COPIES, MAX_ROUND_LABELS, TOTEM_SHEET, TOTEM_TAG, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
   STICKERS_PER_SHEET, MAX_STORE_STICKERS, COASTER_STICKERS_PER_SHEET, MAX_COASTERS, STICKER_SHEETS,
   windowSignPDF, registerCardPDF, tableTentPDF
 };

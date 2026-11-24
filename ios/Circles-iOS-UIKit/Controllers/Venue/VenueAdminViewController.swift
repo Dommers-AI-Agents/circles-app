@@ -365,10 +365,31 @@ extension VenueAdminViewController {
     }
 
     @objc private func printStickersTapped() {
+        // Table stickers go one to a table: ask how many of each store's first
+        guard pickPrint == .tableStickers else { return askStickerStart(copies: 1) }
+        let count = stickerPicks.count
+        AlertPresenter.showTextInput(
+            title: "How many of each?",
+            message: StorePickPrint.copiesMessage(count: count),
+            initialText: "1",
+            keyboardType: .numberPad,
+            confirmTitle: "Next",
+            from: self
+        ) { [weak self] text in
+            guard let self, let text else { return }
+            guard let copies = RoundLabelSheet.copies(from: text, stores: count) else {
+                self.showError("Enter 1 to \(RoundLabelSheet.maxCopies(stores: count)).")
+                return
+            }
+            self.askStickerStart(copies: copies)
+        }
+    }
+
+    private func askStickerStart(copies: Int) {
         let count = stickerPicks.count
         AlertPresenter.showTextInput(
             title: pickPrint.startTitle,
-            message: pickPrint.startMessage(count: count),
+            message: pickPrint.startMessage(count: count, copies: copies),
             initialText: "1",
             keyboardType: .numberPad,
             confirmTitle: "Print",
@@ -380,7 +401,7 @@ extension VenueAdminViewController {
                     self.showError("Pick a spot from 1 to \(RoundLabelSheet.perSheet).")
                     return
                 }
-                self.downloadRoundLabels(RoundLabelSheet(design: design, venueIds: self.stickerPicks, startAt: start))
+                self.downloadRoundLabels(RoundLabelSheet(design: design, venueIds: self.stickerPicks, startAt: start, copies: copies))
             } else {
                 guard let start = StoreStickerSheet.startPosition(from: text) else {
                     self.showError("Pick a sticker from 1 to \(StoreStickerSheet.perSheet).")

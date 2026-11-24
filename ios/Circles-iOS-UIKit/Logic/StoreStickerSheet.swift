@@ -77,12 +77,13 @@ struct CoasterStickerSheet: Equatable {
     }
 }
 
-/// Round 1½ in labels on Avery 8293 / Presta 94506, one per picked store:
+/// Round 1½ in labels on Avery 8293 / Presta 94506 for picked stores:
 /// - Totem QR labels for the Totem's base (`GET rewards/stickers/totem`): the
 ///   store's window code + `?t=totem`, the same link as the Totem's NFC
 ///   sticker (Wes, 2026-11-22: never 20 labels of one store).
 /// - Table stickers (`GET rewards/stickers/table`): "Psst… the regulars scan
-///   this" in cream, the store's window code (Wes, 2026-11-24).
+///   this" in cream, the store's window code (Wes, 2026-11-24), `copies` of
+///   each store's: one for every table.
 struct RoundLabelSheet: Equatable {
     enum Design: String, Equatable {
         case totem, table
@@ -94,22 +95,42 @@ struct RoundLabelSheet: Equatable {
 
     static let perSheet = 20
     static let maxStores = 100
+    /// Most table stickers of one store, and most labels in one print (20 sheets)
+    static let maxCopies = 100
+    static let maxLabels = 400
 
     var design: Design
     /// Store ids in the order they were picked (that's the order they print)
     var venueIds: [String]
     /// 1 is the top-left label; later positions skip labels already used
     var startAt: Int = 1
+    /// How many of each store's (table stickers only; a Totem has one base)
+    var copies: Int = 1
 
     var queryParams: [String: String] {
-        ["venueIds": venueIds.joined(separator: ","), "startAt": String(startAt)]
+        var params = ["venueIds": venueIds.joined(separator: ","), "startAt": String(startAt)]
+        if design == .table { params["copies"] = String(copies) }
+        return params
     }
+
+    var labelCount: Int { venueIds.count * (design == .table ? copies : 1) }
 
     /// Sheets the print takes from `startAt`
     var sheetCount: Int {
         guard !venueIds.isEmpty else { return 0 }
-        return (startAt - 1 + venueIds.count + Self.perSheet - 1) / Self.perSheet
+        return (startAt - 1 + labelCount + Self.perSheet - 1) / Self.perSheet
     }
+
+    /// A typed number of each store's for `stores` picked stores, or nil when
+    /// it isn't 1–100 or the print would pass 400 stickers
+    static func copies(from text: String?, stores: Int) -> Int? {
+        guard let value = Int((text ?? "").trimmingCharacters(in: .whitespaces)),
+              (1...maxCopies).contains(value), stores * value <= maxLabels else { return nil }
+        return value
+    }
+
+    /// The most of each store's that `stores` picked stores allow
+    static func maxCopies(stores: Int) -> Int { max(1, min(maxCopies, maxLabels / max(stores, 1))) }
 
     /// A typed start position, or nil when it isn't 1–20
     static func startPosition(from text: String?) -> Int? {
@@ -119,7 +140,8 @@ struct RoundLabelSheet: Equatable {
     }
 
     var fileName: String {
-        "FavCircles \(design.noun) - \(venueIds.count) \(venueIds.count == 1 ? "store" : "stores") - Avery 8293.pdf"
+        let each = design == .table && copies > 1 ? ", \(copies) each" : ""
+        return "FavCircles \(design.noun) - \(venueIds.count) \(venueIds.count == 1 ? "store" : "stores")\(each) - Avery 8293.pdf"
     }
 }
 
@@ -145,15 +167,24 @@ enum StorePickPrint: Equatable {
     /// The start-position prompt's title
     var startTitle: String { self == .totemLabels ? "Start at label #" : "Start at sticker #" }
 
+    /// The "how many of each" prompt's message for `count` picked stores
+    static func copiesMessage(count: Int) -> String {
+        let whose = count == 1 ? "this store" : "each of the \(count) stores"
+        return "One sticker for every table. How many for \(whose)? A sheet holds \(RoundLabelSheet.perSheet); up to \(RoundLabelSheet.maxCopies(stores: count))."
+    }
+
     /// The start-position prompt's message for `count` picked stores
-    func startMessage(count: Int) -> String {
+    /// (`copies` of each, table stickers only)
+    func startMessage(count: Int, copies: Int = 1) -> String {
         switch self {
         case .windowStickers:
             return "\(count) \(count == 1 ? "sticker" : "stickers"), one per store, on Avery 22805. 1 is the top-left sticker; start later to skip ones already used."
         case .totemLabels:
             return "\(count) round \(count == 1 ? "label" : "labels"), one per store, on Avery 8293. 1 is the top-left label; start later to skip ones already used. Each opens the store like its Totem's NFC tag."
         case .tableStickers:
-            return "\(count) round \(count == 1 ? "sticker" : "stickers"), one per store, on Avery 8293. 1 is the top-left sticker; start later to skip ones already used. Each says \"Psst… the regulars scan this\" and opens the store; the store's name prints on the backing under it."
+            let total = count * copies
+            let split = copies == 1 ? "one per store" : (count == 1 ? "all for one store" : "\(copies) for each of \(count) stores")
+            return "\(total) round \(total == 1 ? "sticker" : "stickers"), \(split), on Avery 8293. 1 is the top-left sticker; start later to skip ones already used. Each says \"Psst… the regulars scan this\" and opens the store; the store's name prints on the backing under it."
         }
     }
 }
