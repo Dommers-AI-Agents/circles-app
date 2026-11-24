@@ -35,6 +35,21 @@ describe('who sees what', () => {
     expect([...svc.hiddenUrls(photos, 'cust')]).toEqual(['https://x/c.jpg']);
   });
 
+  test('a new save may reuse only the photos anyone can see', () => {
+    // A removed photo used to fill the Add Place form and then be refused
+    // on save, leaving the place with no picture (2026-11-24, Giddy Goat)
+    expect(svc.publicUrls(photos)).toEqual(['https://x/a.jpg', 'https://x/d.jpg']);
+    expect(svc.publicUrls([P('c', { removedAt: 'x' })])).toEqual([]);
+    expect(svc.publicUrls(undefined)).toEqual([]);
+  });
+
+  test('a photo reused from the place is not the saver\'s own upload', () => {
+    const library = [P('a'), P('s', { uploadedBy: null, source: 'auto' }), P('c', { uploadedBy: null, removedAt: 'x' }), P('d', { uploadedBy: 'other' })];
+    const declared = ['https://x/a.jpg', 'https://x/s.jpg', 'https://x/c.jpg', 'https://x/d.jpg', 'https://x/new.jpg'];
+    expect(svc.ownUrlsNotFromLibrary(library, declared, 'cust')).toEqual(['https://x/a.jpg', 'https://x/new.jpg']);
+    expect(svc.ownUrlsNotFromLibrary([], declared, 'cust')).toEqual(declared);
+  });
+
   test('the cover is the first photo everyone can see', () => {
     expect(svc.coverUrl([P('b', { private: true }), P('c', { removedAt: 'x' }), P('d')])).toBe('https://x/d.jpg');
     expect(svc.coverUrl([])).toBeNull();

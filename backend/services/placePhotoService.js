@@ -91,6 +91,22 @@ const visiblePhotos = (photos, viewerId) => {
   });
 };
 
+/** The URLs anyone may see, in display order (what a new save may reuse). */
+const publicUrls = (photos) => visiblePhotos(photos, null).map(urlOf).filter(Boolean);
+
+/**
+ * Of the URLs a save declares as the saver's OWN uploads, the ones that
+ * really are: a URL the place's library already holds from someone else (or
+ * from nobody: a stock photo, a removed one) was reused from the venue by
+ * the Add Place form, not uploaded by this person.
+ */
+const ownUrlsNotFromLibrary = (photos, urls, userId) => {
+  const others = new Set((photos || [])
+    .filter((photo) => !(photo && typeof photo === 'object' && photo.uploadedBy && isSameUser(photo.uploadedBy, userId)))
+    .map(urlOf).filter(Boolean));
+  return (urls || []).filter((url) => !others.has(url));
+};
+
 /**
  * URLs this viewer must NOT see even if they turn up somewhere else (a save
  * doc's own photos array still holding a mirrored copy): removed photos and
@@ -408,7 +424,7 @@ async function saveIdsForPlace(globalPlaceId, placeData) {
 
 module.exports = {
   // rules
-  urlOf, isRemoved, isRawGooglePhotoUrl, canSee, visiblePhotos, hasVisiblePhotos, hiddenUrls, coverUrl, venueCoverUrl, reordered, movedToFront, permissionsFor,
+  urlOf, isRemoved, isRawGooglePhotoUrl, canSee, visiblePhotos, publicUrls, ownUrlsNotFromLibrary, hasVisiblePhotos, hiddenUrls, coverUrl, venueCoverUrl, reordered, movedToFront, permissionsFor,
   // data
   effectivelyPrivate, saveIsPrivate, venueForPlace, rightsFor, uploaderSaveIsPrivate, mutatePhotos, reorder, setCover, remove, setLiked, append, adoptSavePhotos, saveIdsForPlace
 };

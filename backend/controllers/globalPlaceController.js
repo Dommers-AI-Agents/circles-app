@@ -183,8 +183,12 @@ exports.matchGlobalPlace = async (req, res) => {
           address: match.address || null,
           category: match.category || null,
           description: match.description || null,
-          // Firebase Storage URLs — safe for the new save doc to reference
-          photos: (match.photos || []).map((p) => (typeof p === 'string' ? p : p?.url)).filter(Boolean)
+          // Firebase Storage URLs — safe for the new save doc to reference.
+          // Only what anyone may see: a photo the store or an admin removed
+          // (or someone's private one) used to come back here, fill the
+          // Add Place form, and then be refused by the library on save, so
+          // the place ended up with no picture (Wes, 2026-11-24, Giddy Goat).
+          photos: placePhotos.publicUrls(match.photos)
         }
       }
     });

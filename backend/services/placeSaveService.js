@@ -326,9 +326,26 @@ async function savePlace(user, body) {
     // names its own uploads separately, and only the add-place screen does, so
     // this is the one trustworthy signal. Recorded on the save for the home
     // daily card to read later.
-    const ownPhotoUrls = Array.isArray(body.ownPhotoUrls)
+    let ownPhotoUrls = Array.isArray(body.ownPhotoUrls)
       ? body.ownPhotoUrls.filter(url => typeof url === 'string' && url.length > 0)
       : [];
+    // Saving a venue we already know: the form reuses the venue's photos and
+    // older app builds declare those as the saver's own too. They are not,
+    // and one the store or an admin removed must not ride back in on the
+    // save (it left the place with no picture: Wes, 2026-11-24, Giddy Goat).
+    if (body.globalPlaceId && (placeData.photos || []).length) {
+      try {
+        const placePhotos = require('./placePhotoService');
+        const venue = await db.collection('globalPlaces').doc(String(body.globalPlaceId)).get();
+        const library = venue.exists ? (venue.get('photos') || []) : [];
+        const hidden = placePhotos.hiddenUrls(library, user.uid);
+        placeData.photos = placeData.photos.filter((url) => !hidden.has(url));
+        ownPhotoUrls = placePhotos.ownUrlsNotFromLibrary(library, ownPhotoUrls, user.uid)
+          .filter((url) => !hidden.has(url));
+      } catch (e) {
+        console.error('[place-save] venue photo check failed (non-fatal):', e.message);
+      }
+    }
     const hasOwnPhotos = ownPhotoUrls.length > 0;
     if (hasOwnPhotos) {
       placeData.hasOwnPhotos = true;
