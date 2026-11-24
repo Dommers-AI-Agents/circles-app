@@ -166,11 +166,25 @@ function labelTexture() {
   g.strokeStyle = '#f0607f'; g.lineWidth = 12; g.beginPath(); g.arc(256, 256, 248, 0, Math.PI * 2); g.stroke();
   if (window.qrcode) {
     const q = qrcode(0, 'M'); q.addData('https://api.favcircles.com/s/JOINUS?t=favvy'); q.make();
-    const n = q.getModuleCount(), size = 282, m = size / n, x0 = 256 - size / 2, y0 = 256 - size / 2 - 22;
+    const n = q.getModuleCount(), size = 262, m = size / n, x0 = 256 - size / 2, y0 = 256 - size / 2;
     g.fillStyle = '#1d1b22';
     for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) g.fillRect(x0 + k * m, y0 + r * m, m + 0.5, m + 0.5);
   }
-  g.fillStyle = '#1d1b22'; g.font = '700 34px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.fillText('TAP OR SCAN', 256, 438);
+  // Words round the edge, as on the printed label (backend/services/roundLabelArt.js):
+  // TAP OR SCAN over the top, the store's name (FAVCIRCLES here) round the bottom
+  g.fillStyle = '#1d1b22'; g.font = '700 39px Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  const arc = (text, r, bottom) => {
+    const gap = 3.4, w = [...text].map((ch) => g.measureText(ch).width + gap);
+    let at = -(w.reduce((a, b) => a + b, 0) - gap) / 2;
+    [...text].forEach((ch, i) => {
+      const a = (at + (w[i] - gap) / 2) / r; at += w[i];
+      g.save();
+      if (bottom) { g.translate(256 + r * Math.sin(a), 256 + r * Math.cos(a)); g.rotate(-a); }
+      else { g.translate(256 + r * Math.sin(a), 256 - r * Math.cos(a)); g.rotate(a); }
+      g.fillText(ch, 0, 0); g.restore();
+    });
+  };
+  arc('TAP OR SCAN', 206, false); arc('FAVCIRCLES', 234, true);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
 }
 

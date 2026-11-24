@@ -20,7 +20,9 @@ slice() { local out=$1 name=$2 fil=$3; shift 3
 if [[ -n $1 ]]; then
   TAG=${2:-totem}; OUT=$HERE/stores/$1-$TAG
   node $HERE/../favvy-print/make-label.js "https://api.favcircles.com/s/$1?t=$TAG" $OUT "${3:-}"
-  if [[ -n $3 ]]; then
+  if [[ -n $3 ]] && ! command -v openscad >/dev/null; then
+    echo "openscad is not on this Mac: made the label only (the store's own base plate needs openscad)"
+  elif [[ -n $3 ]]; then
     NAME=${(U)3}; NO=${4:-0001}
     openscad --backend Manifold -D 'part="base"' -D "MAKER_FOR=\"$NAME\"" -D "MAKER_NO=\"$NO\"" --export-format binstl -o $OUT/base.stl totem.scad >/dev/null 2>&1
     [[ -f stl/ring.stl ]] || openscad --backend Manifold -D 'part="ring"' --export-format binstl -o stl/ring.stl totem.scad >/dev/null 2>&1
