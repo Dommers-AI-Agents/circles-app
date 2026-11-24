@@ -13,6 +13,7 @@ jest.mock('../notificationService', () => ({}));
 const EXPECTED = [
   'trackCircleCreated',
   'trackPlaceAdded',
+  'movePlaceActivity', // a move re-points the place's rows instead of adding one (2026-11-24)
   'trackConnectionView',
   'trackCircleView',
   'trackPlaceView',
