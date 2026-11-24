@@ -23,10 +23,13 @@ const { GLOBAL_COLLECTIONS, buildSearchTokens } = require('../models/GlobalPlace
 const { STICKER_COLLECTIONS } = require('../models/StickerModels');
 const { ServiceError } = require('../utils/serviceError');
 const placePhotos = require('./placePhotoService');
+const { SOCIAL_FIELDS, normalizeSocialLink, socialLinksOf } = require('./venueSocialLinks');
 
 const db = getFirestore();
 
-const DETAIL_FIELDS = ['name', 'address', 'location', 'category', 'subcategory', 'description', 'phone', 'website', 'openingHours'];
+const DETAIL_FIELDS = ['name', 'address', 'location', 'category', 'subcategory', 'description', 'phone', 'website', 'openingHours',
+  // The store's Instagram, Facebook and X links (services/venueSocialLinks)
+  ...SOCIAL_FIELDS];
 // The one category list (config/placeCategories.js); home and work are
 // each person's own, never a venue's shared category
 const VALID_CATEGORIES = [...require('../config/placeCategories').AUTO_CATEGORY_IDS];
@@ -110,6 +113,10 @@ const buildDetailUpdates = (fields) => {
   }
   if (fields.phone !== undefined) venue['googleData.phone'] = String(fields.phone || '').trim() || null;
   if (fields.website !== undefined) venue['googleData.website'] = String(fields.website || '').trim() || null;
+  // A handle or an address in, a full link on that network out; blank removes it
+  SOCIAL_FIELDS.forEach((field) => {
+    if (fields[field] !== undefined) venue[`socialLinks.${field}`] = normalizeSocialLink(field, fields[field]);
+  });
   if (fields.openingHours !== undefined) {
     venue['googleData.openingHours'] = cleanHours(fields.openingHours);
     // Owner-set hours survive any later Google refresh
@@ -147,7 +154,8 @@ const changedDetailFields = (fields, venue) => {
   const current = {
     name: venue && venue.name, address: venue && venue.address, category: venue && venue.category,
     subcategory: venue && venue.subcategory, description: venue && venue.description,
-    phone: g.phone, website: g.website
+    phone: g.phone, website: g.website,
+    ...((venue && venue.socialLinks) || {})
   };
   return Object.keys(fields).filter((f) => {
     if (f === 'location') {
@@ -286,7 +294,8 @@ const detailsOf = (globalPlaceId, g) => ({
   description: g.description || null,
   phone: (g.googleData || {}).phone || null,
   website: (g.googleData || {}).website || null,
-  openingHours: (g.googleData || {}).openingHours || null
+  openingHours: (g.googleData || {}).openingHours || null,
+  socialLinks: socialLinksOf(g)
 });
 
 module.exports = {

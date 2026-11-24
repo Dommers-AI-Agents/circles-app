@@ -92,6 +92,8 @@ struct Place: Codable, Identifiable {
     /// "pending" on the save reply when no map knows this place: it was saved
     /// private and waits for the admin to approve it (backend placeApproval)
     var approvalStatus: String? = nil
+    /// The store's Instagram / Facebook / X links, from the venue record (2026-11-24)
+    var socialLinks: PlaceSocialLinks? = nil
 
     enum CodingKeys: String, CodingKey {
         case id = "_id"
@@ -109,6 +111,7 @@ struct Place: Codable, Identifiable {
         case needsResolution
         case isSamplePlace
         case approvalStatus
+        case socialLinks
     }
 
     /// Human-readable origin for imported saves ("Google import"), nil for
@@ -247,6 +250,7 @@ struct Place: Codable, Identifiable {
         self.needsResolution = try container.decodeIfPresent(Bool.self, forKey: .needsResolution)
         self.isSamplePlace = try container.decodeIfPresent(Bool.self, forKey: .isSamplePlace)
         self.approvalStatus = try container.decodeIfPresent(String.self, forKey: .approvalStatus)
+        self.socialLinks = try? container.decodeIfPresent(PlaceSocialLinks.self, forKey: .socialLinks)
     }
     
     // Manual initializer for creating Place instances in code
@@ -296,6 +300,13 @@ struct Place: Codable, Identifiable {
         self.userRating = userRating
     }
     
+    /// The same place carrying its venue's social links
+    func withSocialLinks(_ links: PlaceSocialLinks?) -> Place {
+        var copy = self
+        copy.socialLinks = links
+        return copy
+    }
+
     // Helper computed properties
     var isAddedByCurrentUser: Bool {
         return addedBy == AuthService.shared.getUserId()

@@ -387,6 +387,12 @@ class PlaceDetailViewController: BaseViewController {
     private let websiteButton = UIButton.rowButton(title: "Website", systemName: "globe")
 
     private let phoneButton = UIButton.rowButton(title: "Call", systemName: "phone")
+
+    /// The store's Instagram / Facebook / X buttons; no height and no gap
+    /// until the store has set one (2026-11-24)
+    private let socialLinksRowView = PlaceSocialLinksRowView()
+    private var socialLinksTopConstraint: NSLayoutConstraint?
+    private var socialLinksHeightConstraint: NSLayoutConstraint?
     
     private let circleInfoView: UIView = PlaceDetailViewFactory.circleInfoView()
     
@@ -1101,7 +1107,20 @@ class PlaceDetailViewController: BaseViewController {
             partnerActionsRowView.leadingAnchor.constraint(equalTo: infoContainerView.leadingAnchor, constant: Constants.Spacing.medium),
             partnerActionsRowView.trailingAnchor.constraint(equalTo: infoContainerView.trailingAnchor, constant: -Constants.Spacing.medium)
         ])
-        let partnerTop = partnerActionsRowView.topAnchor.constraint(equalTo: practicalButtonsStackView.bottomAnchor, constant: 0)
+        // The store's social links sit between the practical row and the
+        // partner chips, collapsed the same way while there are none
+        infoContainerView.addSubview(socialLinksRowView)
+        let socialTop = socialLinksRowView.topAnchor.constraint(equalTo: practicalButtonsStackView.bottomAnchor, constant: 0)
+        let socialHeight = socialLinksRowView.heightAnchor.constraint(equalToConstant: 0)
+        NSLayoutConstraint.activate([
+            socialLinksRowView.leadingAnchor.constraint(equalTo: practicalButtonsStackView.leadingAnchor),
+            socialLinksRowView.trailingAnchor.constraint(equalTo: practicalButtonsStackView.trailingAnchor),
+            socialTop, socialHeight
+        ])
+        socialLinksTopConstraint = socialTop
+        socialLinksHeightConstraint = socialHeight
+        socialLinksRowView.onOpen = { url in UIApplication.shared.open(url) }
+        let partnerTop = partnerActionsRowView.topAnchor.constraint(equalTo: socialLinksRowView.bottomAnchor, constant: 0)
         let partnerHeight = partnerActionsRowView.heightAnchor.constraint(equalToConstant: 0)
         partnerTop.isActive = true
         partnerHeight.isActive = true
@@ -1233,6 +1252,7 @@ class PlaceDetailViewController: BaseViewController {
     private func configureUI() {
         // Set place details
         nameLabel.text = place.name
+        configureSocialLinks()
         updateCheckInHistory()
         
         // Creator info
@@ -1977,6 +1997,14 @@ class PlaceDetailViewController: BaseViewController {
         UIApplication.shared.open(url)
     }
     
+    /// A button per link the store has set; with none, the row takes no room
+    private func configureSocialLinks() {
+        socialLinksRowView.configure(place.socialLinks)
+        let shown = socialLinksRowView.buttonCount > 0
+        socialLinksHeightConstraint?.constant = shown ? PlaceSocialLinksRowView.rowHeight : 0
+        socialLinksTopConstraint?.constant = shown ? 10 : 0
+    }
+
     @objc private func websiteButtonTapped() {
         if let websiteString = effectiveWebsite, let url = URL(string: websiteString) {
             UIApplication.shared.open(url)

@@ -12,6 +12,7 @@ const { GLOBAL_COLLECTIONS } = require('../models/GlobalPlace');
 const { isSameUser } = require('./idService');
 const { ensureGlobalPlaceLink } = require('./globalPlaceResolver');
 const visibility = require('./visibility');
+const { socialLinksOf } = require('./venueSocialLinks');
 
 const db = getFirestore();
 
@@ -78,7 +79,7 @@ const AUTHORITATIVE_GOOGLE_FIELDS = ['website', 'phone', 'openingHours'];
 // Per-user fields (notes, tags, privacy, photos, ...) are untouched.
 // fetchGlobalSocialMap's projection: everything overlayVenueFields and
 // overlayVenuePhotos read, plus the social counts
-const SOCIAL_MAP_FIELDS = ['likes', 'commentsCount', 'photos', 'googlePlaceId', ...VENUE_TOP_FIELDS,
+const SOCIAL_MAP_FIELDS = ['likes', 'commentsCount', 'photos', 'googlePlaceId', 'socialLinks', ...VENUE_TOP_FIELDS,
   ...VENUE_GOOGLE_FIELDS.map(field => `googleData.${field}`)];
 
 const overlayVenueFields = (place, globalData) => {
@@ -104,6 +105,8 @@ const overlayVenueFields = (place, globalData) => {
       merged[field] = null;
     }
   });
+  // The store's Instagram / Facebook / X links: the venue's only, never a save's
+  merged.socialLinks = socialLinksOf(globalData);
   return merged;
 };
 

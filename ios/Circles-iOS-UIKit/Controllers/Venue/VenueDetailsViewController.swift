@@ -24,6 +24,17 @@ final class VenueDetailsViewController: BaseViewController {
 
     private enum Row: CaseIterable {
         case name, category, description, phone, website, address
+        /// The store's social pages; each shows on the place page once set (2026-11-24)
+        case instagram, facebook, twitter
+
+        var network: PlaceSocialLinks.Network? {
+            switch self {
+            case .instagram: return .instagram
+            case .facebook: return .facebook
+            case .twitter: return .twitter
+            default: return nil
+            }
+        }
     }
 
     private let tableView: UITableView = {
@@ -112,6 +123,15 @@ final class VenueDetailsViewController: BaseViewController {
             prompt(title: "Website", placeholder: "https://", initialText: place.website, keyboardType: .URL, confirmTitle: "Save") { [weak self] value in
                 self?.save(["website": (value ?? "").trimmingCharacters(in: .whitespaces)])
             }
+        case .instagram, .facebook, .twitter:
+            guard let network = row.network else { return }
+            let current = place.socialLinks?.link(network)
+            prompt(title: network.settingsTitle, placeholder: "@yourstore or your page's link",
+                   initialText: PlaceSocialLinks.display(current, for: network) ?? current,
+                   keyboardType: .URL, confirmTitle: "Save") { [weak self] value in
+                // Blank removes the link, and its button on the place page with it
+                self?.save([network.rawValue: (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)])
+            }
         case .address:
             // Map-confirmed: the owner picks the spot, not just the words
             let search = PlaceAddressSearchViewController(placeName: place.name, currentLocation: place.location?.clLocation)
@@ -187,7 +207,7 @@ extension VenueDetailsViewController: UITableViewDataSource, UITableViewDelegate
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { Row.allCases.count }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        "Everyone who saved your store sees these. Hours, photos and your menu are in Manage Store too."
+        "Everyone who saved your store sees these. Your Instagram, Facebook and X pages show on your place page once you add them. Hours, photos and your menu are in Manage Store too."
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -220,6 +240,12 @@ extension VenueDetailsViewController: UITableViewDataSource, UITableViewDelegate
             config.text = "Website"
             config.secondaryText = empty(place?.website) ? "Add your website" : place?.website
             config.image = UIImage(systemName: "globe")
+        case .instagram, .facebook, .twitter:
+            if let network = row.network {
+                config.text = network.settingsTitle
+                config.secondaryText = PlaceSocialLinks.display(place?.socialLinks?.link(network), for: network) ?? network.addPrompt
+                config.image = SocialGlyph.image(for: network, side: 22)
+            }
         case .address:
             config.text = "Address"
             config.secondaryText = place?.address

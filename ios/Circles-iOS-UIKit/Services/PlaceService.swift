@@ -302,7 +302,7 @@ class PlaceService {
             createdAt: globalPlace.createdAt,
             updatedAt: globalPlace.updatedAt,
             isNew: nil
-        )
+        ).withSocialLinks(globalPlace.socialLinks)
     }
     
     func getMyPlacesForCheckIn(completion: @escaping (Result<[Place], Error>) -> Void) {

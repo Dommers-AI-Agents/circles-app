@@ -30,6 +30,8 @@ struct GlobalPlace: Codable, Identifiable {
     
     // Google Places API data (cached)
     let googleData: GooglePlaceData?
+    /// The store's Instagram / Facebook / X links (2026-11-24)
+    var socialLinks: PlaceSocialLinks? = nil
     
     // Platform statistics
     let totalCircleReferences: Int
@@ -47,7 +49,7 @@ struct GlobalPlace: Codable, Identifiable {
         case id = "_id"
         case googlePlaceId, deduplicationKey, legacyPlaceIds, name, address, location, category, subcategory
         case description
-        case photos, videos, coverPhotoUrl, publicReviews, userContributions, googleData
+        case photos, videos, coverPhotoUrl, publicReviews, userContributions, googleData, socialLinks
         case totalCircleReferences, totalUserReferences, lastActivityAt
         case dataCompleteness, qualityScore
         case createdAt, updatedAt, deletedAt
@@ -426,7 +428,7 @@ extension GlobalPlace {
             createdAt: createdAt,
             updatedAt: updatedAt,
             isNew: false
-        )
+        ).withSocialLinks(socialLinks)
     }
     
     // Helper properties
