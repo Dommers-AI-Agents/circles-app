@@ -837,8 +837,31 @@ const markPlaceAsViewed = async (userId, placeId, circleId) => {
   }
 };
 
+// A place moved to another circle is organization, not news: no new row (Wes,
+// 2026-11-24: three moves showed up as "added three places"). The rows it
+// already has — added, liked, commented — follow it to the new circle, so the
+// feed's circle gate and the owner's "in <circle>" label read the current one.
+const movePlaceActivity = async (placeId, toCircleId, toCircleName) => {
+  try {
+    const snap = await db.collection(COLLECTIONS.ACTIVITIES).where('targetId', '==', placeId).get();
+    const rows = snap.docs.filter((d) => {
+      const r = d.data();
+      return r.targetType === 'place' && r.circleId && r.circleId !== toCircleId;
+    });
+    if (!rows.length) return 0;
+    const batch = db.batch();
+    rows.forEach((d) => batch.update(d.ref, { circleId: toCircleId, circleName: toCircleName || 'Unknown Circle' }));
+    await batch.commit();
+    return rows.length;
+  } catch (error) {
+    console.error('Error re-pointing place activity after move:', error);
+    return 0;
+  }
+};
+
 module.exports = {
   trackPlaceAdded,
+  movePlaceActivity,
   trackPlaceView,
   trackPlaceLiked,
   trackPlaceDiscovered,

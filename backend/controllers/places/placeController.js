@@ -11,7 +11,7 @@ const geofire = require('geofire-common');
 const { normalizeUserId, isSameUser } = require('../../services/idService');
 const { ensureGlobalPlaceLink } = require('../../services/globalPlaceResolver');
 const { indexPlaceRemoved, indexPlaceMoved } = require('../../services/circleLocationSummary');
-const { trackPlaceAdded, markCirclePlacesViewed } = require('../../services/activityService');
+const { trackPlaceAdded, movePlaceActivity, markCirclePlacesViewed } = require('../../services/activityService');
 const placeCache = require('../../services/placeCache');
 const piggyBankService = require('../../services/piggyBankService');
 const { sameVenue, carryOverPatch } = require('../../services/placeMoveMerge');
@@ -1648,10 +1648,9 @@ exports.movePlace = async (req, res, next) => {
     indexPlaceMoved(place.circleId, targetCircleId, place);
     placeCache.clear('browseTree', userId);
 
-    // Track activity (skip for Private places — owner-only)
-    if (trackPlaceAdded && updatedPlace.privacy !== 'private') {
-      await trackPlaceAdded(placeId, targetCircleId, updatedPlace.name, targetCircle.name, userId);
-    }
+    // No "added a place" row: a move is organization, not news (Wes,
+    // 2026-11-24). The place's existing rows follow it to the new circle.
+    await movePlaceActivity(placeId, targetCircleId, targetCircle.name);
 
     res.status(200).json({
       success: true,
