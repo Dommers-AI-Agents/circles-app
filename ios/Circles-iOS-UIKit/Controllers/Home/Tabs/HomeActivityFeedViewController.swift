@@ -709,16 +709,45 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         }
     }
 
-    /// After a group opens, scroll so its header sits at the top and as many of
-    /// its activities as fit are on screen, then briefly tint them so the tap
-    /// visibly did something (Wes, 2026-11-05)
+    /// After a group opens, scroll so its activities are on screen, then
+    /// briefly tint them so the tap visibly did something (Wes, 2026-11-05).
+    ///
+    /// The header used to go to the top — but a group with a photo is a card
+    /// about as tall as the feed, so its activities opened below the fold and
+    /// the tap looked like it did nothing (Wes, 2026-11-24). Now the first
+    /// activity sits just under the header's caption (who did what, and
+    /// "Show less"), which stays in view above it.
     private func revealExpandedGroup(header: IndexPath, children: [IndexPath]) {
-        guard header.row < tableView.numberOfRows(inSection: 0) else { return }
-        tableView.scrollToRow(at: header, at: .top, animated: true)
+        guard header.row < tableView.numberOfRows(inSection: 0),
+              let first = children.first, first.row < tableView.numberOfRows(inSection: 0) else { return }
+        tableView.layoutIfNeeded()
+        let offsetY = Self.revealOffset(
+            headerRect: tableView.rectForRow(at: header),
+            firstChildMinY: tableView.rectForRow(at: first).minY,
+            contentHeight: tableView.contentSize.height,
+            visibleHeight: tableView.bounds.height,
+            insets: tableView.adjustedContentInset
+        )
+        tableView.setContentOffset(CGPoint(x: tableView.contentOffset.x, y: offsetY), animated: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self else { return }
             children.forEach { (self.tableView.cellForRow(at: $0) as? ActivityFeedCell)?.flashReveal() }
         }
+    }
+
+    /// How much of an opened group's header stays above its first activity:
+    /// the caption under the photo, not the photo.
+    static let revealHeaderPeek: CGFloat = 132
+
+    /// Where to scroll so an opened group's activities show under a peek of
+    /// its header, never past either end of the list.
+    static func revealOffset(headerRect: CGRect, firstChildMinY: CGFloat, contentHeight: CGFloat,
+                             visibleHeight: CGFloat, insets: UIEdgeInsets) -> CGFloat {
+        let peek = min(headerRect.height, revealHeaderPeek)
+        let wanted = firstChildMinY - peek - insets.top
+        let top = -insets.top
+        let bottom = max(top, contentHeight + insets.bottom - visibleHeight)
+        return min(max(wanted, top), bottom)
     }
 
     // MARK: - In-place row updates
