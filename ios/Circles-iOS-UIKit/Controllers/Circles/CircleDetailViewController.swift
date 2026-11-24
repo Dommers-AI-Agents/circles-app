@@ -1644,10 +1644,26 @@ class CircleDetailViewController: UIViewController, MKMapViewDelegate, CLLocatio
     }
     
     private func presentFullScreenMap() {
-        let unifiedCategory = selectedCategory.map { UnifiedCategory.standard($0) }
-        let fullScreenMapVC = FullScreenMapViewController(places: filteredPlaces, initialRegion: mapView.region, selectedCategory: unifiedCategory)
+        // Same filter header as the home and profile maps (Category and Place
+        // dropdowns, search), minus the people filter: a circle is already one
+        // person's places. The old hamburger Category menu re-framed the
+        // camera to fit every match on each pick; the dropdowns keep the
+        // view you expanded from (Wes, 2026-11-24).
+        //
+        // Hand over the whole circle (narrowed only by the tag chip, which the
+        // expanded map has no control for) and seed the category as the
+        // dropdown's selection, so the large map opens on exactly this filter
+        // but can broaden it as well as narrow it.
+        let fullScreenMapVC = FullScreenMapViewController(
+            places: CirclePlaceFilter.apply(places, category: nil, tag: selectedTag),
+            initialRegion: mapView.region,
+            selectedCategory: nil
+        )
         fullScreenMapVC.delegate = self
         fullScreenMapVC.isPresentedModally = true
+        fullScreenMapVC.showsConnectionFilter = false
+        fullScreenMapVC.showsFilterChips = true
+        fullScreenMapVC.initialChipGroup = selectedCategory.map { PlaceCategoryGroup.group(for: $0.rawValue) } ?? .all
         present(fullScreenMapVC, animated: true)
     }
     
