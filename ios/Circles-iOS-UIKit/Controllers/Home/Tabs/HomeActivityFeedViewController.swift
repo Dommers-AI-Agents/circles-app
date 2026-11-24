@@ -48,6 +48,22 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
     private(set) var feedItems: [FeedItem] = []
     /// Groups the user has expanded inline, keyed by the group's first activity id
     private var expandedGroupKeys: Set<String> = []
+    /// The page each swipeable group card is on, keyed like `expandedGroupKeys`,
+    /// so a reload (a heart, a refresh) doesn't turn it back to the first
+    private var groupPageIndex: [String: Int] = [:]
+    /// Small bursts as one card you swipe, big ones opening into full cards?
+    private var pagesGroups: Bool { ActivityFeedPreference.pagesGroups }
+
+    /// How a burst is laid out; nil = the stack card with small rows under it
+    private func layout(for group: [Activity]) -> ActivityGroupLayout? {
+        ActivityGroupLayout.layout(count: group.count, enabled: pagesGroups)
+    }
+
+    /// The activity a swipeable group card is showing
+    private func currentPage(of group: [Activity]) -> Activity? {
+        guard let key = group.first?.id else { return nil }
+        return group[ActivityGroupLayout.page(groupPageIndex[key], count: group.count)]
+    }
 
     /// The activity a long-pressed reaction picker is for
     private var currentReactionActivity: Activity?
@@ -192,6 +208,7 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
     }
 
     @objc private func livelinessChanged() {
+        regroupActivities() // the grouped-pages switch changes which rows exist
         enteredIds.removeAll()
         choreographedIds.removeAll()
         pauseAllClips()
@@ -462,8 +479,20 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
     private func style(for item: FeedItem) -> ActivityRowStyle {
         switch item {
         case .single(let a): return ActivityRowStyle.style(single: a, enabled: isLively)
-        case .groupChild(let a): return ActivityRowStyle.style(single: a, enabled: isLively, inGroup: true)
-        case .group(let g): return ActivityRowStyle.style(group: g, enabled: isLively)
+        case .groupChild(let a):
+            // Under a big burst the activities open as full cards, not small rows
+            return ActivityRowStyle.style(single: a, enabled: isLively, inGroup: !pagesGroups)
+        case .group(let g):
+            switch layout(for: g) {
+            case .pages:
+                // The card of whichever activity the group is turned to
+                return currentPage(of: g).map { ActivityRowStyle.style(single: $0, enabled: isLively) } ?? .compact
+            case .expandable where expandedGroupKeys.contains(g[0].id):
+                // Open: a thin summary row above its full-size cards
+                return .compact
+            default:
+                return ActivityRowStyle.style(group: g, enabled: isLively)
+            }
         }
     }
 
@@ -604,7 +633,10 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
     /// into groups of ≥2. Standalone rows interleaved in a burst don't break
     /// the surrounding group: the group is inserted back at the position of
     /// its newest member.
-    static func group(_ activities: [Activity], expandedKeys: Set<String>) -> [FeedItem] {
+    ///
+    /// `pagesSmallGroups`: a burst small enough to swipe through never opens
+    /// rows under itself, whatever `expandedKeys` remembers.
+    static func group(_ activities: [Activity], expandedKeys: Set<String>, pagesSmallGroups: Bool = false) -> [FeedItem] {
         var items: [FeedItem] = []
         var pendingGroup: [Activity] = []
         var pendingStartIndex: Int?
@@ -614,7 +646,8 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
             let insertAt = min(pendingStartIndex ?? items.count, items.count)
             if pendingGroup.count >= 2 {
                 var groupRows: [FeedItem] = [.group(pendingGroup)]
-                if expandedKeys.contains(pendingGroup[0].id) {
+                let paged = ActivityGroupLayout.layout(count: pendingGroup.count, enabled: pagesSmallGroups) == .pages
+                if expandedKeys.contains(pendingGroup[0].id), !paged {
                     groupRows.append(contentsOf: pendingGroup.map { .groupChild($0) })
                 }
                 items.insert(contentsOf: groupRows, at: insertAt)
@@ -648,7 +681,7 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
     }
 
     private func regroupActivities() {
-        feedItems = Self.group(activities, expandedKeys: expandedGroupKeys)
+        feedItems = Self.group(activities, expandedKeys: expandedGroupKeys, pagesSmallGroups: pagesGroups)
     }
 
     private func feedItem(at row: Int) -> FeedItem? {
@@ -691,18 +724,22 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
         }
         let headerPath = IndexPath(row: header, section: 0)
         let childPaths = (1...group.count).map { IndexPath(row: header + $0, section: 0) }
+        // With full-size cards under it the header changes shape (stack card
+        // ⇄ thin summary row), so it reloads in the same pass as its rows
+        let headerChangesShape = pagesGroups
         tableView.performBatchUpdates {
             if expanding {
                 tableView.insertRows(at: childPaths, with: .fade)
             } else {
                 tableView.deleteRows(at: childPaths, with: .fade)
             }
+            if headerChangesShape { tableView.reloadRows(at: [headerPath], with: .fade) }
         } completion: { [weak self] _ in
             guard let self, expanding else { return }
             self.revealExpandedGroup(header: headerPath, children: childPaths)
         }
         // Refresh the header's "Show all / Show less" state
-        tableView.reloadRows(at: [headerPath], with: .none)
+        if !headerChangesShape { tableView.reloadRows(at: [headerPath], with: .none) }
         if !expanding, !(tableView.indexPathsForVisibleRows ?? []).contains(headerPath) {
             // Collapsing from far down the list: bring the group's header back
             tableView.scrollToRow(at: headerPath, at: .top, animated: true)
@@ -885,6 +922,10 @@ final class HomeActivityFeedViewController: BaseViewController, HomeContentTab {
             completion(false)
             return
         }
+        confirmDelete(activity, completion: completion)
+    }
+
+    private func confirmDelete(_ activity: Activity, completion: @escaping (Bool) -> Void) {
         AlertPresenter.showConfirmation(
             title: "Delete Activity",
             message: "Are you sure you want to delete this activity? This action cannot be undone.",
@@ -943,8 +984,14 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
             case .single(let activity), .groupChild(let activity):
                 cell.configure(activity: activity, hero: hero)
             case .group(let groupActivities):
-                cell.configure(group: groupActivities, hero: hero,
-                               isExpanded: expandedGroupKeys.contains(groupActivities[0].id))
+                let key = groupActivities[0].id
+                if layout(for: groupActivities) == .pages {
+                    cell.configure(pages: groupActivities, index: groupPageIndex[key] ?? 0)
+                    cell.onPageChange = { [weak self] page in self?.groupPageTurned(key: key, to: page) }
+                } else {
+                    cell.configure(group: groupActivities, hero: hero,
+                                   isExpanded: expandedGroupKeys.contains(key))
+                }
             }
             return cell
         }
@@ -1024,6 +1071,11 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
         case .single(let a), .groupChild(let a):
             activity = a
         case .group(let groupActivities):
+            // A swipeable card opens the activity it is turned to
+            if layout(for: groupActivities) == .pages, let page = currentPage(of: groupActivities) {
+                activity = page
+                break
+            }
             toggleActivityGroup(withKey: groupActivities[0].id)
             return
         }
@@ -1105,6 +1157,29 @@ extension HomeActivityFeedViewController: UITableViewDelegate, UITableViewDataSo
             // no row is ever a dead tap (a type this build doesn't know yet
             // included)
             if let actor = activity.actor { didTapUserProfile(user: actor) }
+        }
+    }
+
+    /// A swipeable group card turned to another activity: remember the page
+    /// and let the row take the new card's height, without a reload
+    private func groupPageTurned(key: String, to page: Int) {
+        groupPageIndex[key] = page
+        tableView.performBatchUpdates(nil)
+        focusClip()
+    }
+
+    /// Your own activity on a swipeable group card: touch and hold to delete
+    /// it. (Its row can't be swiped away: the swipe turns the page.)
+    func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+        guard case .group(let group) = feedItem(at: indexPath.row), layout(for: group) == .pages,
+              let activity = currentPage(of: group),
+              activity.actorId == (AuthService.shared.getUserId() ?? "") else { return nil }
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            UIMenu(children: [
+                UIAction(title: "Delete This Activity", image: UIImage(systemName: "trash"), attributes: .destructive) { _ in
+                    self?.confirmDelete(activity) { _ in }
+                }
+            ])
         }
     }
 

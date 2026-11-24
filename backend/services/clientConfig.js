@@ -46,8 +46,12 @@ function buildClientConfig() {
     // The Activity feed's look (Wes, 2026-11-16): hero cards and motion for
     // check-ins, places and photos. ACTIVITY_FEED_ALIVE=false puts every
     // phone back on the compact list at its next launch, no release.
+    // groupPages (Wes, 2026-11-24): a few activities by one person are one
+    // card you swipe through. ACTIVITY_FEED_GROUP_PAGES=false puts every
+    // phone back on the small rows that open under a group, no release.
     activityFeed: {
-      alive: process.env.ACTIVITY_FEED_ALIVE !== 'false'
+      alive: process.env.ACTIVITY_FEED_ALIVE !== 'false',
+      groupPages: process.env.ACTIVITY_FEED_GROUP_PAGES !== 'false'
     },
     // The chat screen's look (Wes, 2026-11-23): color wash, grouped bubbles,
     // day dividers. CHAT_POLISHED=false puts every phone back on the classic

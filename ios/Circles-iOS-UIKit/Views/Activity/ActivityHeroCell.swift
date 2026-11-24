@@ -15,6 +15,30 @@ final class ActivityHeroCell: UITableViewCell {
     private var avatarLoadId: String?
     private var photoLoadId: String?
     private var mapTask: Task<Void, Never>?
+    /// The actor whose picture the avatar is showing, so swiping between one
+    /// person's activities doesn't blink it
+    private var shownAvatarKey: String?
+
+    // MARK: Pages (a small burst, one activity per swipe)
+
+    /// The burst this card pages through; empty for a single activity or a
+    /// "Show all" stack
+    private var pages: [Activity] = []
+    private(set) var pageIndex = 0
+    /// The page changed by a swipe: the feed remembers it and re-measures the row
+    var onPageChange: ((Int) -> Void)?
+    private let pageDots: UIPageControl = {
+        let dots = UIPageControl()
+        dots.hidesForSinglePage = true
+        dots.isUserInteractionEnabled = false
+        dots.backgroundStyle = .prominent
+        dots.pageIndicatorTintColor = UIColor.white.withAlphaComponent(0.45)
+        dots.currentPageIndicatorTintColor = .white
+        dots.translatesAutoresizingMaskIntoConstraints = false
+        dots.isHidden = true
+        return dots
+    }()
+    private var pageSwipes: [UISwipeGestureRecognizer] = []
 
     // MARK: Views
 
@@ -174,7 +198,7 @@ final class ActivityHeroCell: UITableViewCell {
     private func build() {
         contentView.addSubview(containerView)
         containerView.addSubview(mediaContainer)
-        for view in [mapView, photoView, clipView, stackView, posterView, insetPhotoView, pinView, chip] as [UIView] {
+        for view in [mapView, photoView, clipView, stackView, posterView, insetPhotoView, pinView, chip, pageDots] as [UIView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             mediaContainer.addSubview(view)
         }
@@ -215,6 +239,8 @@ final class ActivityHeroCell: UITableViewCell {
             insetPhotoView.heightAnchor.constraint(equalToConstant: 84),
             chip.leadingAnchor.constraint(equalTo: mediaContainer.leadingAnchor, constant: 12),
             chip.topAnchor.constraint(equalTo: mediaContainer.topAnchor, constant: 12),
+            pageDots.centerXAnchor.constraint(equalTo: mediaContainer.centerXAnchor),
+            pageDots.bottomAnchor.constraint(equalTo: mediaContainer.bottomAnchor, constant: -8),
 
             avatarImageView.topAnchor.constraint(equalTo: mediaContainer.bottomAnchor, constant: pad + 2),
             avatarImageView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: pad + 2),
@@ -264,6 +290,14 @@ final class ActivityHeroCell: UITableViewCell {
         reactionButton.addGestureRecognizer(longPress)
         reactionPills.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(pillsTapped)))
         stackView.onTap = { [weak self] _ in self?.mediaTapped() }
+        // A paged burst swipes anywhere on the card, not only on the picture
+        for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(pageSwiped(_:)))
+            swipe.direction = direction
+            swipe.isEnabled = false
+            containerView.addGestureRecognizer(swipe)
+            pageSwipes.append(swipe)
+        }
     }
 
     override func layoutSubviews() {
@@ -275,6 +309,83 @@ final class ActivityHeroCell: UITableViewCell {
     // MARK: Configure
 
     func configure(activity: Activity, hero: ActivityRowStyle.Hero) {
+        setPages([], index: 0)
+        render(activity: activity, hero: hero)
+    }
+
+    /// A small burst by one person as one card: every swipe is a whole
+    /// activity — its picture, its words, its own heart and comments — so
+    /// nothing opens underneath (Wes, 2026-11-24).
+    func configure(pages activities: [Activity], index: Int) {
+        guard !activities.isEmpty else { return }
+        setPages(activities, index: index)
+        renderPage()
+        // The other pages' pictures, so a swipe lands on a drawn card
+        for (offset, activity) in activities.enumerated() where offset != pageIndex {
+            guard let url = ActivityRowStyle.picture(of: activity) else { continue }
+            ImageService.shared.loadImageWithKey(from: url, cacheKey: "activity_hero_\(url)") { _ in }
+        }
+    }
+
+    private func setPages(_ activities: [Activity], index: Int) {
+        pages = activities
+        pageIndex = ActivityGroupLayout.page(index, count: activities.count)
+        let paged = activities.count > 1
+        pageDots.numberOfPages = paged ? activities.count : 0
+        pageDots.currentPage = pageIndex
+        pageDots.isHidden = !paged
+        pageSwipes.forEach { $0.isEnabled = paged }
+        // The photo stack has its own sideways swipe; on a paged card the swipe turns the page
+        stackView.isUserInteractionEnabled = !paged
+    }
+
+    private func renderPage() {
+        guard pages.indices.contains(pageIndex) else { return }
+        let activity = pages[pageIndex]
+        let hero: ActivityRowStyle.Hero
+        if case .hero(let own) = ActivityRowStyle.style(single: activity) {
+            hero = own
+        } else {
+            hero = .poster(ActivityRowStyle.poster(for: activity))
+        }
+        render(activity: activity, hero: hero)
+        pageDots.currentPage = pageIndex
+        mediaContainer.bringSubviewToFront(pageDots)
+    }
+
+    /// Turns the page; false at either end. The gesture calls this.
+    @discardableResult
+    func turnPage(forward: Bool) -> Bool {
+        guard let next = ActivityGroupLayout.page(after: pageIndex, count: pages.count, forward: forward) else {
+            return false
+        }
+        pageIndex = next
+        if ActivityFeedPreference.animates, window != nil {
+            let push = CATransition()
+            push.type = .push
+            push.subtype = forward ? .fromRight : .fromLeft
+            push.duration = 0.28
+            push.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            mediaContainer.layer.add(push, forKey: "page")
+            for view in [activityLabel, timestampLabel, quoteLabel, reactionPills, reactionButton, commentCountLabel] as [UIView] {
+                let fade = CATransition()
+                fade.type = .fade
+                fade.duration = 0.2
+                view.layer.add(fade, forKey: "page")
+            }
+        }
+        renderPage()
+        UISelectionFeedbackGenerator().selectionChanged()
+        onPageChange?(pageIndex)
+        return true
+    }
+
+    @objc private func pageSwiped(_ gesture: UISwipeGestureRecognizer) {
+        // Swiping left brings the next activity in from the right
+        turnPage(forward: gesture.direction == .left)
+    }
+
+    private func render(activity: Activity, hero: ActivityRowStyle.Hero) {
         currentActivity = activity
         currentGroup = nil
         self.hero = hero
@@ -302,6 +413,7 @@ final class ActivityHeroCell: UITableViewCell {
     /// "Show all N ▾ / Show less ▴" line the compact summary row has
     func configure(group activities: [Activity], hero: ActivityRowStyle.Hero, isExpanded: Bool) {
         guard let first = activities.first else { return }
+        setPages([], index: 0)
         currentActivity = first
         currentGroup = activities
         self.hero = hero
@@ -331,6 +443,10 @@ final class ActivityHeroCell: UITableViewCell {
         text.append(NSAttributedString(string: description, attributes: [.font: UIFont.systemFont(ofSize: 14), .foregroundColor: Constants.Colors.label]))
         activityLabel.attributedText = text
         timestampLabel.text = activity.timeAgo
+        let avatarKey = activity.actor.flatMap { actor in actor.profilePicture.map { "profile_\(actor.id)_\($0)" } }
+        // Same person as the card already shows (the next page of their burst): leave the picture alone
+        if let avatarKey, avatarKey == shownAvatarKey { return }
+        shownAvatarKey = nil
         avatarImageView.image = UIImage(systemName: "person.circle.fill")
         avatarImageView.tintColor = Constants.Colors.primary
         if let actor = activity.actor, let picture = actor.profilePicture, !picture.isEmpty {
@@ -340,6 +456,7 @@ final class ActivityHeroCell: UITableViewCell {
                 DispatchQueue.main.async {
                     guard let self, self.avatarLoadId == loadId, let image else { return }
                     self.avatarImageView.image = image
+                    self.shownAvatarKey = avatarKey
                     if !self.posterView.isHidden { self.posterView.setBackdrop(image) }
                 }
             }
@@ -463,6 +580,11 @@ final class ActivityHeroCell: UITableViewCell {
     private func load(_ url: String, into view: UIImageView) {
         let loadId = UUID().uuidString
         photoLoadId = loadId
+        // Already downloaded (a page of a burst, a row scrolled back to): no blank frame
+        if let cached = ImageService.shared.cachedImage(forKey: "activity_hero_\(url)") {
+            view.image = cached
+            return
+        }
         view.image = nil
         ImageService.shared.loadImageWithKey(from: url, cacheKey: "activity_hero_\(url)") { [weak self, weak view] image in
             DispatchQueue.main.async {
@@ -601,6 +723,10 @@ final class ActivityHeroCell: UITableViewCell {
         avatarLoadId = nil
         photoLoadId = nil
         currentGroup = nil
+        setPages([], index: 0)
+        onPageChange = nil
+        shownAvatarKey = nil
+        mediaContainer.layer.removeAnimation(forKey: "page")
         hero = nil
         pinPoint = nil
         mapCoordinate = nil

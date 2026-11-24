@@ -29,10 +29,16 @@ test('the new chat look is on unless the env turns it off (2026-11-23)', () => {
 });
 
 test('the lively Activity feed is on unless the env turns it off (2026-11-16)', () => {
-  expect(buildClientConfig().activityFeed).toEqual({ alive: true });
+  expect(buildClientConfig().activityFeed).toEqual({ alive: true, groupPages: true });
   process.env.ACTIVITY_FEED_ALIVE = 'false';
-  expect(buildClientConfig().activityFeed).toEqual({ alive: false });
+  expect(buildClientConfig().activityFeed).toEqual({ alive: false, groupPages: true });
   delete process.env.ACTIVITY_FEED_ALIVE;
+});
+
+test('grouped activities page as one card unless the env turns it off (2026-11-24)', () => {
+  process.env.ACTIVITY_FEED_GROUP_PAGES = 'false';
+  expect(buildClientConfig().activityFeed).toEqual({ alive: true, groupPages: false });
+  delete process.env.ACTIVITY_FEED_GROUP_PAGES;
 });
 
 test('the "Did you know" tips are the weekly email\'s list, emoji and text only', () => {

@@ -33,6 +33,8 @@ struct ClientConfig: Codable, Equatable {
     /// on every phone, no release. Missing = on.
     struct ActivityFeed: Codable, Equatable {
         var alive: Bool?
+        /// Grouped activities as one card you swipe (2026-11-24). Missing = on.
+        var groupPages: Bool?
     }
 
     /// The chat screen's look (2026-11-23): `polished` off = the classic
@@ -68,7 +70,7 @@ struct ClientConfig: Codable, Equatable {
         favCoins: FavCoins(firstPlaceAdded: 25, drinkReceived: 1, eventJoined: 1),
         onboarding: Onboarding(firstFavorite: true),
         tips: nil,
-        activityFeed: ActivityFeed(alive: true),
+        activityFeed: ActivityFeed(alive: true, groupPages: true),
         chat: Chat(polished: true))
 }
 

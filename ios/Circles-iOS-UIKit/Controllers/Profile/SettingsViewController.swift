@@ -68,6 +68,8 @@ class SettingsViewController: BaseTableViewController {
         case livelyFeed
         /// The new chat look, on this phone (2026-11-23)
         case chatLook
+        /// Grouped activities as one swipeable card, on this phone (2026-11-24)
+        case groupPages
 
         var title: String {
             switch self {
@@ -78,6 +80,7 @@ class SettingsViewController: BaseTableViewController {
             case .homeShortcuts: return "Home Screen Shortcuts"
             case .livelyFeed: return ActivityFeedPreference.rowTitle
             case .chatLook: return ChatLookPreference.rowTitle
+            case .groupPages: return ActivityFeedPreference.groupPagesRowTitle
             }
         }
     }
@@ -242,6 +245,10 @@ class SettingsViewController: BaseTableViewController {
 
     @objc private func livelyFeedToggled(_ toggle: UISwitch) {
         ActivityFeedPreference.livelyOnThisPhone = toggle.isOn
+    }
+
+    @objc private func groupPagesToggled(_ toggle: UISwitch) {
+        ActivityFeedPreference.groupPagesOnThisPhone = toggle.isOn
     }
 
     @objc private func chatLookToggled(_ toggle: UISwitch) {
@@ -842,6 +849,22 @@ extension SettingsViewController {
                     cell.accessoryView = toggle
                     cell.accessoryType = .none
                     cell.selectionStyle = .none
+                case .groupPages:
+                    var config = cell.defaultContentConfiguration()
+                    config.text = row.title
+                    config.secondaryText = ActivityFeedPreference.groupPagesRowDetail
+                    config.secondaryTextProperties.color = .secondaryLabel
+                    config.secondaryTextProperties.numberOfLines = 0
+                    config.image = UIImage(systemName: "rectangle.stack")
+                    config.imageProperties.tintColor = Constants.Colors.primary
+                    cell.contentConfiguration = config
+                    let toggle = UISwitch()
+                    toggle.isOn = ActivityFeedPreference.groupPagesOnThisPhone
+                    toggle.onTintColor = Constants.Colors.primary
+                    toggle.addTarget(self, action: #selector(groupPagesToggled(_:)), for: .valueChanged)
+                    cell.accessoryView = toggle
+                    cell.accessoryType = .none
+                    cell.selectionStyle = .none
                 }
             }
             
@@ -1071,7 +1094,7 @@ extension SettingsViewController {
                     showDataExport()
                 case .homeShortcuts:
                     navigationController?.pushViewController(HomeShortcutsViewController(), animated: true)
-                case .livelyFeed, .chatLook:
+                case .livelyFeed, .chatLook, .groupPages:
                     break
                 }
             }
