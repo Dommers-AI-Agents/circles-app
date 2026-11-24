@@ -35,8 +35,8 @@ const SALES_KIT = [
       {
         title: 'Store sell sheet',
         sub: 'Two-sided US Letter. Print double-sided (long edge), actual size, background graphics on.',
-        url: 'https://favcircles.com/FavCircles-Founding-Store-Sell-Sheet.pdf',
-        thumb: 'https://favcircles.com/img/sell-sheet-thumb.png',
+        url: 'https://favcircles.com/FavCircles-Founding-Store-Sell-Sheet.pdf?v=20261124',
+        thumb: 'https://favcircles.com/img/sell-sheet-thumb.png?v=20261124',
         action: 'Open PDF to print'
       },
       {

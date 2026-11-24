@@ -1,10 +1,11 @@
-# Cache policy: HTML always revalidates (the site iterates often and stale
-# pages kept serving old layouts); media can cache for a day.
+# Cache policy: HTML and PDFs always revalidate (the site iterates often and
+# stale pages kept serving old layouts; a reprinted sell sheet kept showing
+# yesterday's copy, Wes 2026-11-24); media can cache for a day.
 <IfModule mod_headers.c>
-  <FilesMatch "\.html$">
+  <FilesMatch "\.(html|pdf)$">
     Header set Cache-Control "no-cache, must-revalidate"
   </FilesMatch>
-  <FilesMatch "\.(mp4|mov|jpg|jpeg|png|gif|ico|pdf|tiff)$">
+  <FilesMatch "\.(mp4|mov|jpg|jpeg|png|gif|ico|tiff)$">
     Header set Cache-Control "public, max-age=86400"
   </FilesMatch>
 </IfModule>
