@@ -20,5 +20,8 @@ router.get('/venue/:code', clipPreviewLimiter, clipController.getVenuePreview);
 router.post('/sticker-tap', clipPreviewLimiter, clipController.recordStickerTap);
 router.post('/install-converted', protect, clipController.installConverted);
 router.post('/device', protect, clipController.registerDevice);
+// The steps after the save (2026-11-24): first favorites, and what was finished
+router.post('/favorites', protect, clipController.saveFavorites);
+router.post('/onboarding', protect, clipController.recordOnboarding);
 
 module.exports = router;

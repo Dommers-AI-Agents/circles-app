@@ -146,6 +146,30 @@ exports.registerDevice = async (req, res) => {
   }
 };
 
+// POST /api/clip/favorites { places: [{name, address, lat, lng, category,
+// phone?, website?, neighborhood?, applePoiCategory?, applePlaceId?,
+// clientSaveId?}] } — the clip's first favorites, up to three, into Favorite
+// Local Spots through the core save (2026-11-24).
+exports.saveFavorites = async (req, res) => {
+  try {
+    const data = await require('../services/clipOnboardingService').saveFavoritesForClip(req.user, (req.body || {}).places);
+    return res.json({ success: true, data });
+  } catch (error) {
+    return sendServiceError(res, error, { log: '⚠️ Clip favorites failed', fallbackMessage: 'Something went wrong' });
+  }
+};
+
+// POST /api/clip/onboarding { zipcodeSet, favoritesSaved, followed, skipped,
+// code } — what the clip's steps finished, kept on the user (2026-11-24)
+exports.recordOnboarding = async (req, res) => {
+  try {
+    const data = await require('../services/clipOnboardingService').recordClipOnboarding(req.user.uid, req.body || {});
+    return res.json({ success: true, data });
+  } catch (error) {
+    return sendServiceError(res, error, { log: '⚠️ Clip onboarding record failed', fallbackMessage: 'Something went wrong' });
+  }
+};
+
 // POST /api/clip/sticker-tap { code, tag } — public. The full app opens a
 // tapped NFC sticker as a universal link and never asks for the clip
 // preview, so it reports the tap here (signed in or not). The clip counts
