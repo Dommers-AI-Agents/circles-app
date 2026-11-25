@@ -33,18 +33,24 @@ final class InnerCirclesVisualViewController: BaseViewController {
 
     // MARK: - The ⓘ
 
-    /// What inner circles are for, in Wes's words (2026-11-23). Shown from
-    /// the ⓘ beside the Connections | Following | Inner Circles tabs.
+    /// What inner circles are for: choosing who you share with (Wes,
+    /// 2026-11-25). Shown from the ⓘ beside the Connections | Following |
+    /// Inner Circles tabs; the words live in `InnerCircleExplainer`.
     static func presentExplainer(from viewController: UIViewController) {
-        AlertPresenter.showInfo(
-            title: "Inner Circles",
-            message: """
-            Your network is personal. Treat it that way. FavCircles.
+        AlertPresenter.showInfo(title: InnerCircleExplainer.title,
+                                message: InnerCircleExplainer.message,
+                                from: viewController)
+    }
 
-            Who you keep in your inner circle defines you. Define it and stay in control of who influences you. FavCircles.
-            """,
-            from: viewController
-        )
+    /// The made-up list a new user sees drawn as a ring. Never saved, never
+    /// sent anywhere; its people are initials, not accounts.
+    static func exampleList() -> InnerCircleNamedList {
+        let ids = InnerCircleExplainer.exampleMemberIds
+        let users = zip(ids, InnerCircleExplainer.exampleMembers).map { id, name in
+            User(id: id, displayName: name, profilePicture: nil, bio: nil, location: nil, friends: nil, friendRequests: nil)
+        }
+        return InnerCircleNamedList(id: InnerCircleExplainer.exampleIdPrefix + "list",
+                                    name: InnerCircleExplainer.exampleListName, userIds: ids, users: users)
     }
 
     // MARK: - Lifecycle
@@ -182,15 +188,17 @@ final class InnerCirclesVisualViewController: BaseViewController {
 
     private func makeHeader() -> UIView {
         let title = UILabel()
-        title.text = "Your network is personal."
+        title.text = InnerCircleExplainer.pageTitle
         title.font = .systemFont(ofSize: 20, weight: .bold)
         title.textColor = Constants.Colors.label
         title.textAlignment = .center
         title.numberOfLines = 0
 
-        let hint = makeCaption("Tap + to add someone. Tap a face to see them or take them off. Tap the middle for everyone.")
+        let purpose = makeCaption(InnerCircleExplainer.headerHint)
+        purpose.font = .systemFont(ofSize: 14)
+        let hint = makeCaption(InnerCircleExplainer.ringHint)
 
-        let header = UIStackView(arrangedSubviews: [title, hint])
+        let header = UIStackView(arrangedSubviews: [title, purpose, hint])
         header.axis = .vertical
         header.spacing = 6
         header.translatesAutoresizingMaskIntoConstraints = false
@@ -257,33 +265,84 @@ final class InnerCirclesVisualViewController: BaseViewController {
         return UIMenu(children: [add, everyone, rename, delete])
     }
 
-    /// No circles yet: the page is one big empty circle asking to be started.
-    private func makeFirstCircleState(width: CGFloat) -> UIView {
+    /// No circles yet: an example circle, drawn the way a real one will be,
+    /// with what it does said under it (Wes, 2026-11-25: "make sure new users
+    /// see an example and not just a blank page"). The example is a picture;
+    /// the button under it starts a real one.
+    func makeFirstCircleState(width: CGFloat) -> UIView {
         let title = UILabel()
-        title.text = "Your network is personal.\nTreat it that way."
+        title.text = InnerCircleExplainer.pageTitle
         title.font = .systemFont(ofSize: 24, weight: .bold)
         title.textColor = Constants.Colors.label
         title.textAlignment = .center
         title.numberOfLines = 0
 
-        let body = makeCaption("An inner circle is a few of your connections you name — Family, Gym crew, Work. Share a place, a circle, a moment or a check-in with just them.")
+        let body = makeCaption(InnerCircleExplainer.firstRunBody)
         body.font = .systemFont(ofSize: 15)
 
-        let hero = NewInnerCircleControl(diameter: min(max(width - 140, 180), 240), title: "Start your first\ninner circle")
-        hero.addTarget(self, action: #selector(newCircleTapped), for: .touchUpInside)
-
-        let button = UIButton.primaryButton(title: "New inner circle")
+        let button = UIButton.primaryButton(title: "Start your first inner circle")
         button.addTarget(self, action: #selector(newCircleTapped), for: .touchUpInside)
         button.widthAnchor.constraint(equalToConstant: min(width - 64, 320)).isActive = true
 
-        let state = UIStackView(arrangedSubviews: [title, body, hero, button])
+        let example = makeExampleCard(diameter: min(max(width - 110, 200), 270))
+        let state = UIStackView(arrangedSubviews: [title, body, example, button])
         state.axis = .vertical
         state.alignment = .center
-        state.spacing = 16
-        state.setCustomSpacing(24, after: body)
-        state.setCustomSpacing(24, after: hero)
+        state.spacing = 14
+        state.setCustomSpacing(20, after: body)
+        state.setCustomSpacing(22, after: example)
         state.translatesAutoresizingMaskIntoConstraints = false
         return state
+    }
+
+    /// The example ring on the same soft card a real circle gets, marked
+    /// EXAMPLE, with the sentence that says what choosing it does.
+    private func makeExampleCard(diameter: CGFloat) -> UIView {
+        let list = Self.exampleList()
+        // Full to its own size, so there is no add bubble on a made-up list
+        let ring = InnerCircleRingView(list: list, maxSize: list.userIds.count, diameter: diameter)
+        ring.isUserInteractionEnabled = false
+        ring.accessibilityElementsHidden = true
+
+        let badge = UILabel()
+        badge.text = InnerCircleExplainer.exampleBadge
+        badge.font = .systemFont(ofSize: 11, weight: .bold)
+        badge.textColor = Constants.Colors.primary
+        badge.textAlignment = .center
+        badge.backgroundColor = Constants.Colors.primary.withAlphaComponent(0.14)
+        badge.layer.cornerRadius = 10
+        badge.clipsToBounds = true
+        badge.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            badge.widthAnchor.constraint(equalToConstant: 78),
+            badge.heightAnchor.constraint(equalToConstant: 20)
+        ])
+
+        let caption = makeCaption(InnerCircleExplainer.exampleCaption)
+        caption.font = .systemFont(ofSize: 14)
+
+        let column = UIStackView(arrangedSubviews: [badge, ring, caption])
+        column.axis = .vertical
+        column.alignment = .center
+        column.spacing = 10
+        column.translatesAutoresizingMaskIntoConstraints = false
+
+        let card = UIView()
+        card.backgroundColor = Constants.Colors.background.withAlphaComponent(0.72)
+        card.layer.cornerRadius = 26
+        card.layer.cornerCurve = .continuous
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.isAccessibilityElement = true
+        card.accessibilityLabel = InnerCircleExplainer.exampleAccessibilityLabel + " " + InnerCircleExplainer.exampleCaption
+        card.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.topAnchor.constraint(equalTo: card.topAnchor, constant: 14),
+            column.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -16),
+            column.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
+            column.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
+            card.widthAnchor.constraint(equalToConstant: diameter + 36)
+        ])
+        return card
     }
 
     private func makeFailureState() -> UIView {
