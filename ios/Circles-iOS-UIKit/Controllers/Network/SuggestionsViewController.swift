@@ -9,13 +9,20 @@ class SuggestionsViewController: BaseViewController {
     }
     private var currentFeed: Feed = .network
 
+    /// From a "suggested for you" notification: the list opens on For You,
+    /// where that suggestion is (it opened on Network, which was empty)
+    convenience init(openingForYou: Bool) {
+        self.init()
+        if openingForYou { currentFeed = .received }
+    }
+
     // MARK: - Properties
     private var suggestions: [Suggestion] = []
 
     // MARK: - UI Elements
     private lazy var feedSegmentedControl: UISegmentedControl = {
         let control = UISegmentedControl(items: ["Network", "For You"])
-        control.selectedSegmentIndex = 0
+        control.selectedSegmentIndex = currentFeed.rawValue
         control.translatesAutoresizingMaskIntoConstraints = false
         control.addTarget(self, action: #selector(feedChanged), for: .valueChanged)
         return control

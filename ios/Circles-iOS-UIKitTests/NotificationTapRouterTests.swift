@@ -92,7 +92,11 @@ struct NotificationTapRouterTests {
     }
 
     @Test func placesCirclesAndActivity() {
-        #expect(route(["type": "new_suggestion", "placeId": "p", "suggestionId": "s"]) == .suggestions(placeId: "p", suggestionId: "s"))
+        // A suggested place opens the place, not the list it sits in (Wes, 2026-11-25)
+        #expect(route(["type": "new_suggestion", "placeId": "p", "suggestionId": "s", "fromUserName": "Wesley"])
+                == .suggestedPlace(placeId: "p", fromName: "Wesley", suggestionId: "s"))
+        #expect(route(["type": "new_suggestion", "placeId": "p"]) == .suggestedPlace(placeId: "p", fromName: nil, suggestionId: nil))
+        #expect(route(["type": "new_suggestion", "placeId": "", "suggestionId": "s"]) == .suggestions(placeId: nil, suggestionId: "s"))
         #expect(route(["type": "new_suggestion"]) == .suggestions(placeId: nil, suggestionId: nil))
         #expect(route(["type": "new_place", "circleId": "c"]) == .circle(id: "c", showComments: nil))
         #expect(route(["type": "new_place"]) == nil)

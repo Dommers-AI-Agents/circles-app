@@ -725,6 +725,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         case .motivationSend(let lineId):
             postOrStashDeepLink(navName: Notification.Name.navigateToHomeWidget.rawValue, pending: "motivation-send:\(lineId)",
                                 object: "motivation", userInfo: ["motivationLineId": lineId, "motivationSend": true])
+        case .suggestedPlace(let placeId, let fromName, _):
+            // The place page, cold start included; a new user is walked
+            // through it (OnboardingManager decides who)
+            OnboardingManager.shared.sendSuggestedPlaceGuide(placeId: placeId, fromName: fromName)
+            postOrStashDeepLink(navName: "NavigateToPlace", pending: "place:\(placeId)", object: placeId)
         case .suggestions(let placeId, let suggestionId):
             var info: [String: Any] = [:]
             if let placeId { info["placeId"] = placeId }

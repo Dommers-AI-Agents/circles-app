@@ -182,7 +182,7 @@ final class ScanActionCoordinator {
         case .storeSetup:
             onboarding.sendScanGuide(.storeSetup)
             NextStepNavigator.push(ClaimBusinessViewController())
-        case .storeManage, .findPeople, .profile, .ownPlace:
+        case .storeManage, .findPeople, .profile, .ownPlace, .suggestedPlace:
             break
         }
     }

@@ -58,7 +58,7 @@ extension ScreenGuideKind {
     var isScannable: Bool {
         switch self {
         case .sharePlace, .makeCircle, .addPlace, .checkIn, .widgets, .rewards, .storeSetup: return true
-        case .findPeople, .profile, .ownPlace, .storeManage: return false
+        case .findPeople, .profile, .ownPlace, .storeManage, .suggestedPlace: return false
         }
     }
 }

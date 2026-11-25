@@ -14,6 +14,22 @@ enum ScreenGuideKind: String {
     case storeSetup
     /// Then, once it's theirs: Manage Store, points, a first reward, the QR
     case storeManage
+    /// A place someone suggested to them, opened from the notification
+    /// (Wes, 2026-11-25): what the place page is, save it, what else is here
+    case suggestedPlace
+}
+
+/// Who gets walked through a suggested place: anyone still in the tour, and
+/// any account in its first week (the welcome suggestion arrives in the
+/// first hour). Everyone else just lands on the place. Pure.
+enum SuggestedPlaceGuidePolicy {
+    static let newAccountWindow: TimeInterval = 7 * 24 * 60 * 60
+
+    static func shouldGuide(tutorialPending: Bool, accountCreated: Date?, now: Date = Date()) -> Bool {
+        if tutorialPending { return true }
+        guard let accountCreated else { return false }
+        return now.timeIntervalSince(accountCreated) < newAccountWindow
+    }
 }
 
 enum ScreenGuideCopy {
@@ -35,7 +51,7 @@ enum ScreenGuideCopy {
 
     static let addPlaceNext = "Add a place you love"
 
-    static func stops(_ kind: ScreenGuideKind, placeName: String? = nil) -> [Stop] {
+    static func stops(_ kind: ScreenGuideKind, placeName: String? = nil, fromName: String? = nil) -> [Stop] {
         switch kind {
         case .rewards:
             return [
@@ -94,6 +110,17 @@ enum ScreenGuideCopy {
                 Stop(title: "Make it yours",
                      message: "Tap Manage to turn widgets on or off and put them in the order you like.")
             ]
+        case .suggestedPlace:
+            let name = placeName ?? "this place"
+            let who = fromName?.trimmingCharacters(in: .whitespaces).components(separatedBy: " ").first.flatMap { $0.isEmpty ? nil : $0 }
+            return [
+                Stop(title: who.map { "\($0) suggested \(name)" } ?? "Suggested for you: \(name)",
+                     message: "This is its place page: photos, hours, what people say about it, and who else saved it."),
+                Stop(title: "Save it",
+                     message: "Tap here to put \(name) on your own map. It goes into a circle (a list of your places), like Want to Try."),
+                Stop(title: "Directions, call, website",
+                     message: "Everything you need to go: directions, the phone, the website and the menu.")
+            ]
         case .storeSetup:
             return [
                 Stop(title: "Find your business",
@@ -143,6 +170,10 @@ enum ScreenGuideCopy {
                           next: addPlaceNext, back: "Back to Home")
         case .checkIn, .findPeople:
             return Finish(title: nil, message: nil, next: addPlaceNext, back: "Back to the tour")
+        case .suggestedPlace:
+            return Finish(title: "Now one of your own",
+                          message: "The places you love are what your friends come to see. Add the one you can't stop recommending.",
+                          next: addPlaceNext, back: "Back to the tour")
         case .addPlace:
             // They're about to add one: the place page takes it from there
             return Finish(title: nil, message: nil, next: nil, back: "Got it")

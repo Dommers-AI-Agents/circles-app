@@ -495,6 +495,7 @@ class PlaceDetailViewController: BaseViewController {
         openPendingPhotoIfReady()
         runOwnPlaceGuideIfSent()
         runScanGuideIfSent()
+        runSuggestedPlaceGuideIfSent()
         if showCommentsOnAppear {
             showCommentsOnAppear = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
@@ -4126,6 +4127,39 @@ extension PlaceDetailViewController {
                              prepare: { [weak self] in if let self { scrollTo(self.directionsRowButton) } }),
             ScreenGuide.Stop(copy: copy[3], target: { nil }, prepare: top)
         ], finish: ScreenGuideCopy.finish(.ownPlace), in: self,
+           onBack: { [weak self] in if let self { ScreenGuide.backToTour(from: self) } })
+    }
+}
+
+// MARK: - Guide: a place someone suggested to you
+
+extension PlaceDetailViewController {
+    /// Opened from "X suggested Y for you" by someone new (Wes, 2026-11-25:
+    /// "bring me to the placeview of the place and direct me to save it and
+    /// learn more about the place view ... with the skip button as a way
+    /// out"). What the page is, Save, how to get there, then on to a place
+    /// of their own or back to the tour.
+    func runSuggestedPlaceGuideIfSent() {
+        guard let fromName = OnboardingManager.shared.takeSuggestedPlaceGuide(placeId: place.id) else { return }
+        let copy = ScreenGuideCopy.stops(.suggestedPlace, placeName: place.name, fromName: fromName)
+        let top = { [weak self] in
+            guard let self else { return }
+            self.scrollView.setContentOffset(CGPoint(x: 0, y: -self.scrollView.adjustedContentInset.top), animated: false)
+        }
+        let scrollTo = { [weak self] (view: UIView) in
+            guard let self else { return }
+            let rect = view.convert(view.bounds, to: self.scrollView).insetBy(dx: 0, dy: -120)
+            self.scrollView.scrollRectToVisible(rect, animated: false)
+        }
+        let visible = { (view: UIView) -> UIView? in view.isHidden || view.window == nil ? nil : view }
+        ScreenGuide.run([
+            ScreenGuide.Stop(copy: copy[0], target: { nil }, prepare: top),
+            ScreenGuide.Stop(copy: copy[1], target: { [weak self] in self.flatMap { visible($0.addToCircleButton) } },
+                             prepare: { [weak self] in if let self { scrollTo(self.addToCircleButton) } }),
+            ScreenGuide.Stop(copy: copy[2], target: { [weak self] in self.flatMap { visible($0.directionsRowButton) } },
+                             prepare: { [weak self] in if let self { scrollTo(self.directionsRowButton) } })
+        ], finish: ScreenGuideCopy.finish(.suggestedPlace), in: self, skipTitle: "Skip",
+           onNext: { [weak self] in if let self { ScreenGuide.addPlace(from: self) } },
            onBack: { [weak self] in if let self { ScreenGuide.backToTour(from: self) } })
     }
 }

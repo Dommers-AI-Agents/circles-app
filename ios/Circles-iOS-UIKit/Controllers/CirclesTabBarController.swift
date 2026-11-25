@@ -753,7 +753,7 @@ class CirclesTabBarController: UITabBarController, UITabBarControllerDelegate {
         selectedIndex = 0
         guard let navController = viewControllers?[0] as? UINavigationController else { return }
         navController.popToRootViewController(animated: false)
-        navController.pushViewController(SuggestionsViewController(), animated: true)
+        navController.pushViewController(SuggestionsViewController(openingForYou: true), animated: true)
     }
 
     @objc private func navigateToActivityFeed() {

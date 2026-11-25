@@ -55,6 +55,9 @@ enum NotificationDestination: Equatable {
     /// The Google Maps app, to share a list into FavCircles (the import tip, 2026-11-07)
     case googleMaps
     case suggestions(placeId: String?, suggestionId: String?)
+    /// "Wesley suggested Cinergy for you": the place itself, not the list it
+    /// sits in (Wes, 2026-11-25: the tap opened an empty Suggestions screen)
+    case suggestedPlace(placeId: String, fromName: String?, suggestionId: String?)
     /// `showComments` nil = post without userInfo (as `new_place` always did).
     case circle(id: String, showComments: Bool?)
     case place(id: String, showComments: Bool?)
@@ -192,7 +195,11 @@ enum NotificationTapRouter {
              "care_watcher_joined", "care_watcher_removed": return .homeWidget(id: "howareyou")
 
         case "new_suggestion":
-            return .suggestions(placeId: placeId, suggestionId: userInfo["suggestionId"] as? String)
+            if let placeId, !placeId.isEmpty {
+                return .suggestedPlace(placeId: placeId, fromName: string("fromUserName", in: userInfo),
+                                       suggestionId: userInfo["suggestionId"] as? String)
+            }
+            return .suggestions(placeId: nil, suggestionId: userInfo["suggestionId"] as? String)
 
         case "new_place":
             return circleId.map { .circle(id: $0, showComments: nil) }

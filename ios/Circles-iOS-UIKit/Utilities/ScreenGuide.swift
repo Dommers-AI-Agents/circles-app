@@ -55,28 +55,31 @@ enum ScreenGuide {
             })
     }
 
+    /// `skipTitle` is the way out on every bubble ("Done" by default; a guide
+    /// nobody asked for, like a suggested place's, says "Skip").
     static func run(_ stops: [Stop], finish: ScreenGuideCopy.Finish, in host: UIViewController,
+                    skipTitle: String = "Done",
                     onNext: (() -> Void)? = nil, onBack: @escaping () -> Void) {
         // A guide someone scanned a QR for has no tour to return to: its
         // last button just ends it (Scan Actions, 2026-11-11)
         let manager = OnboardingManager.shared
         if manager.isScanGuide {
             let done = ScreenGuideCopy.Finish(title: nil, message: nil, next: nil, back: finish.title == nil && finish.next == nil ? finish.back : "Done")
-            show(index: 0, stops: stops, finish: done, host: host, onNext: nil,
+            show(index: 0, stops: stops, finish: done, host: host, skipTitle: skipTitle, onNext: nil,
                  onBack: { manager.endScanGuide() }, attempt: 0)
             return
         }
-        show(index: 0, stops: stops, finish: finish, host: host, onNext: onNext, onBack: onBack, attempt: 0)
+        show(index: 0, stops: stops, finish: finish, host: host, skipTitle: skipTitle, onNext: onNext, onBack: onBack, attempt: 0)
     }
 
     private static func show(index: Int, stops: [Stop], finish: ScreenGuideCopy.Finish, host: UIViewController,
-                             onNext: (() -> Void)?, onBack: @escaping () -> Void, attempt: Int) {
+                             skipTitle: String = "Done", onNext: (() -> Void)?, onBack: @escaping () -> Void, attempt: Int) {
         // Never under a sheet or alert (stray taps would hit its buttons)
         guard host.viewIfLoaded?.window != nil else { return }
         if host.presentedViewController != nil {
             if attempt < 60 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                    show(index: index, stops: stops, finish: finish, host: host, onNext: onNext, onBack: onBack, attempt: attempt + 1)
+                    show(index: index, stops: stops, finish: finish, host: host, skipTitle: skipTitle, onNext: onNext, onBack: onBack, attempt: attempt + 1)
                 }
             }
             return
@@ -98,17 +101,17 @@ enum ScreenGuide {
                                  stepText: total > 1 ? "\(index + 1) of \(total)" : nil,
                                  canGoBack: index > 0,
                                  learnMore: isLast && finish.next != nil, video: false,
-                                 skipTitle: "Done", nextTitle: isLast ? finish.back : "Next",
+                                 skipTitle: skipTitle, nextTitle: isLast ? finish.back : "Next",
                                  learnMoreTitle: isLast ? finish.next : nil)
             bubble.onNext = {
                 manager.dismissCurrentBubble()
                 if isLast { onBack() } else {
-                    show(index: index + 1, stops: stops, finish: finish, host: host, onNext: onNext, onBack: onBack, attempt: 0)
+                    show(index: index + 1, stops: stops, finish: finish, host: host, skipTitle: skipTitle, onNext: onNext, onBack: onBack, attempt: 0)
                 }
             }
             bubble.onBack = {
                 manager.dismissCurrentBubble()
-                show(index: index - 1, stops: stops, finish: finish, host: host, onNext: onNext, onBack: onBack, attempt: 0)
+                show(index: index - 1, stops: stops, finish: finish, host: host, skipTitle: skipTitle, onNext: onNext, onBack: onBack, attempt: 0)
             }
             bubble.onLearnMore = {
                 manager.dismissCurrentBubble()

@@ -188,6 +188,34 @@ class OnboardingManager {
         pendingGuide = kind
     }
 
+    /// The place a suggestion's notification is opening, and who suggested
+    /// it; the place page takes it once (ScreenGuideKind.suggestedPlace)
+    private(set) var suggestedPlaceGuide: (placeId: String, fromName: String?)?
+
+    /// A tapped "X suggested Y for you": someone new is walked through the
+    /// place page. Mid-tour it pauses the tour and returns to it; after the
+    /// tour (first week) it runs by itself and ends with Done.
+    func sendSuggestedPlaceGuide(placeId: String, fromName: String?) {
+        let pending = shouldShowTutorial
+        guard SuggestedPlaceGuidePolicy.shouldGuide(tutorialPending: pending,
+                                                    accountCreated: AuthService.shared.currentUser?.createdAt) else { return }
+        suggestedPlaceGuide = (placeId, fromName)
+        if pending {
+            dismissCurrentBubble()
+            isTourPaused = true
+            pendingGuide = .suggestedPlace
+        } else {
+            sendScanGuide(.suggestedPlace)
+        }
+    }
+
+    /// True once, on the suggested place's own page
+    func takeSuggestedPlaceGuide(placeId: String) -> String?? {
+        guard let waiting = suggestedPlaceGuide, waiting.placeId == placeId, takeGuide(.suggestedPlace) else { return nil }
+        suggestedPlaceGuide = nil
+        return .some(waiting.fromName)
+    }
+
     /// The scanned guide was finished or put away
     func endScanGuide() {
         isScanGuide = false
