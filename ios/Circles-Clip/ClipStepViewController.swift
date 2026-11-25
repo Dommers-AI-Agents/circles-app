@@ -75,6 +75,10 @@ class ClipStepViewController: UIViewController {
 
         let bottom = primaryButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -18)
         primaryBottom = bottom
+        // With the keyboard up on a small phone the content can run out of room:
+        // it may then slide under the header instead of breaking the layout
+        let top = stack.topAnchor.constraint(greaterThanOrEqualTo: brandHeader.bottomAnchor, constant: 16)
+        top.priority = UILayoutPriority(500)
         NSLayoutConstraint.activate([
             backdrop.topAnchor.constraint(equalTo: view.topAnchor),
             backdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -89,7 +93,7 @@ class ClipStepViewController: UIViewController {
             brandHeader.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 26),
             stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -26),
-            stack.topAnchor.constraint(greaterThanOrEqualTo: brandHeader.bottomAnchor, constant: 16),
+            top,
             stack.bottomAnchor.constraint(equalTo: primaryButton.topAnchor, constant: -20),
             primaryButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 26),
             primaryButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -26),
@@ -210,8 +214,15 @@ class ClipStepViewController: UIViewController {
     @objc private func keyboardChanged(_ note: Notification) {
         guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         keyboardLift = max(0, view.bounds.maxY - view.convert(frame, from: nil).minY - view.safeAreaInsets.bottom)
+        keyboardWillChange(up: keyboardLift > 0)
+        // The header gives its room to the field while the keyboard is up
+        UIView.animate(withDuration: 0.25) { self.brandHeader.alpha = self.keyboardLift > 0 ? 0 : 1 }
         applyLift()
     }
+
+    /// The step's chance to make room while a field has focus (the hook
+    /// and the words fold away on the favorites step)
+    func keyboardWillChange(up: Bool) {}
 
     /// Apple's install banner slid up over the bottom: lift the button above it
     func lift(aboveBannerIn window: UIWindow, frame: CGRect) {

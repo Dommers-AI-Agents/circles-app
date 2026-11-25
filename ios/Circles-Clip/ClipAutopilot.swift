@@ -20,7 +20,7 @@ final class ClipAutopilot {
 
     func ready(_ screen: UIViewController) {
         guard acted.insert(ObjectIdentifier(screen)).inserted else { return }
-        let delay: TimeInterval = 1.8
+        let delay = TimeInterval(ProcessInfo.processInfo.environment["CLIP_AUTOPILOT_DELAY"] ?? "") ?? 1.8
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak screen] in
             guard let screen else { return }
             switch screen {
