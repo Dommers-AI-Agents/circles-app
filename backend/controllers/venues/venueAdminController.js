@@ -308,16 +308,33 @@ const printRoundLabels = (design) => async (req, res) => {
 exports.printTotemLabels = printRoundLabels('totem');
 exports.printTableStickers = printRoundLabels('table');
 
-// @desc    Coaster stickers: the generic "Join FavCircles" App Clip code on
-//          ¾ in Avery 94102 squares, two per coaster (one each side)
+// @desc    Coaster stickers on ¾ in Avery 94102 squares, two per coaster (one
+//          each side): the generic "Join FavCircles" App Clip code, or with
+//          venueIds each picked store's own window code with its name under
+//          it, `coasters` coasters per store (Wes, 2026-11-24)
 // @route   GET /api/rewards/stickers/coasters?coasters=40&startAt=1
+// @route   GET /api/rewards/stickers/coasters?venueIds=a,b&coasters=1&startAt=1
 // @access  Super user
 exports.printCoasterStickers = async (req, res) => {
   try {
-    const coasters = req.query.coasters || printAssetService.COASTER_STICKERS_PER_SHEET / 2;
-    const pdf = await printAssetService.renderCoasterStickers({ coasters, startAt: req.query.startAt || 1 });
+    const ids = String(req.query.venueIds || '').split(',').map(s => s.trim()).filter(Boolean);
+    const unique = [...new Set(ids)];
+    let venues = null;
+    if (unique.length) {
+      if (unique.length > printAssetService.MAX_COASTER_STORES) {
+        throw new ServiceError(400, 'TOO_MANY_STORES', `At most ${printAssetService.MAX_COASTER_STORES} stores at a time`);
+      }
+      const docs = await getDocsById(STICKER_COLLECTIONS.STICKER_VENUES, unique);
+      venues = unique.filter(id => docs.has(id)).map(id => ({ venueId: id, ...docs.get(id).data() }));
+      if (venues.length < unique.length) throw new ServiceError(404, 'STORE_NOT_FOUND', 'One of those stores no longer exists');
+    }
+    const coasters = Number(req.query.coasters || (venues ? 1 : printAssetService.COASTER_STICKERS_PER_SHEET / 2));
+    const pdf = await printAssetService.renderCoasterStickers({ coasters, startAt: req.query.startAt || 1, venues });
+    const what = venues
+      ? `${venues.length} ${venues.length === 1 ? 'store' : 'stores'}${coasters > 1 ? `, ${coasters} coasters each` : ''}`
+      : `${coasters} coasters`;
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="FavCircles coaster stickers - ${Number(coasters)} coasters - Avery 94102.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="FavCircles coaster stickers - ${what} - Avery 94102.pdf"`);
     res.send(pdf);
   } catch (error) {
     sendServiceError(res, error, { log: 'Coaster stickers', fallbackCode: 'PRINT_FAILED', fallbackMessage: 'Could not build the coaster stickers' });

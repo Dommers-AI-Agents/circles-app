@@ -74,6 +74,23 @@ describe('printAssetService', () => {
     }
   }, 90000);
 
+  test("coaster stickers for picked stores: each store's own window code, two per coaster, named", async () => {
+    const pageCount = (pdf) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length;
+    const stores = Array.from({ length: 41 }, (_, i) => ({ ...venue, venueId: `v${i}`, venueName: `Store ${i + 1}`, windowCode: `W${i}` }));
+    const pdf = await svc.renderCoasterStickers({ venues: stores.slice(0, 3) });
+    expect(pdf.slice(0, 4).toString()).toBe('%PDF');
+    expect(pageCount(pdf)).toBe(1); // 3 stores × 1 coaster × 2 sides = 6 stickers
+    expect(pageCount(await svc.renderCoasterStickers({ venues: stores.slice(0, 40) }))).toBe(1); // 80 stickers fill the sheet
+    expect(pageCount(await svc.renderCoasterStickers({ venues: stores.slice(0, 40), startAt: 2 }))).toBe(2);
+    expect(pageCount(await svc.renderCoasterStickers({ venues: stores.slice(0, 2), coasters: 20 }))).toBe(1); // 80
+    expect(pageCount(await svc.renderCoasterStickers({ venues: stores.slice(0, 2), coasters: 21 }))).toBe(2);
+    expect(svc.MAX_COASTER_STORES).toBe(40);
+    await expect(svc.renderCoasterStickers({ venues: [] })).rejects.toMatchObject({ status: 400 });
+    await expect(svc.renderCoasterStickers({ venues: stores })).rejects.toMatchObject({ status: 400, code: 'TOO_MANY_STORES' });
+    await expect(svc.renderCoasterStickers({ venues: stores.slice(0, 1), coasters: 0 })).rejects.toMatchObject({ status: 400 });
+    await expect(svc.renderCoasterStickers({ venues: [{ ...venue, windowCode: null }] })).rejects.toMatchObject({ status: 404 });
+  }, 90000);
+
   test('totem labels: one per store on Avery 8293, from any start position, linking to the totem sticker', async () => {
     const stores = Array.from({ length: 21 }, (_, i) => ({ ...venue, venueId: `v${i}`, windowCode: `W${i}` }));
     const pageCount = (pdf) => (pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length;
