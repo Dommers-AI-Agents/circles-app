@@ -10,7 +10,14 @@ const { effectiveCoords } = require('./userCardEnrichment');
 
 const db = getFirestore();
 const RADIUS_M = 80 * 1000;
-const PER_QUERY = 200;
+// Per geohash range. This was 200, which in a busy city stopped after one
+// corner of the area, so "who saves the most here" was a sample, not a count
+// (Wes, 2026-11-25). The result is cached below, so the bigger read is rare.
+const PER_QUERY = 2000;
+// Counts for one area, kept 15 minutes: a few new saves don't reorder a list
+// of suggestions, and every new account in a city asks the same question.
+const CACHE_MS = 15 * 60 * 1000;
+const countCache = new Map();
 // Saves narrowed to an Inner Circle or Private don't say where someone is
 const HIDDEN_TIERS = new Set(['innerCircle', 'private']);
 
@@ -29,6 +36,10 @@ const viewerCenter = async (userId, userData) => {
  */
 const localSaverCounts = async (center) => {
   const point = [center.latitude, center.longitude];
+  // ~5 km cells: neighbours share an answer
+  const cacheKey = geofire.geohashForLocation(point, 5);
+  const hit = countCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.counts;
   const bounds = geofire.geohashQueryBounds(point, RADIUS_M);
   const snaps = await Promise.all(bounds.map(([start, end]) => db.collection(COLLECTIONS.PLACES)
     .orderBy('geohash').startAt(start).endAt(end)
@@ -49,6 +60,8 @@ const localSaverCounts = async (center) => {
       counts.set(p.addedBy, (counts.get(p.addedBy) || 0) + 1);
     }
   }
+  if (countCache.size > 200) countCache.clear();
+  countCache.set(cacheKey, { at: Date.now(), counts });
   return counts;
 };
 
@@ -64,4 +77,4 @@ const rankSuggestedUsers = (candidates) => [...candidates].sort((a, b) => {
   return (b._actualPlacesCount || 0) - (a._actualPlacesCount || 0);
 });
 
-module.exports = { viewerCenter, localSaverCounts, rankSuggestedUsers };
+module.exports = { viewerCenter, localSaverCounts, rankSuggestedUsers, _clearCountCache: () => countCache.clear() };

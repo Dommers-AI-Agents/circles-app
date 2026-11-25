@@ -124,45 +124,46 @@ const getDiscoverUsers = async (req, res) => {
         .map((d) => shape(d, 'popular'))
         .sort((a, b) => (b.placesCount - a.placesCount) || ((b.followersCount || 0) - (a.followersCount || 0)));
     } else if (type === 'welcome') {
-      // A new user's first people (Wes, 2026-11-07: the sheet showed one
-      // person). Most relevant first: people who saved a place they saved
-      // ("Also loves Fresh Monkee"), then people near them, then the biggest
-      // maps; active people lead within each group. Everyone listed has a map.
-      const WELCOME_POOL = 150;
-      const poolIds = rankedIds
-        .filter((id) => isSuggestable(id) && !hasActiveConnection(id))
-        .filter((id) => ((placeCounts.get(id) || {}).placesCount || 0) > 0)
-        .slice(0, WELCOME_POOL);
-      const [poolDocs, origin, shared] = await Promise.all([
-        fetchDocsByIds(poolIds),
-        effectiveCoords(userId, currentUserData),
-        require('../services/welcomePeople').sharedPlaceSavers(userId)
+      // A new user's first people: the people who save places near them,
+      // most nearby places first (Wes, 2026-11-25; the order is
+      // services/welcomePeople.rankWelcomePeople). "Near" is where a person's
+      // PLACES are, not where their phone was last seen: a big map in another
+      // state is not a map of this user's city. Everyone listed has a map.
+      const localPeople = require('../services/localPeople');
+      const welcomePeople = require('../services/welcomePeople');
+      const [center, shared] = await Promise.all([
+        localPeople.viewerCenter(userId, currentUserData),
+        welcomePeople.sharedPlaceSavers(userId)
       ]);
-      const here = origin || require('../config/defaultLocation').DEFAULT_LOCATION;
+      const localCounts = await localPeople.localSaverCounts(center).catch((error) => {
+        console.warn('⚠️ Welcome local counts failed (list continues):', error.message);
+        return new Map();
+      });
       const placesOf = (id) => ((placeCounts.get(id) || {}).placesCount || 0);
-      const activity = (doc) => {
+      const eligible = (id) => isSuggestable(id) && !hasActiveConnection(id) && placesOf(id) > 0;
+      // Everyone with places here or a place in common, plus the biggest
+      // maps as the top-up pool; user docs are read only for these.
+      const WELCOME_POOL = 150;
+      const relevantIds = [...new Set([...localCounts.keys(), ...shared.keys()])].filter(eligible)
+        .sort((a, b) => (localCounts.get(b) || 0) - (localCounts.get(a) || 0))
+        .slice(0, WELCOME_POOL);
+      const fillerIds = rankedIds.filter((id) => eligible(id) && !relevantIds.includes(id))
+        .slice(0, welcomePeople.MIN_WELCOME_PEOPLE * 3);
+      const poolDocs = await fetchDocsByIds([...relevantIds, ...fillerIds]);
+      const docOf = new Map(poolDocs.map((doc) => [doc.id, doc]));
+      const activeBonus = (doc) => {
         const lastActive = doc.data().lastActive ? Date.parse(doc.data().lastActive) : NaN;
         const days = Number.isFinite(lastActive) ? (Date.now() - lastActive) / 86400000 : Infinity;
-        return placesOf(doc.id) + (days <= 7 ? 30 : days <= 30 ? 10 : 0);
+        return days <= 7 ? 30 : days <= 30 ? 10 : 0;
       };
-      const coordsOf = (data) => {
-        const gps = data.lastKnownLocation;
-        if (gps && Number.isFinite(gps.latitude)) return [gps.latitude, gps.longitude];
-        const a = data.assumedLocation;
-        return a && Number.isFinite(a.latitude) ? [a.latitude, a.longitude] : null;
-      };
-      users = poolDocs
-        .map((doc) => {
-          const coords = coordsOf(doc.data());
-          const km = coords ? geofire.distanceBetween([here.latitude, here.longitude], coords) : Infinity;
-          const placeName = shared.get(doc.id);
-          const group = placeName ? 0 : km <= 40 ? 1 : 2;
-          return { doc, group, km, placeName };
-        })
-        .sort((a, b) => (a.group - b.group) || (activity(b.doc) - activity(a.doc)))
-        .map(({ doc, group, placeName }) => shape(doc, 'welcome', {
-          suggestionReason: group === 0 ? `Also loves ${placeName}` : group === 1 ? 'Near you' : null
-        }));
+      const ranked = welcomePeople.rankWelcomePeople(poolDocs.map((doc) => ({
+        id: doc.id,
+        localCount: localCounts.get(doc.id) || 0,
+        placesCount: placesOf(doc.id),
+        sharedPlaceName: shared.get(doc.id) || null,
+        activeBonus: activeBonus(doc)
+      })));
+      users = ranked.map((c) => shape(docOf.get(c.id), 'welcome', { suggestionReason: c.reason }));
       // Nobody left to suggest (a tiny town, or everyone with a map is
       // already followed): the sheet must not be blank, so answer with the
       // people followed for them at signup, marked isFollowing, which the
@@ -171,7 +172,7 @@ const getDiscoverUsers = async (req, res) => {
         const followedDocs = await fetchDocsByIds([...following].slice(0, 12));
         users = followedDocs.map((doc) => shape(doc, 'welcome', { suggestionReason: 'Followed for you' }));
       }
-      console.log(`👋 Welcome people for ${userId}: pool ${poolIds.length}, shared ${shared.size}, located ${origin ? 'yes' : 'default'}, answered ${users.length}`);
+      console.log(`👋 Welcome people for ${userId}: local savers ${localCounts.size}, shared ${shared.size}, located ${center.isDefault ? 'default' : 'yes'}, answered ${users.length}`);
     } else if (type === 'nearby') {
       // Real geographic proximity — but with an ASSUMED location fallback.
       //
