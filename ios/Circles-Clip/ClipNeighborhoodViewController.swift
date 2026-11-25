@@ -164,11 +164,15 @@ final class ClipNeighborhoodViewController: ClipStepViewController, UITextFieldD
     #if DEBUG
     /// The autopilot's answer: yes at a store, the zip otherwise
     func autopilotAnswer(zip: String) {
-        if zipFieldShown {
-            zipField.text = zip
-            zipChanged()
+        guard zipFieldShown else { primaryTapped(); return }
+        // The number pad up for a moment, then the zip
+        zipField.becomeFirstResponder()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self else { return }
+            self.zipField.text = zip
+            self.zipChanged()
+            self.primaryTapped()
         }
-        primaryTapped()
     }
     #endif
 }

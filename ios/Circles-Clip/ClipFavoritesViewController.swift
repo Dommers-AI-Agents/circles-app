@@ -123,7 +123,7 @@ final class ClipFavoritesViewController: ClipStepViewController, UITextFieldDele
     }
 
     private func showNearby(_ picks: [ClipPlacePick]) {
-        nearby = Array(picks.prefix(8))
+        nearby = Array(picks.prefix(6))
         if lastQuery.count < 2 { showList(nearby, caption: "NEAR YOU") }
     }
 
@@ -153,7 +153,7 @@ final class ClipFavoritesViewController: ClipStepViewController, UITextFieldDele
         Task { @MainActor in
             let items = (try? await MKLocalSearch(request: request).start().mapItems) ?? []
             guard self.lastQuery == trimmed else { return }
-            self.results = Array(self.picks(from: items).prefix(8))
+            self.results = Array(self.picks(from: items).prefix(6))
             if self.results.isEmpty {
                 self.spinner.stopAnimating()
                 self.statusLabel.text = "Nothing for \"\(trimmed)\" near you. Try another name."
@@ -170,6 +170,17 @@ final class ClipFavoritesViewController: ClipStepViewController, UITextFieldDele
         search(textField.text ?? "")
         textField.resignFirstResponder()
         return true
+    }
+
+    /// Typing: the hook and the words fold away so the field and the chips
+    /// stay above the keyboard, even on a small phone
+    override func keyboardWillChange(up: Bool) {
+        UIView.animate(withDuration: 0.25) {
+            self.hookLabel.isHidden = up
+            self.detailLabel.isHidden = up
+            self.hookLabel.alpha = up ? 0 : 1
+            self.detailLabel.alpha = up ? 0 : 1
+        }
     }
 
     // MARK: - Chips
@@ -306,11 +317,20 @@ final class ClipFavoritesViewController: ClipStepViewController, UITextFieldDele
     }
 
     #if DEBUG
-    /// The autopilot's picks: the first two chips, then the button
+    /// The autopilot: a look at the search box with the keyboard up, then
+    /// the first two chips, then the button
     func autopilotPick() {
         guard picks.isEmpty, chips.count >= 1 else { return }
-        for chip in chips.prefix(2) { chipTapped(chip) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.primaryTapped() }
+        searchField.becomeFirstResponder()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self else { return }
+            self.searchField.resignFirstResponder()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                guard let self else { return }
+                for chip in self.chips.prefix(2) { self.chipTapped(chip) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.primaryTapped() }
+            }
+        }
     }
     #endif
 }
