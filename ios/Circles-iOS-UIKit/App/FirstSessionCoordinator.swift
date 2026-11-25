@@ -111,9 +111,20 @@ final class FirstSessionCoordinator: SceneCoordinator {
         firstFavoriteName = place.name
         firstFavoritePlace = place
         FirstFavoriteViewController.recordFirstFavorite(named: place.name)
+        // The clip's steps after the save (2026-11-24): skip what they finished there
+        let plan = ClipFirstRunPlan(summary: ClipOnboardingSummary.stashed)
+        if plan.skipsMorePlaces { UserDefaults.standard.set(true, forKey: "hasShownPhotoMapOnboarding") }
         let afterName = { [weak self] in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                self?.offerAccountSafety(over: tabBarController) { self?.presentStoreResult(place, over: tabBarController) }
+                self?.offerAccountSafety(over: tabBarController) {
+                    if plan.skipsPeople {
+                        // They met their people in the clip
+                        if let me = AuthService.shared.currentUser { WelcomeConnectionsViewController.markShown(for: me.id) }
+                        self?.continueOnboardingAfterContacts()
+                    } else {
+                        self?.presentStoreResult(place, over: tabBarController)
+                    }
+                }
             }
         }
         if NameOnboardingViewController.isNeeded {
@@ -166,8 +177,21 @@ final class FirstSessionCoordinator: SceneCoordinator {
     /// love most?" Saved → "Your place, your people" already showed the
     /// people, so location follows; skipped → today's people sheet.
     private func presentFirstFavorite(over tabBarController: CirclesTabBarController) {
+        // Joined through the clip's generic code and took its steps
+        // (2026-11-24): what they finished there isn't asked again
+        let plan = ClipFirstRunPlan(summary: ClipOnboardingSummary.stashed)
+        if plan.skipsMorePlaces { UserDefaults.standard.set(true, forKey: "hasShownPhotoMapOnboarding") }
+        if plan.skipsFirstFavorite, let name = ClipOnboardingSummary.stashed?.favoriteNames.first {
+            firstFavoriteName = name
+            FirstFavoriteViewController.recordFirstFavorite(named: name)
+        }
         guard FirstFavoriteViewController.isNeeded else {
-            presentFirstPeopleSheet(over: tabBarController)
+            if plan.skipsPeople {
+                if let me = AuthService.shared.currentUser { WelcomeConnectionsViewController.markShown(for: me.id) }
+                continueOnboardingAfterContacts()
+            } else {
+                presentFirstPeopleSheet(over: tabBarController)
+            }
             return
         }
         // Requests waiting show on the people step; have them ready
@@ -216,6 +240,7 @@ final class FirstSessionCoordinator: SceneCoordinator {
     private func finishFirstSessionChain() {
         let wasActive = OnboardingManager.shared.isFirstSessionFlowActive
         OnboardingManager.shared.isFirstSessionFlowActive = false
+        ClipOnboardingSummary.clearStashed()
         if wasActive {
             AnalyticsService.shared.logEvent(AnalyticsService.Events.onboardingCompleted,
                                              parameters: ["first_favorite": firstFavoriteName != nil])

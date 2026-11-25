@@ -46,6 +46,11 @@ final class RewardCodeHandler: SceneCoordinator {
             // account (Face ID or confirm the email) once they're in
             AccountSafetyPrompt.stash(email: email)
         }
+        if let onboarding = result.onboarding {
+            // The clip's steps after the save (2026-11-24): the first run skips
+            // what they finished there (Logic/ClipFirstRunPlan)
+            ClipOnboardingSummary.stash(onboarding)
+        }
         if let welcome = result.welcome {
             // Their first look at the app is that store's page with what they
             // earned and what the points buy (Wes, 2026-10-31)

@@ -147,6 +147,40 @@ final class ClipAPIClient {
         return response.data
     }
 
+    // MARK: - The steps after the save (2026-11-24)
+
+    /// Their zip on the profile (PUT users/me derives the city): centers
+    /// the map and powers "nearby". Just a zip, never an address.
+    func updateZipcode(_ zipcode: String, bearer: String) async throws {
+        let _: ClipSimpleResponse = try await request(path: "users/me", method: "PUT", body: ["zipcode": zipcode], bearerToken: bearer)
+    }
+
+    /// The app's first-run people list: who also saved the store, then
+    /// people near them, then the biggest maps (never contacts)
+    func discoverPeople(limit: Int, bearer: String) async throws -> [ClipPerson] {
+        let response: ClipPeopleResponse = try await request(
+            path: "users/contacts/discover", method: "GET",
+            query: [URLQueryItem(name: "type", value: "welcome"), URLQueryItem(name: "limit", value: String(limit))],
+            bearerToken: bearer)
+        return response.users
+    }
+
+    func follow(userId: String, bearer: String) async throws -> ClipFollowResponse {
+        try await request(path: "users/\(userId)/follow", method: "POST", bearerToken: bearer)
+    }
+
+    /// Up to three Apple Maps picks into Favorite Local Spots, through the core save
+    func saveFavorites(_ places: [[String: Any]], bearer: String) async throws -> ClipFavoritesResult {
+        let response: ClipFavoritesResponse = try await request(path: "clip/favorites", method: "POST",
+                                                                body: ["places": places], bearerToken: bearer)
+        return response.data
+    }
+
+    /// What the steps finished, kept on the user
+    func recordOnboarding(_ summary: [String: Any], bearer: String) async throws {
+        let _: ClipSimpleResponse = try await request(path: "clip/onboarding", method: "POST", body: summary, bearerToken: bearer)
+    }
+
     // MARK: - Core
 
     private func request<T: Decodable>(path: String,

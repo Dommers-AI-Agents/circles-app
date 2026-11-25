@@ -32,6 +32,9 @@ enum ClipHandoff {
         /// A Scan Action QR (2026-11-11) the app opens on first launch: the
         /// places the clip saved, or the guide / store setup it couldn't run
         var pendingScanCode: String? = nil
+        /// The steps after the save, as far as they got (2026-11-24): the
+        /// app's first run skips what's done (its Models/ClipOnboardingSummary)
+        var onboarding: ClipOnboardingSummary? = nil
     }
 
     /// What the full app's first launch shows: the store's page with a
@@ -93,6 +96,13 @@ enum ClipHandoff {
     static func markScanPending(_ code: String) {
         guard var payload = read() else { return }
         payload.pendingScanCode = code
+        write(payload)
+    }
+
+    /// Written after every step, so quitting halfway still counts
+    static func updateOnboarding(_ summary: ClipOnboardingSummary) {
+        guard var payload = read() else { return }
+        payload.onboarding = summary
         write(payload)
     }
 

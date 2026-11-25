@@ -226,6 +226,9 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
             statusLabel.text = "Free to join"
         }
         ClipTheme.animateIn([brandHeader, hookLabel, nameLabel, subtitleLabel, rewardLabel, appleButton, emailField, emailButton, statusLabel])
+        #if DEBUG
+        ClipAutopilot.shared?.ready(self)
+        #endif
     }
 
     private func showNoCodeState() {
@@ -358,13 +361,14 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
     func signedIn(_ response: ClipAuthResponse, provider: String) {
         let session = ClipSession(response: response, provider: provider)
         session.save()
-        showSuccess(session: session, isNewSignIn: true, animated: true)
+        showSuccess(session: session, isNewSignIn: true, isNewAccount: response.isNewAccount, animated: true)
     }
 
-    private func showSuccess(session: ClipSession, isNewSignIn: Bool, animated: Bool) {
+    private func showSuccess(session: ClipSession, isNewSignIn: Bool, isNewAccount: Bool = false, animated: Bool) {
         guard let preview = preview, let code = code else { return }
         let successVC = ClipSuccessViewController(session: session,
                                                  isNewSignIn: isNewSignIn,
+                                                 isNewAccount: isNewAccount,
                                                  invocation: invocation,
                                                  code: code,
                                                  preview: preview)
@@ -392,3 +396,13 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
         }
     }
 }
+
+#if DEBUG
+extension ClipOfferViewController {
+    /// The autopilot types the email and continues
+    func autopilotSignIn(email: String) {
+        emailField.text = email
+        emailTapped()
+    }
+}
+#endif

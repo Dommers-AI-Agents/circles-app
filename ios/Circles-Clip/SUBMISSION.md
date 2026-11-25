@@ -54,6 +54,15 @@ once, at/after the first build upload that contains the clip.
    > the user is already signed in.
    > Demo flow: scan or open https://api.favcircles.com/s/5IRJ9M → sign up
    > with any email → points confirmation → "Get the full app".
+   > (2026-11-24) After the points confirmation, a NEW account is offered
+   > three optional steps before the install, each with Skip: "Is this your
+   > neighborhood?" (saves a zip code to the profile — a zip, never an
+   > address, and no location permission), "Your first favorites" (up to
+   > three places from Apple Maps, saved to the account), and "People who
+   > know the area" (follow suggestions). The last screen summarizes and
+   > offers the full app. A returning customer skips all of it. Everything
+   > the clip saves lands on the account, so the app opens signed in with
+   > the map already started and never asks those questions again.
 
 7. **Physical-device smoke test before submitting** (TestFlight or dev build):
    - Settings > Developer > App Clips Testing > Local Experiences: register

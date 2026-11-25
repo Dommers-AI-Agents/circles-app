@@ -9,6 +9,10 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
 
     private let session: ClipSession
     private let isNewSignIn: Bool
+    /// The account was made by this sign-in: the steps after the save
+    /// (where they live, first favorites, people) come before the app (2026-11-24)
+    private let isNewAccount: Bool
+    private var scanResult: ScanResult?
     private let invocation: ClipInvocation
     private let code: String
     private let preview: VenuePreview
@@ -38,9 +42,10 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     private lazy var joinLineButton = ClipTheme.primaryButton("Join the line")
     private var waitlistVenueId: String?
 
-    init(session: ClipSession, isNewSignIn: Bool, invocation: ClipInvocation, code: String, preview: VenuePreview) {
+    init(session: ClipSession, isNewSignIn: Bool, isNewAccount: Bool = false, invocation: ClipInvocation, code: String, preview: VenuePreview) {
         self.session = session
         self.isNewSignIn = isNewSignIn
+        self.isNewAccount = isNewAccount
         self.invocation = invocation
         self.code = code
         self.preview = preview
@@ -103,6 +108,13 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
             firstName.map { "Not \($0)? Sign out" } ?? "Not you? Sign out",
             attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 15, weight: .medium)]))
         signOutButton.addTarget(self, action: #selector(signOutTapped), for: .touchUpInside)
+        if isNewAccount {
+            // The steps come first; the app is the last of them
+            getAppButton.configuration?.attributedTitle = AttributedString("Keep going", attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 18, weight: .semibold)]))
+            signOutButton.configuration?.attributedTitle = AttributedString("Skip to the app", attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 15, weight: .medium)]))
+            signOutButton.removeTarget(self, action: #selector(signOutTapped), for: .touchUpInside)
+            signOutButton.addTarget(self, action: #selector(skipToAppTapped), for: .touchUpInside)
+        }
 
         rateStack.axis = .vertical
         rateStack.spacing = 8
@@ -232,6 +244,7 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     // MARK: - Results
 
     private func show(_ result: ScanResult) {
+        scanResult = result
         let name = preview.venueName
         let earnsHere = preview.kind == "register" && preview.loyaltyLive == true
         let balance = result.venueBalance ?? 0
@@ -410,7 +423,29 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             rainConfetti()
         }
+        #if DEBUG
+        ClipAutopilot.shared?.ready(self)
+        #endif
+        // A new account goes on to the steps; Apple's banner waits for the last one
+        guard !isNewAccount else { return }
         presentInstallOverlay(afterDelay: celebrate ? 2.2 : 1.4)
+    }
+
+    /// The steps after the save (2026-11-24): where they live, a few first
+    /// favorites, people to follow, then the app
+    private func startSteps() {
+        let flow = ClipOnboardingFlow(session: session, code: code, preview: preview, result: scanResult)
+        navigationController?.pushViewController(flow.screen(after: nil), animated: true)
+    }
+
+    @objc private func skipToAppTapped() {
+        openAppStore()
+    }
+
+    private func openAppStore() {
+        if let url = URL(string: "https://apps.apple.com/us/app/favcircles/id6746807095") {
+            UIApplication.shared.open(url)
+        }
     }
 
     // MARK: - Actions
@@ -438,9 +473,8 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     }
 
     @objc private func getAppTapped() {
-        if let url = URL(string: "https://apps.apple.com/us/app/favcircles/id6746807095") {
-            UIApplication.shared.open(url)
-        }
+        if isNewAccount { startSteps(); return }
+        openAppStore()
     }
 
     @objc private func signOutTapped() {
@@ -524,3 +558,13 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
         UIView.animate(withDuration: 0.3) { self.view.layoutIfNeeded() }
     }
 }
+
+#if DEBUG
+extension ClipSuccessViewController {
+    /// The autopilot's tap on "Keep going"
+    func autopilotKeepGoing() {
+        guard isNewAccount else { return }
+        getAppTapped()
+    }
+}
+#endif

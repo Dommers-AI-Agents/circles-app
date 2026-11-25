@@ -162,6 +162,7 @@ class KeychainService {
         var emailUnverified: Bool?
         var isNewSignIn: Bool?
         var pendingScanCode: String?
+        var onboarding: ClipOnboardingSummary?  // the clip's steps after the save, as far as they got (2026-11-24)
     }
 
     struct ClipAdoptionResult {
@@ -172,6 +173,7 @@ class KeychainService {
         var unconfirmedEmail: String? = nil  // signed up in the clip with just this email
         var isNewSignIn: Bool? = nil        // the clip made the account just now: run the first run (2026-11-09)
         var pendingScanCode: String? = nil  // a Scan Action QR the clip opened: the app opens it too (2026-11-11)
+        var onboarding: ClipOnboardingSummary? = nil  // the clip's steps after the save (2026-11-24)
     }
 
     /// Set once this install has launched (UserDefaults is wiped with the app)
@@ -225,7 +227,8 @@ class KeychainService {
                                   welcome: payload.welcome,
                                   unconfirmedEmail: payload.emailUnverified == true ? payload.accountEmail : nil,
                                   isNewSignIn: payload.isNewSignIn,
-                                  pendingScanCode: payload.pendingScanCode)
+                                  pendingScanCode: payload.pendingScanCode,
+                                  onboarding: payload.onboarding)
     }
 
     // MARK: - Private Helper Methods

@@ -91,8 +91,14 @@ struct ClipAuthResponse: Decodable {
     let user: ClipUser
     /// An instant sign-up: the email isn't confirmed yet (the app asks later)
     let emailUnverified: Bool?
+    /// The account was made by this sign-in: email-instant and email-code
+    /// answer `newAccount`, Sign in with Apple answers `isNewUser`
+    let newAccount: Bool?
+    let isNewUser: Bool?
 
     var isEmailUnverified: Bool { emailUnverified == true || user.emailUnverified == true }
+    /// A brand-new account: the steps after the save are for them (2026-11-24)
+    var isNewAccount: Bool { newAccount == true || isNewUser == true }
 }
 
 struct ClipUser: Decodable {
@@ -249,4 +255,78 @@ struct ClipScanSaveResult: Decodable {
 struct ClipScanSaveResponse: Decodable {
     let success: Bool
     let data: ClipScanSaveResult
+}
+
+// MARK: - The steps after the save (2026-11-24)
+
+/// A person to follow, as users/contacts/discover?type=welcome shapes them
+/// (the app's User, trimmed to what the clip shows)
+struct ClipPerson: Decodable {
+    let id: String
+    let displayName: String
+    let profilePicture: String?
+    let placesCount: Int?
+    let location: String?
+    /// "Also loves Pasta & Provisions", "Near you", "Followed for you"
+    let suggestionReason: String?
+    let isFollowing: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, displayName, profilePicture, placesCount, location, suggestionReason, isFollowing
+        case mongoId = "_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        guard let id = try c.decodeIfPresent(String.self, forKey: .id) ?? c.decodeIfPresent(String.self, forKey: .mongoId) else {
+            throw DecodingError.keyNotFound(CodingKeys.id, .init(codingPath: decoder.codingPath, debugDescription: "no id"))
+        }
+        self.id = id
+        displayName = try c.decodeIfPresent(String.self, forKey: .displayName) ?? "Someone"
+        profilePicture = try c.decodeIfPresent(String.self, forKey: .profilePicture)
+        placesCount = try c.decodeIfPresent(Int.self, forKey: .placesCount)
+        location = try c.decodeIfPresent(String.self, forKey: .location)
+        suggestionReason = try c.decodeIfPresent(String.self, forKey: .suggestionReason)
+        isFollowing = try c.decodeIfPresent(Bool.self, forKey: .isFollowing)
+    }
+
+    var initials: String {
+        displayName.split(separator: " ").prefix(2).compactMap { $0.first.map(String.init) }.joined().uppercased()
+    }
+
+    /// "Also loves Pasta & Provisions · 128 places"
+    var detailLine: String {
+        var parts: [String] = []
+        if let suggestionReason, !suggestionReason.isEmpty { parts.append(suggestionReason) }
+        if let placesCount, placesCount > 0 { parts.append("\(placesCount) place\(placesCount == 1 ? "" : "s")") }
+        if parts.isEmpty, let location, !location.isEmpty { parts.append(location) }
+        return parts.isEmpty ? "Just getting started" : parts.joined(separator: " · ")
+    }
+}
+
+struct ClipPeopleResponse: Decodable {
+    let success: Bool
+    let users: [ClipPerson]
+}
+
+/// POST users/:id/follow: a private profile answers with a request
+struct ClipFollowResponse: Decodable {
+    let success: Bool
+    let requested: Bool?
+}
+
+/// POST clip/favorites: what the core save did with each pick
+struct ClipFavoritesResult: Decodable {
+    struct Row: Decodable { let placeId: String?; let name: String }
+    struct Failed: Decodable { let name: String; let reason: String? }
+    let saved: [Row]
+    let alreadySaved: [Row]
+    let failed: [Failed]
+    /// FavCoins the saves earned (the first place ever, when the store wasn't it)
+    let coins: Int?
+}
+
+struct ClipFavoritesResponse: Decodable {
+    let success: Bool
+    let data: ClipFavoritesResult
 }
