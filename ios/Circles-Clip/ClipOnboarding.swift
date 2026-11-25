@@ -67,14 +67,16 @@ struct ClipPlacePick: Equatable {
     static func category(for poi: MKPointOfInterestCategory?) -> String {
         guard let poi else { return "other" }
         switch poi {
-        case .restaurant, .bakery, .foodMarket: return poi == .foodMarket ? "retail" : (poi == .bakery ? "cafe" : "restaurant")
-        case .cafe: return "cafe"
+        case .restaurant: return "restaurant"
+        case .cafe, .bakery: return "cafe"
+        case .foodMarket: return "retail"
         case .brewery, .winery, .nightlife: return "bar"
         case .hotel: return "hotel"
         case .store, .pharmacy: return "retail"
         case .park, .beach, .campground, .marina, .nationalPark: return "outdoor"
         case .fitnessCenter: return "fitness"
-        case .museum, .zoo, .aquarium, .amusementPark, .theater, .movieTheater, .stadium: return poi == .museum ? "attraction" : "entertainment"
+        case .museum: return "attraction"
+        case .zoo, .aquarium, .amusementPark, .theater, .movieTheater, .stadium: return "entertainment"
         case .hospital: return "healthcare"
         case .school, .university, .library: return "education"
         case .airport, .publicTransport, .parking, .gasStation, .evCharger, .carRental: return "transport"
@@ -106,6 +108,9 @@ final class ClipOnboardingFlow {
         let name: String
         let coordinate: CLLocationCoordinate2D?
         let awardedPoints: Int
+        /// On their map already (the scan saved it, or it was); false when
+        /// the save waits for the app
+        let saved: Bool
     }
 
     let session: ClipSession
@@ -127,20 +132,23 @@ final class ClipOnboardingFlow {
             let lat = result?.venue?.location?.lat ?? preview.location?.latitude
             let lng = result?.venue?.location?.lng ?? preview.location?.longitude
             let coordinate = (lat != nil && lng != nil) ? CLLocationCoordinate2D(latitude: lat!, longitude: lng!) : nil
-            store = Store(name: preview.venueName, coordinate: coordinate, awardedPoints: result?.awarded?.points ?? 0)
+            store = Store(name: preview.venueName, coordinate: coordinate, awardedPoints: result?.awarded?.points ?? 0,
+                          saved: result?.isOnTheirMap == true)
         }
         coverURL = preview.coverUrl.flatMap(URL.init(string:))
         origin = store?.coordinate
     }
 
+    /// Somewhere to look around: the store, or the zip they just gave
     var hasFavoritesStep: Bool { origin != nil }
-    var stepCount: Int { hasFavoritesStep ? 3 : 2 }
+    /// Always three on the label (the zip step can still produce an origin)
+    let stepCount = 3
 
     func stepNumber(_ step: ClipOnboardingSummary.Step) -> Int {
         switch step {
         case .neighborhood: return 1
         case .favorites: return 2
-        case .people: return hasFavoritesStep ? 3 : 2
+        case .people: return 3
         }
     }
 

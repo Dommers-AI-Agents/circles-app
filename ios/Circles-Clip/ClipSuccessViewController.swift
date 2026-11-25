@@ -563,6 +563,8 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
 extension ClipSuccessViewController {
     /// The autopilot's tap on "Keep going"
     func autopilotKeepGoing() {
+        // So a simulator run's test account can be deleted afterwards (DELETE /users/me)
+        print("📎 autopilot session user=\(session.userId) token=\(session.token)")
         guard isNewAccount else { return }
         getAppTapped()
     }

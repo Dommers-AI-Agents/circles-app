@@ -26,7 +26,7 @@ final class ClipAutopilot {
             switch screen {
             case let offer as ClipOfferViewController: offer.autopilotSignIn(email: self.email)
             case let success as ClipSuccessViewController: success.autopilotKeepGoing()
-            case let step as ClipNeighborhoodViewController: step.primaryTapped()
+            case let step as ClipNeighborhoodViewController: step.autopilotAnswer(zip: self.zip)
             case let step as ClipFavoritesViewController: step.autopilotPick()
             case let step as ClipPeopleViewController: step.primaryTapped()
             default: break

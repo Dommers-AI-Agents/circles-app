@@ -25,7 +25,12 @@ final class ClipAllSetViewController: ClipStepViewController, SKOverlayDelegate 
         done.addArrangedSubview(caption("DONE HERE"))
         var lines: [String] = []
         if let store = flow.store {
-            lines.append(store.awardedPoints > 0 ? "\(store.name) saved · +\(store.awardedPoints) points" : "\(store.name) saved")
+            if store.saved {
+                lines.append(store.awardedPoints > 0 ? "\(store.name) saved · +\(store.awardedPoints) points" : "\(store.name) saved")
+            } else {
+                // The scan couldn't save it just now; the app's own flow finishes it
+                lines.append("\(store.name) goes on your map when the app opens")
+            }
         }
         if summary.zipcodeSet {
             lines.append(summary.city.map { "Map centered on \($0)" } ?? "Your zip is on your profile")
