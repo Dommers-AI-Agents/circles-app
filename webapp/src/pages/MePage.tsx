@@ -1,0 +1,69 @@
+// "Me": who I am, and my circles in the order I arranged them.
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { myCircles } from '../api/circles';
+import { me } from '../api/users';
+import { messageOf } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
+import { plural } from '../logic/labels';
+import { Avatar, ConfirmSheet, Empty, Head, LoadError, Spinner } from '../ui/kit';
+import { CircleCard } from '../ui/CircleCard';
+import { CircleEditSheet } from '../ui/CircleEditSheet';
+
+export function MePage() {
+  const { session, signOut } = useAuth();
+  const [creating, setCreating] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const profile = useQuery({ queryKey: ['me'], queryFn: me });
+  const circles = useQuery({ queryKey: ['circles', 'mine'], queryFn: myCircles });
+  const user = profile.data;
+  const name = user?.displayName || session?.name || 'You';
+
+  return (
+    <>
+      <Head title="FavCircles" lead>
+        <button className="icon-btn" onClick={() => setLeaving(true)}>Sign out</button>
+      </Head>
+      <main className="page">
+        <div className="profile-top">
+          <Avatar name={name} src={user?.profilePicture} size={72} seed={user?._id} />
+          <div className="grow">
+            <h2 className="clip">{name}</h2>
+            {user?.location ? <p className="muted small">{user.location}</p> : null}
+            {user?.bio ? <p className="small" style={{ marginTop: 4 }}>{user.bio}</p> : null}
+          </div>
+        </div>
+        {user ? (
+          <div className="counts">
+            <span><b>{user.followersCount ?? 0}</b> followers</span>
+            <span><b>{user.followingCount ?? 0}</b> following</span>
+          </div>
+        ) : null}
+
+        <div className="row" style={{ margin: '22px 4px 10px' }}>
+          <p className="section-title grow" style={{ margin: 0 }}>
+            My circles{circles.data ? ` · ${plural(circles.data.length, 'circle')}` : ''}
+          </p>
+          <button className="btn small soft" onClick={() => setCreating(true)}>New circle</button>
+        </div>
+        {circles.isPending ? <Spinner /> : null}
+        {circles.isError ? <LoadError message={messageOf(circles.error)} retry={() => circles.refetch()} /> : null}
+        {circles.data && circles.data.length === 0 ? (
+          <Empty mark="⭕" title="No circles yet" action={<button className="btn" onClick={() => setCreating(true)}>Make your first circle</button>}>
+            A circle is a list of places you love: date night, coffee, a city you know well.
+          </Empty>
+        ) : null}
+        {circles.data && circles.data.length > 0 ? (
+          <div className="circle-grid">
+            {circles.data.map((circle) => <CircleCard key={circle._id} circle={circle} />)}
+          </div>
+        ) : null}
+      </main>
+      {creating ? <CircleEditSheet onClose={() => setCreating(false)} /> : null}
+      {leaving ? (
+        <ConfirmSheet title="Sign out?" body="You can sign back in with your email any time." action="Sign out"
+          onConfirm={signOut} onClose={() => setLeaving(false)} />
+      ) : null}
+    </>
+  );
+}

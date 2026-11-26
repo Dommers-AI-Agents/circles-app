@@ -213,8 +213,15 @@ app.use(sanitizeInput);
 // Apply general rate limiting to all requests
 app.use('/api/', generalLimiter);
 
+// The web app's built files carry a hash in their names: keep them for good
+app.use('/public/app/assets', express.static(path.join(__dirname, 'public', 'app', 'assets'), { immutable: true, maxAge: '365d' }));
+
 // Serve static files from public directory
 app.use('/public', express.static(path.join(__dirname, 'public')));
+
+// FavCircles in a browser: app.favcircles.com serves the web app for its
+// own paths (routes/webAppRoutes); everything else falls through
+app.use(require('./routes/webAppRoutes').webApp);
 
 // Images are now served from Firebase Storage, not local filesystem
 

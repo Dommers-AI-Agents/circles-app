@@ -1,0 +1,13 @@
+.login { min-height: 100dvh; display: flex; flex-direction: column; justify-content: flex-end; max-width: 480px; margin: 0 auto; padding: 24px 16px calc(24px + var(--safe-b)); }
+.login-art { position: fixed; inset: 0; z-index: -1; background: linear-gradient(160deg, #274b8f 0%, #1b6e7a 48%, #0f1e3a 100%); overflow: hidden; }
+.login-art::after { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.07) 1px, transparent 1px); background-size: 56px 56px; transform: rotate(-8deg) scale(1.4); }
+.login-art .pin { position: absolute; z-index: 1; font-size: 34px; filter: drop-shadow(0 6px 10px rgba(0,0,0,.35)); }
+.login-art .p1 { top: 12%; left: 18%; } .login-art .p2 { top: 22%; right: 16%; } .login-art .p3 { top: 36%; left: 44%; } .login-art .p4 { top: 8%; right: 42%; }
+.login-panel { padding: 22px 18px 16px; }
+.login-brand { font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--brand); margin-bottom: 8px; }
+.login-panel h1 { font-family: 'New York', Georgia, 'Times New Roman', serif; font-size: 27px; line-height: 1.15; }
+.login-sub { margin: 8px 0 18px; }
+.login-code { letter-spacing: .4em; text-align: center; font-size: 24px !important; font-weight: 700; }
+.login-fine { margin-top: 10px; }
+.login-foot { margin-top: 14px; text-align: center; color: rgba(255,255,255,.85); }
+.login-foot a { color: #fff; text-decoration: underline; }
