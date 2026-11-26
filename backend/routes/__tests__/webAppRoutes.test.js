@@ -90,3 +90,9 @@ test('the built app is committed and matches its sources (run `npm run build` in
   const { sourceHash: built } = JSON.parse(fs.readFileSync(path.join(APP_DIR, 'build-info.json'), 'utf8'));
   expect(built).toBe(sourceHash(webapp));
 });
+
+test("the web app's own origin is allowed: browsers send Origin for its scripts and its POSTs", () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
+  const list = src.slice(src.indexOf('const allowedOrigins = ['), src.indexOf('];', src.indexOf('const allowedOrigins = [')));
+  expect(list).toContain("'https://app.favcircles.com'");
+});

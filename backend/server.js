@@ -104,6 +104,7 @@ const corsOptions = {
       'https://www.favcircles.com',
       'https://api.favcircles.com', // the admin dashboard, served by this server
       'https://order.favcircles.com', // store ordering pages (routes/orderWebRoutes)
+      'https://app.favcircles.com', // the web app (routes/webAppRoutes): browsers send Origin even for its own files and calls
       'capacitor://localhost', // iOS app
       'ionic://localhost', // iOS app alternative
       'http://localhost' // iOS app WebView
