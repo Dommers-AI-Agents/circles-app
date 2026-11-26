@@ -6,8 +6,9 @@
 // FAVCIRCLES round the label (an invitation, never points), place categories on both sides, the
 // FavCircles mark underneath. Nothing leans over the label, so a phone can reach it.
 // One piece, printed upright, no supports: everything leaves at 45 degrees or steeper.
-// Lettering and faces are engraved (fill with a paint pen). For two colours: ONE filament change at
-// z = K_H (12 mm), where the base ends and the figure begins.
+// Lettering and faces are engraved (fill with a paint pen). Two colours (Wes, 2026-11-26: "I like two
+// colors"): the base is one filament and the figure another, split flat at z = K_H (12 mm), so the
+// printer swaps filament once. piece="base" and piece="figure" are the two halves of the same print.
 //   character="monkee"     Fresh Monkee: a seated, winking monkey               (window code JKI750)
 //   character="caffeena"   Caffeena Coffee House: a race car driven by a coffee cup   (FHVMPK)
 //   character="port"       Port Coffee: the ship riding in a cup                (4HOA4V)
@@ -16,6 +17,7 @@
 include <../totem-print/totem.scad>
 part = "none";            // totem.scad draws nothing: it lends the lettering font, icons, mark and domed()
 character = "show";
+piece = "whole";          // "whole", or "base" / "figure": the print cut at the top of the base, one colour each
 
 // ---- the shared base (new names: totem.scad's own would be evaluated before these exist) ----
 K_W = 78; K_D = 94; K_H = 12; K_CORNER = 12; K_R = 2;
@@ -221,4 +223,6 @@ if (character == "show") {
   translate([0, 0, 0]) { color("#2b1707") render() kbase(store_name("caffeena")); color("#d49c60") render() figure("caffeena"); k_label(); }
   translate([95, 0, 0]) { color("#272b4a") render() kbase(store_name("port")); color("#f4f1ea") render() figure("port"); k_label(); }
 }
+else if (piece == "base") intersection() { whole(character); translate([-100, -100, -1]) cube([200, 200, K_H + 1]); }
+else if (piece == "figure") intersection() { whole(character); translate([-100, -100, K_H]) cube([200, 200, 200]); }
 else whole(character);
