@@ -401,6 +401,9 @@ function drawTent(doc, args, faceW, faceH, originX = 0, originY = 0) {
 // under it. 1.12 in still covers the old 1.06 in dots edge to edge, and the
 // sticker itself (opaque, 1½ in) covers the 6 in sticker's 1.25 in ones.
 const NAMED_STICKER_QR = 1.12 * IN;
+// A store's own coaster sticker: the code with 0.075 in of white at the sides
+// and its name on the strip below
+const COASTER_NAMED_QR = 0.6 * IN;
 const STICKERS_PER_SHEET = STICKER_SHEET.cols * STICKER_SHEET.rows;
 const MAX_STORE_STICKERS = 96;
 
@@ -419,12 +422,23 @@ function drawStickerSheets(entries, startAt = 1, sheet = STICKER_SHEET) {
     const x = left + (slot % cols) * pitchX;
     const y = top + Math.floor(slot / cols) * pitchY;
     if (entry.name) {
-      const pad = (size - NAMED_STICKER_QR) / 2;
-      drawQR(doc, entry.qr, x + pad, y + 0.06 * IN, NAMED_STICKER_QR);
-      const nameSize = fitSize(doc, entry.name, 'Helvetica-Bold', 7, 5, size - 0.16 * IN, 1);
+      // A named sticker: the code high, the store's name on the strip under
+      // it. The 1½ in sticker has room for a 7 pt name; the ¾ in coaster
+      // sticker keeps a 0.60 in code (every dot still ½ mm) and a 4 pt name,
+      // enough to sort a sheet of many stores (Wes, 2026-11-24).
+      const small = size < 1 * IN;
+      const q = entry.qrSize || (small ? COASTER_NAMED_QR : NAMED_STICKER_QR);
+      const topPad = small ? 0.03 * IN : 0.06 * IN;
+      const gap = small ? 0.015 * IN : 0.06 * IN;
+      const side = small ? 0.03 * IN : 0.08 * IN;
+      const pad = (size - q) / 2;
+      drawQR(doc, entry.qr, x + pad, y + topPad, q);
+      const nameSize = small
+        ? fitSize(doc, entry.name, 'Helvetica-Bold', 4.5, 3.5, size - 2 * side, 1)
+        : fitSize(doc, entry.name, 'Helvetica-Bold', 7, 5, size - 2 * side, 1);
       doc.fillColor(STICKER_INK).font('Helvetica-Bold').fontSize(nameSize)
-        .text(entry.name, x + 0.08 * IN, y + 0.06 * IN + NAMED_STICKER_QR + 0.06 * IN,
-          { width: size - 0.16 * IN, align: 'center', lineBreak: false, ellipsis: true, height: nameSize * 1.3 });
+        .text(entry.name, x + side, y + topPad + q + gap,
+          { width: size - 2 * side, align: 'center', lineBreak: false, ellipsis: true, height: nameSize * 1.3 });
     } else {
       const qrSize = entry.qrSize || STICKER_QR;
       const inset = (size - qrSize) / 2;
@@ -447,14 +461,19 @@ async function renderStickerSheet(code) {
   return drawStickerSheets(Array.from({ length: STICKERS_PER_SHEET }, () => ({ qr })));
 }
 
-// Coasters: the generic "Join FavCircles" App Clip code, two stickers per
-// coaster (one for each side), on ¾ in Avery 94102 squares
+// Coasters: two stickers per coaster (one for each side), on ¾ in Avery
+// 94102 squares. With no stores: the generic "Join FavCircles" App Clip code,
+// `coasters` of them. With `venues`: each store's own window code with its
+// name under it, `coasters` coasters per store, stores in the order given
+// (Wes, 2026-11-24: a coaster the store can scan to see its own card).
 const COASTER_SHEET = STICKER_SHEETS.avery94102;
 const COASTER_STICKERS_PER_SHEET = COASTER_SHEET.cols * COASTER_SHEET.rows;
 const MAX_COASTERS = 1000;
+const MAX_COASTER_STORES = 40; // 40 stores × 1 coaster = one sheet
 
-async function renderCoasterStickers({ coasters = COASTER_STICKERS_PER_SHEET / 2, startAt = 1 } = {}) {
-  const count = Number(coasters);
+async function renderCoasterStickers({ coasters, startAt = 1, venues = null } = {}) {
+  const perStore = Array.isArray(venues);
+  const count = Number(coasters === undefined ? (perStore ? 1 : COASTER_STICKERS_PER_SHEET / 2) : coasters);
   if (!Number.isInteger(count) || count < 1 || count > MAX_COASTERS) {
     throw new ServiceError(400, 'BAD_COUNT', `coasters must be 1 to ${MAX_COASTERS}`);
   }
@@ -462,8 +481,24 @@ async function renderCoasterStickers({ coasters = COASTER_STICKERS_PER_SHEET / 2
   if (!Number.isInteger(start) || start < 1 || start > COASTER_STICKERS_PER_SHEET) {
     throw new ServiceError(400, 'BAD_START', `startAt must be 1 to ${COASTER_STICKERS_PER_SHEET}`);
   }
-  const qr = qrCode(rewardConfig.GENERIC_JOIN_CODE, STICKER_INK);
-  const entries = Array.from({ length: count * 2 }, () => ({ qr, qrSize: COASTER_QR }));
+  if (!perStore) {
+    const qr = qrCode(rewardConfig.GENERIC_JOIN_CODE, STICKER_INK);
+    const entries = Array.from({ length: count * 2 }, () => ({ qr, qrSize: COASTER_QR }));
+    return drawStickerSheets(entries, start, COASTER_SHEET);
+  }
+  if (!venues.length) throw new ServiceError(400, 'NO_STORES', 'Pick at least one store');
+  if (venues.length > MAX_COASTER_STORES) {
+    throw new ServiceError(400, 'TOO_MANY_STORES', `At most ${MAX_COASTER_STORES} stores at a time`);
+  }
+  if (count * 2 * venues.length > MAX_COASTERS * 2) {
+    throw new ServiceError(400, 'BAD_COUNT', `At most ${MAX_COASTERS} coasters at a time`);
+  }
+  const entries = [];
+  for (const venue of venues) {
+    const qr = qrCode(codeFor('window', venue), STICKER_INK);
+    const name = String(venue.venueName || '').trim() || 'Store';
+    for (let i = 0; i < count * 2; i++) entries.push({ qr, name });
+  }
   return drawStickerSheets(entries, start, COASTER_SHEET);
 }
 
@@ -644,6 +679,6 @@ const tableTentPDF = (venue) => renderPDF(venue, { kind: 'register', format: 'te
 module.exports = {
   renderPDF, renderStoreStickers, renderCoasterStickers, renderTotemLabels, renderTableStickers, roundLabelStock, totemUrl,
   TOTEM_LABELS_PER_SHEET, MAX_TOTEM_LABELS, MAX_TABLE_COPIES, MAX_ROUND_LABELS, TOTEM_SHEET, TOTEM_TAG, printOptions, fileName, KINDS, FORMATS, QR_INCHES,
-  STICKERS_PER_SHEET, MAX_STORE_STICKERS, COASTER_STICKERS_PER_SHEET, MAX_COASTERS, STICKER_SHEETS,
+  STICKERS_PER_SHEET, MAX_STORE_STICKERS, COASTER_STICKERS_PER_SHEET, MAX_COASTERS, MAX_COASTER_STORES, STICKER_SHEETS,
   windowSignPDF, registerCardPDF, tableTentPDF
 };
