@@ -20,7 +20,7 @@ character = "show";
 // ---- the shared base (new names: totem.scad's own would be evaluated before these exist) ----
 K_W = 78; K_D = 94; K_H = 12; K_CORNER = 12; K_R = 2;
 K_LABEL_Y = -K_D / 2 + 3 + LABEL_D / 2;    // label 3 mm from the front edge
-K_CY = 23;                                 // where the figure stands, behind the label
+K_CY = 24;                                 // where the figure stands, behind the label
 K_CUT = 0.8;                               // engraving depth
 K_NAME_MAX = 5.4; K_NAME_W = 52;
 K_TAG = "SAVE US ON FAVCIRCLES";
@@ -29,7 +29,7 @@ K_ICONS = [["coffee", "food", "drink"], ["shop", "music", "park"]];
 function k_name_size(t) = min(K_NAME_MAX, K_NAME_W / ((cwsum(t, len(t)) + 0.12 * (len(t) - 1)) * 1.38));
 module kbase2d() { offset(r = K_CORNER) square([K_W - 2 * K_CORNER, K_D - 2 * K_CORNER], center = true); }
 module k_name2d(name) { text(name, size = k_name_size(name), font = FONT, halign = "center", valign = "center", spacing = 1.12); }
-module k_tag2d() { translate([0, K_LABEL_Y]) arc_text2d(K_TAG, LABEL_D / 2 + 4, 3.2, 0.14); }
+module k_tag2d() { translate([0, K_LABEL_Y]) arc_text2d(K_TAG, LABEL_D / 2 + 4.4, 4, 0.14); }   // 4 mm caps: a paint pen fills them
 module k_side_icons(cut) {       // three categories on each side face
   for (si = [0, 1]) for (i = [0:2])
     translate([(si == 0 ? -1 : 1) * (K_W / 2 - K_CUT), (si == 0 ? 1 : -1) * (i - 1) * 15, K_H / 2 - 0.4])
