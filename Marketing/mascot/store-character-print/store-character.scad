@@ -4,7 +4,7 @@
 // Each one stands on the same base: the store's 1½ in "TAP OR SCAN" label in the recess at the front,
 // a 38 mm NFC sticker in the pocket underneath, the store's name cut into the front, SAVE US ON
 // FAVCIRCLES round the label (an invitation, never points), place categories on both sides, the
-// FavCircles mark underneath. Nothing leans over the label, so a phone can reach it.
+// FavCircles stamp (mark, FAVCIRCLES, CHARLOTTE · EST. 2026) on the back, the mark underneath. Nothing leans over the label, so a phone can reach it.
 // One piece, printed upright, no supports: everything leaves at 45 degrees or steeper.
 // Lettering and faces are engraved (fill with a paint pen). Two colours (Wes, 2026-11-26: "I like two
 // colors"): the base is one filament and the figure another, split flat at z = K_H (12 mm), so the
@@ -37,6 +37,16 @@ module k_side_icons(cut) {       // three categories on each side face
     translate([(si == 0 ? -1 : 1) * (K_W / 2 - K_CUT), (si == 0 ? 1 : -1) * (i - 1) * 15, K_H / 2 - 0.4])
       rotate([90, 0, si == 0 ? -90 : 90]) linear_extrude(cut) ring_icon(K_ICONS[si][i]);
 }
+// the stamp on the back: the mark, FAVCIRCLES, the city and year in a rounded frame, as on the Totem's
+// base (Wes, 2026-11-26: "add the Favcircles Charlotte est 2026 stamp with the heart in a circle on the
+// back base like the last larger base design"). Sized to this base's 54 mm of flat back.
+K_CITY = "CHARLOTTE";
+module k_stamp2d() {
+  difference() { offset(r = 2.5) square([47.5, 4.6], center = true); offset(r = 1.8) square([47.5, 4.6], center = true); }
+  translate([-20.6, 0]) logo2d(7.8);
+  translate([-15, 1.75]) text("FAVCIRCLES", size = 3.0, font = FONT, halign = "left", valign = "center", spacing = 1.12);
+  translate([-15, -2.35]) text(str(K_CITY, " · EST. 2026"), size = 2.0, font = FONT, halign = "left", valign = "center", spacing = 1.12);
+}
 module kbase(name) {
   difference() {
     union() {
@@ -48,6 +58,7 @@ module kbase(name) {
     translate([0, -K_D / 2 + K_CUT, K_H / 2 - 0.3]) rotate([90, 0, 0]) linear_extrude(3) k_name2d(name);
     translate([0, 0, K_H - K_CUT]) linear_extrude(3) k_tag2d();
     k_side_icons(3);
+    translate([0, K_D / 2 - K_CUT, K_H / 2 - 1]) rotate([90, 0, 180]) linear_extrude(3) k_stamp2d();
     translate([0, 26, -1]) linear_extrude(1 + 0.6) mirror([0, 1, 0]) logo2d(13);
   }
 }
