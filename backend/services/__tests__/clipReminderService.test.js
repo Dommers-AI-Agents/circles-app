@@ -66,7 +66,7 @@ describe('clip preview location', () => {
   test('any stored shape becomes {latitude, longitude}; junk is null', () => {
     jest.isolateModules(() => {
       jest.doMock('../rewardService', () => ({}));
-      jest.doMock('../placePhotoService', () => ({ venueCoverUrl: async () => null }));
+      jest.doMock('../placePhotoService', () => ({ venueCoverUrl: async () => null, venueGallery: async () => ({ globalPlace: null, coverUrl: null, photoUrls: [] }) }));
       const { clipLocation } = require('../../controllers/clipController');
       expect(clipLocation({ latitude: 35.2, longitude: -80.8 })).toEqual({ latitude: 35.2, longitude: -80.8 });
       expect(clipLocation({ _latitude: 35.2, _longitude: -80.8 })).toEqual({ latitude: 35.2, longitude: -80.8 });
@@ -85,7 +85,7 @@ describe('clip preview location', () => {
         incrementVenueStats: () => {},
         effectiveEarnRate: () => 25
       }));
-      jest.doMock('../placePhotoService', () => ({ venueCoverUrl: async () => 'https://x/cover.jpg' }));
+      jest.doMock('../placePhotoService', () => ({ venueGallery: async () => ({ globalPlace: null, coverUrl: 'https://x/cover.jpg', photoUrls: ['https://x/cover.jpg'] }) }));
       jest.doMock('../ownerSubscriptionService', () => ({ registerScanEarns: async () => ({ earns: true }) }));
       const { getVenuePreview } = require('../../controllers/clipController');
       const call = async (code) => {

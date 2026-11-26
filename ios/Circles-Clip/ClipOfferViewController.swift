@@ -31,8 +31,20 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
     private var contentBottom: NSLayoutConstraint?
     private let statusLabel = ClipTheme.label(.systemFont(ofSize: 14), color: UIColor.white.withAlphaComponent(0.7))
 
+    /// After the store's Welcome screen (2026-11-26): sign-in over a second
+    /// photo of the store, saying what staying connected and FavCircles mean
+    private var connectExperience: ClipExperience?
+
     init(invocation: ClipInvocation) {
         self.invocation = invocation
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    /// The sign-in step after Welcome: the store is already loaded
+    init(invocation: ClipInvocation, connectingTo preview: VenuePreview) {
+        self.invocation = invocation
+        self.preview = preview
+        self.connectExperience = preview.storeExperience
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -48,7 +60,19 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
                                                name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
 
-        if let code = code {
+        if let preview, let experience = connectExperience {
+            Task { @MainActor in
+                let url = (experience.connect.photoUrl ?? preview.coverUrl).flatMap(URL.init(string:))
+                let photo = Task { await self.backdrop.loadPhoto(from: url) }
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask { _ = await photo.value }
+                    group.addTask { try? await Task.sleep(nanoseconds: 1_500_000_000) }
+                    await group.next()
+                    group.cancelAll()
+                }
+                self.showOffer(preview)
+            }
+        } else if let code = code {
             loadPreview(code: code)
         } else {
             showNoCodeState()
@@ -167,6 +191,10 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
                 #endif
                 if let session = ClipSession.current {
                     self.showSuccess(session: session, isNewSignIn: false, animated: false)
+                } else if let experience = preview.storeExperience {
+                    // A store's window code: Welcome to the store first
+                    let welcome = ClipStoreWelcomeViewController(invocation: self.invocation, preview: preview, experience: experience)
+                    self.navigationController?.setViewControllers([welcome], animated: false)
                 } else {
                     self.showOffer(preview)
                 }
@@ -180,6 +208,10 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
         spinner.stopAnimating(); loadingLabel.isHidden = true
         contentStack.isHidden = false
         brandHeader.isHidden = false
+        if let experience = connectExperience {
+            showConnect(preview, experience: experience)
+            return
+        }
         // The card's hook, then the store's name (said once each)
         let earnsHere = preview.kind == "register" && preview.loyaltyLive == true
         if earnsHere, let rate = preview.earnRate {
@@ -226,6 +258,35 @@ final class ClipOfferViewController: UIViewController, UITextFieldDelegate {
             statusLabel.text = "Free to join"
         }
         ClipTheme.animateIn([brandHeader, hookLabel, nameLabel, subtitleLabel, rewardLabel, appleButton, emailField, emailButton, statusLabel])
+        #if DEBUG
+        ClipAutopilot.shared?.ready(self)
+        #endif
+    }
+
+    /// "Stay connected to <store>." over the second photo; what FavCircles
+    /// is in a line; the alerts they're turning on; then Apple or email
+    private func showConnect(_ preview: VenuePreview, experience: ClipExperience) {
+        let hook = experience.connect.hook
+        hookLabel.attributedText = ClipTheme.hookText(hook.first ?? "Stay connected", hook.dropFirst().joined(separator: " "), size: 42)
+        nameLabel.isHidden = true
+        subtitleLabel.text = experience.connect.about
+        subtitleLabel.isHidden = false
+
+        let alerts = NSMutableAttributedString()
+        let bell = NSTextAttachment(image: UIImage(systemName: "bell.fill",
+                                                   withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .bold))?
+            .withTintColor(ClipTheme.gold, renderingMode: .alwaysOriginal) ?? UIImage())
+        alerts.append(NSAttributedString(attachment: bell))
+        alerts.append(NSAttributedString(string: "  " + experience.connect.alerts))
+        if let points = experience.connect.pointsLine {
+            alerts.append(NSAttributedString(string: "\n" + points))
+        }
+        alerts.addAttributes([.font: UIFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: ClipTheme.gold],
+                             range: NSRange(location: 0, length: alerts.length))
+        rewardLabel.attributedText = alerts
+        rewardLabel.isHidden = false
+        statusLabel.text = "Free \u{00b7} no password"
+        ClipTheme.animateIn([brandHeader, hookLabel, subtitleLabel, rewardLabel, appleButton, emailField, emailButton, statusLabel])
         #if DEBUG
         ClipAutopilot.shared?.ready(self)
         #endif

@@ -35,6 +35,10 @@ struct VenuePreview: Decodable {
     let waitlist: ClipWaitlist?
     /// The coupon on the link (?c=), when the store still has it (2026-11-14)
     var coupon: ClipCoupon? = nil
+    /// The screens after Open at a store's window code (2026-11-26): the
+    /// server fills them from the store and its owner's choices. Absent
+    /// (older server, switch off): the clip keeps today's screens.
+    var experience: ClipExperience? = nil
 
     var isGeneric: Bool { generic == true }
     /// A store's window code: the clip saves the store as it signs them in
@@ -43,6 +47,49 @@ struct VenuePreview: Decodable {
     /// code's visit, only where the store's rewards are live
     var pointsHere: Int { loyaltyLive == true ? signupBonusPoints : 0 }
     var favCoinBonus: Int { signupBonusCoins ?? 50 }
+    /// The Welcome → sign-in → connected screens apply: a store's window
+    /// code with the server's experience and no flyer coupon (that flow
+    /// leads with the coupon)
+    var storeExperience: ClipExperience? {
+        guard isStoreWindow, coupon?.available == false || coupon == nil else { return nil }
+        return experience
+    }
+}
+
+/// What the screens after Open say at this store (services/clipExperience.js)
+struct ClipExperience: Decodable {
+    struct Row: Decodable {
+        /// rewards | menu | specials | events | announcements
+        let kind: String
+        let title: String
+        let detail: String
+        let url: String?
+    }
+    struct Welcome: Decodable {
+        let title: String
+        let line: String
+        let ratingLine: String?
+        let photoUrl: String?
+        let rows: [Row]
+        let button: String
+    }
+    struct Connect: Decodable {
+        let hook: [String]
+        let photoUrl: String?
+        let about: String
+        let alerts: String
+        let pointsLine: String?
+    }
+    struct Done: Decodable {
+        let hook: [String]
+        let line: String
+        let showRewards: Bool
+        let showWallet: Bool
+    }
+    let shortName: String
+    let welcome: Welcome
+    let connect: Connect
+    let done: Done
 }
 
 /// Takes {latitude, longitude} or the venue record's {lat, lng}

@@ -128,11 +128,22 @@ const coverUrl = (photos) => {
  * cover, else the first photo everyone can see, else null.
  */
 async function venueCoverUrl(venue) {
-  if (!venue || !venue.globalPlaceId) return null;
+  return (await venueGallery(venue)).coverUrl;
+}
+
+/**
+ * A store's canonical venue record with its cover and every photo everyone
+ * can see (cover first), for the App Clip's screens. One read.
+ */
+async function venueGallery(venue) {
+  if (!venue || !venue.globalPlaceId) return { globalPlace: null, coverUrl: null, photoUrls: [] };
   const doc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(venue.globalPlaceId).get();
-  if (!doc.exists) return null;
+  if (!doc.exists) return { globalPlace: null, coverUrl: null, photoUrls: [] };
   const data = doc.data();
-  return data.coverPhotoUrl || coverUrl(data.photos || []) || null;
+  const cover = data.coverPhotoUrl || coverUrl(data.photos || []) || null;
+  const urls = publicUrls(data.photos || []);
+  const photoUrls = cover ? [cover, ...urls.filter((url) => url !== cover)] : urls;
+  return { globalPlace: data, coverUrl: cover, photoUrls };
 }
 
 /**
@@ -424,7 +435,7 @@ async function saveIdsForPlace(globalPlaceId, placeData) {
 
 module.exports = {
   // rules
-  urlOf, isRemoved, isRawGooglePhotoUrl, canSee, visiblePhotos, publicUrls, ownUrlsNotFromLibrary, hasVisiblePhotos, hiddenUrls, coverUrl, venueCoverUrl, reordered, movedToFront, permissionsFor,
+  urlOf, isRemoved, isRawGooglePhotoUrl, canSee, visiblePhotos, publicUrls, ownUrlsNotFromLibrary, hasVisiblePhotos, hiddenUrls, coverUrl, venueCoverUrl, venueGallery, reordered, movedToFront, permissionsFor,
   // data
   effectivelyPrivate, saveIsPrivate, venueForPlace, rightsFor, uploaderSaveIsPrivate, mutatePhotos, reorder, setCover, remove, setLiked, append, adoptSavePhotos, saveIdsForPlace
 };

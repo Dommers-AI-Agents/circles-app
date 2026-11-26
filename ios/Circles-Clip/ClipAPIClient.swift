@@ -33,6 +33,10 @@ final class ClipAPIClient {
     private let session: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
+        #if DEBUG
+        // The store demo answers from fixtures (ClipStoreDemo, simulator only)
+        if ClipStoreDemo.isActive { config.protocolClasses = [ClipStoreDemoStub.self] + (config.protocolClasses ?? []) }
+        #endif
         return URLSession(configuration: config)
     }()
 
@@ -179,6 +183,29 @@ final class ClipAPIClient {
     /// What the steps finished, kept on the user
     func recordOnboarding(_ summary: [String: Any], bearer: String) async throws {
         let _: ClipSimpleResponse = try await request(path: "clip/onboarding", method: "POST", body: summary, bearerToken: bearer)
+    }
+
+    // MARK: - Staying connected to the store (2026-11-26)
+
+    /// Follow the store (the canonical venue record)
+    func followPlace(globalPlaceId: String, bearer: String) async throws {
+        let _: ClipSimpleResponse = try await request(path: "places/\(globalPlaceId)/follow", method: "POST", bearerToken: bearer)
+    }
+
+    /// The store's bell: its new specials, events and announcements as alerts
+    func turnOnPlaceAlerts(globalPlaceId: String, bearer: String) async throws {
+        let _: ClipSimpleResponse = try await request(path: "places/\(globalPlaceId)/follow/alerts", method: "POST", bearerToken: bearer)
+    }
+
+    /// The signed .pkpass for the store's Wallet card
+    func walletPass(venueId: String, bearer: String) async throws -> Data {
+        var urlRequest = URLRequest(url: baseURL.appendingPathComponent("rewards/venues/\(venueId)/wallet-pass"))
+        urlRequest.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: urlRequest)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            throw ClipAPIError.server("The Wallet card isn't ready yet.")
+        }
+        return data
     }
 
     // MARK: - Core

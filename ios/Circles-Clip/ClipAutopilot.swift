@@ -24,6 +24,7 @@ final class ClipAutopilot {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak screen] in
             guard let screen else { return }
             switch screen {
+            case let welcome as ClipStoreWelcomeViewController: welcome.saveTapped()
             case let offer as ClipOfferViewController: offer.autopilotSignIn(email: self.email)
             case let success as ClipSuccessViewController: success.autopilotKeepGoing()
             case let step as ClipNeighborhoodViewController: step.autopilotAnswer(zip: self.zip)

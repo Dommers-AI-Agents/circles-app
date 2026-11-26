@@ -76,7 +76,18 @@ exports.getVenuePreview = async (req, res) => {
     // The clip's backdrop is the store's own photo (the same cover as its
     // App Clip card), and Apple's location confirmation checks the scan
     // against where the store is. Both are public on the store's page anyway.
-    const coverUrl = await placePhotos.venueCoverUrl(venue).catch(() => null);
+    const gallery = await placePhotos.venueGallery(venue).catch(() => ({ globalPlace: null, coverUrl: null, photoUrls: [] }));
+    const coverUrl = gallery.coverUrl;
+    const earnRate = loyaltyLive ? rewardService.effectiveEarnRate(venue) : null;
+    // The screens after Open (Welcome, sign-in, connected), 2026-11-26: a
+    // window code only, behind CLIP_STORE_WELCOME until Wes turns it on
+    const { buildClipExperience, clipExperienceEnabled } = require('../services/clipExperience');
+    const experience = clipExperienceEnabled() && !isRegister
+      ? buildClipExperience({
+        venue, globalPlace: gallery.globalPlace, loyaltyLive, offers, earnRate,
+        savePoints: scanPoints, coverUrl, photoUrls: gallery.photoUrls
+      })
+      : null;
     return res.json({
       success: true,
       data: {
@@ -92,7 +103,7 @@ exports.getVenuePreview = async (req, res) => {
         scanPoints,
         scanPointsKind: isRegister ? 'visit' : 'save',
         loyaltyLive,
-        earnRate: loyaltyLive ? rewardService.effectiveEarnRate(venue) : null,
+        earnRate,
         offers,
         firstReward: offers[0] || null,
         coverUrl,
@@ -100,7 +111,8 @@ exports.getVenuePreview = async (req, res) => {
         // The store's waitlist, when it's on and the plan is live: the clip offers "Join the line" (2026-11-09)
         waitlist: await clipWaitlist(venue),
         // The coupon on the link (/s/<code>?c=<coupon>): the clip says it's waiting (2026-11-14)
-        coupon: req.query?.c ? require('../services/storeCoupons').preview(venue, String(req.query.c)) : null
+        coupon: req.query?.c ? require('../services/storeCoupons').preview(venue, String(req.query.c)) : null,
+        experience
       }
     });
   } catch (error) {

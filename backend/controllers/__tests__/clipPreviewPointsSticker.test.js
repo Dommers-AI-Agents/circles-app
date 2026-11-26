@@ -16,7 +16,7 @@ jest.mock('../../services/ownerSubscriptionService', () => ({
   isVenueLoyaltyActive: async () => true,
   isVenueBusinessLive: async () => false
 }));
-jest.mock('../../services/placePhotoService', () => ({ venueCoverUrl: async () => null }));
+jest.mock('../../services/placePhotoService', () => ({ venueCoverUrl: async () => null, venueGallery: async () => ({ globalPlace: null, coverUrl: null, photoUrls: [] }) }));
 jest.mock('../../services/waitlistService', () => ({ waitlistFor: async () => null }));
 jest.mock('../../services/nfcStickerService', () => ({
   ...jest.requireActual('../../services/nfcStickerService'),

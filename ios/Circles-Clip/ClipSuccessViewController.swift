@@ -1,5 +1,6 @@
 import UIKit
 import StoreKit
+import PassKit
 
 // After sign-in, and on every later scan by someone the clip knows: redeem
 // the code, then show what they earned here, how to keep earning and what the
@@ -27,6 +28,9 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     private let panel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let panelStack = UIStackView()
     private let getAppButton = ClipTheme.primaryButton("Get the FavCircles app")
+    /// The store's card in Apple Wallet, where its rewards are live (2026-11-26)
+    private let walletButton = ClipTheme.glassButton("Add to Apple Wallet")
+    private var walletVenueId: String?
     private let signOutButton = ClipTheme.linkButton("")
     private let spinner = UIActivityIndicatorView(style: .large)
     private var overlayPresented = false
@@ -153,13 +157,18 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
         joinLineButton.addTarget(self, action: #selector(joinLineTapped), for: .touchUpInside)
         [waitLabel, partyControl, joinLineButton].forEach { waitStack.addArrangedSubview($0) }
 
-        [hookLabel, nameLabel, detailLabel, rateStack, waitStack, panel, getAppButton, signOutButton].forEach { stack.addArrangedSubview($0) }
+        walletButton.configuration?.image = UIImage(systemName: "wallet.pass.fill")
+        walletButton.configuration?.imagePadding = 8
+        walletButton.isHidden = true
+        walletButton.addTarget(self, action: #selector(walletTapped), for: .touchUpInside)
+        [hookLabel, nameLabel, detailLabel, rateStack, waitStack, panel, walletButton, getAppButton, signOutButton].forEach { stack.addArrangedSubview($0) }
         stack.setCustomSpacing(14, after: hookLabel)
         stack.setCustomSpacing(6, after: nameLabel)
         stack.setCustomSpacing(18, after: detailLabel)
         stack.setCustomSpacing(18, after: rateStack)
         stack.setCustomSpacing(18, after: waitStack)
         stack.setCustomSpacing(18, after: panel)
+        stack.setCustomSpacing(12, after: walletButton)
         stack.setCustomSpacing(4, after: getAppButton)
         stack.isHidden = true
 
@@ -307,6 +316,10 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     /// with its points and confetti; the app opens right on it
     private func showWindowResult(_ result: ScanResult, balance: Int) {
         let name = preview.venueName
+        if let experience = preview.storeExperience, result.isOnTheirMap || result.savePending == true {
+            showConnected(result, balance: balance, experience: experience)
+            return
+        }
         if let award = result.awarded {
             hookLabel.attributedText = ClipTheme.hookText("Saved.", "+\(award.points) points.", size: 46)
             detailLabel.text = "\(name) is on your map. Get the app to see it and earn more on every visit."
@@ -342,6 +355,69 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
         offerWaitlist(result)
         // Confetti for the save itself, not for a repeat scan
         reveal(celebrate: result.awarded != nil || result.saved == true)
+    }
+
+    /// Welcome → sign-in → here (2026-11-26): "You're connected to <store>.",
+    /// the store followed with its bell on, points and Wallet where its
+    /// rewards are live (and the owner shows them)
+    private func showConnected(_ result: ScanResult, balance: Int, experience: ClipExperience) {
+        let done = experience.done
+        if result.isOnTheirMap {
+            hookLabel.attributedText = ClipTheme.hookText(done.hook.first ?? "You're connected", done.hook.dropFirst().joined(separator: " "), size: 42)
+        } else {
+            hookLabel.attributedText = ClipTheme.hookText("You're in.", "Almost connected.", size: 42)
+        }
+        nameLabel.isHidden = true
+        var lines = [result.isOnTheirMap ? done.line
+                     : "Open the FavCircles app and \(experience.shortName) goes on your map, with its alerts on."]
+        if done.showRewards, let award = result.awarded {
+            lines.insert("+\(award.points) points.", at: 0)
+        }
+        detailLabel.text = lines.joined(separator: " ")
+        if done.showRewards, result.loyaltyLive == true, result.isOnTheirMap {
+            fillRewardsPanel(balance: balance, earnRate: result.earnRate ?? preview.earnRate, nextLine: result.nextRewardLine)
+        }
+        if done.showWallet, result.loyaltyLive == true, let venueId = result.venue?.venueId, PKAddPassesViewController.canAddPasses() {
+            walletVenueId = venueId
+            walletButton.isHidden = false
+        }
+        offerWaitlist(result)
+        if result.isOnTheirMap, let placeId = result.venue?.globalPlaceId {
+            connect(globalPlaceId: placeId)
+        }
+        reveal(celebrate: result.awarded != nil || result.saved == true)
+    }
+
+    /// Follow the store and turn its bell on: alerts from this store, which
+    /// the full app turns into notifications once they allow them
+    private func connect(globalPlaceId: String) {
+        let token = session.token
+        Task {
+            do {
+                try await ClipAPIClient.shared.followPlace(globalPlaceId: globalPlaceId, bearer: token)
+                try await ClipAPIClient.shared.turnOnPlaceAlerts(globalPlaceId: globalPlaceId, bearer: token)
+            } catch {
+                // The app's Follow and bell still work; never block the screen on it
+                print("⚠️ Clip couldn't connect the store: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    @objc private func walletTapped() {
+        guard let venueId = walletVenueId else { return }
+        walletButton.configuration?.showsActivityIndicator = true
+        Task { @MainActor in
+            defer { walletButton.configuration?.showsActivityIndicator = false }
+            do {
+                let data = try await ClipAPIClient.shared.walletPass(venueId: venueId, bearer: session.token)
+                let pass = try PKPass(data: data)
+                if let sheet = PKAddPassesViewController(pass: pass) {
+                    present(sheet, animated: true)
+                }
+            } catch {
+                walletButton.isHidden = true
+            }
+        }
     }
 
     /// How to keep earning, and what the points buy here
@@ -418,7 +494,7 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     private func reveal(celebrate: Bool) {
         spinner.stopAnimating()
         stack.isHidden = false
-        ClipTheme.animateIn([brandHeader, hookLabel, nameLabel, detailLabel, panel, getAppButton, signOutButton])
+        ClipTheme.animateIn([brandHeader, hookLabel, nameLabel, detailLabel, panel, walletButton, getAppButton, signOutButton])
         if celebrate {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             rainConfetti()

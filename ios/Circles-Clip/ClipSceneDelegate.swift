@@ -31,6 +31,11 @@ class ClipSceneDelegate: UIResponder, UIWindowSceneDelegate {
         if ProcessInfo.processInfo.environment["CLIP_RESET"] == "1" {
             ClipSession.clear()
         }
+        // The store's Welcome screens from fixtures (CLIP_STORE_DEMO=<folder>)
+        if ClipStoreDemo.isActive {
+            ClipSession.clear()
+            ClipStoreDemo.install()
+        }
         // Xcode injects _XCAppClipURL as a user activity, but `simctl launch`
         // only sets the raw env var — honor it directly so CLI testing works.
         if code == nil,
