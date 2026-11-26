@@ -59,7 +59,10 @@ class DailySummaryService {
             enabled += pageUsers.length;
 
             // Only users whose local clock is at their chosen summary hour on summary day right now
-            const users = pageUsers.filter(user => this.isUsersSummaryHour(user));
+            // Not an account made on a store's web page that has no app:
+            // the letter's links only open in the app (services/storeWebEmails)
+            const { isWebOnly } = require('./storeWebEmails');
+            const users = pageUsers.filter(user => this.isUsersSummaryHour(user) && !isWebOnly(user));
             matched += users.length;
 
             // Process users in batches

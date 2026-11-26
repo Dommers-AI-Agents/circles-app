@@ -22,7 +22,8 @@ const alertStoreFollowers = async (venue, kind, title, message) => {
     placeName: venue.placeName || venue.venueName,
     kind,
     title,
-    message
+    message,
+    storeCode: venue.windowCode || null
   });
 };
 

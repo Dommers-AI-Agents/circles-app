@@ -195,7 +195,10 @@ async function maybeSendAfterScan(userId, venue, { awardedPoints = 0, balance = 
     const snap = await userRef.get();
     if (!snap.exists) return { sent: false, reason: 'no_user' };
     const user = { id: snap.id, ...snap.data() };
-    if (!isStoreSignup(user) || user.acquisitionVenueId !== venue.venueId) return { sent: false, reason: 'not_this_store' };
+    // Joined on the store's web page (no app on that phone): same once-only
+    // welcome, in the web's terms (services/storeWebEmails)
+    const fromWeb = user.acquisitionSource === 'store_web' && !!user.acquisitionVenueId;
+    if ((!isStoreSignup(user) && !fromWeb) || user.acquisitionVenueId !== venue.venueId) return { sent: false, reason: 'not_this_store' };
     if (user.storeWelcomeEmailAt) return { sent: false, reason: 'already_sent' };
     if (!user.email || /@privaterelay\.appleid\.com$/i.test(user.email)) return { sent: false, reason: 'no_email' };
 
@@ -215,7 +218,7 @@ async function maybeSendAfterScan(userId, venue, { awardedPoints = 0, balance = 
     const [photoUrl, earns, people] = await Promise.all([
       require('./placePhotoService').venueCoverUrl(venue).catch(() => null),
       registerScanEarns(venue).then((r) => r.earns).catch(() => false),
-      peopleFor(user, venue).catch((e) => { console.warn('⚠️ Store welcome: people lookup failed:', e.message); return []; })
+      fromWeb ? [] : peopleFor(user, venue).catch((e) => { console.warn('⚠️ Store welcome: people lookup failed:', e.message); return []; })
     ]);
     const rewards = earns ? {
       earnRate: rewardService.effectiveEarnRate(venue),
@@ -228,6 +231,20 @@ async function maybeSendAfterScan(userId, venue, { awardedPoints = 0, balance = 
       photoUrl,
       placeUrl: venue.globalPlaceId ? `${BASE_URL}/place/${encodeURIComponent(venue.globalPlaceId)}` : BASE_URL
     };
+    if (fromWeb) {
+      const web = require('./storeWebEmails');
+      const globalPlaceId = await require('./venueHelpers').venueGlobalPlaceId(venue).catch(() => null);
+      const mail = web.buildWelcome({
+        store: { name: store.name, photoUrl, pageUrl: web.storePageUrl(venue.windowCode) },
+        awardedPoints, rewards, coupon, stop: globalPlaceId ? web.stopUrl(user.id, globalPlaceId) : null
+      });
+      await require('./emailService').sendEmail({
+        to: user.email, subject: mail.subject, html: mail.html, text: mail.text, kind: 'store_web_welcome',
+        ...(mail.unsubscribe ? { headers: { 'List-Unsubscribe': `<${mail.unsubscribe}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } } : {})
+      });
+      console.log(`🏪 Store web welcome email sent for ${venue.venueName}`);
+      return { sent: true, web: true };
+    }
     const email = buildEmail({ user, store, awardedPoints, rewards, people, coupon });
     await require('./emailService').sendEmail({ to: user.email, subject: email.subject, html: email.html, text: email.text });
     console.log(`🏪 Store welcome email sent for ${venue.venueName} (${people.length} people)`);

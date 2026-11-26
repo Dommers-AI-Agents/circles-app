@@ -61,7 +61,7 @@ const alertText = (placeName, kind, title, message) => {
  * Returns { audience, sent, throttled }. Never throws (the post must not fail
  * because a push did).
  */
-async function alertFollowers({ globalPlaceId, placeName, kind, title, message, now = Date.now() }) {
+async function alertFollowers({ globalPlaceId, placeName, kind, title, message, storeCode = null, now = Date.now() }) {
   try {
     if (!globalPlaceId) return { audience: 0, sent: 0, throttled: false };
     const doc = await db.collection(GLOBAL_COLLECTIONS.GLOBAL_PLACES).doc(globalPlaceId).get();
@@ -77,7 +77,16 @@ async function alertFollowers({ globalPlaceId, placeName, kind, title, message, 
         type: 'store_alert',
         title: text.title,
         body: text.body,
-        data: { type: 'store_alert', placeId: globalPlaceId, kind }
+        // storeCode/storeName/headline/message are for the email that goes
+        // to followers a push can't reach (services/emailFallback): its
+        // button opens the store's web page (/s/<code>)
+        data: {
+          type: 'store_alert', placeId: globalPlaceId, kind,
+          ...(storeCode ? { storeCode: String(storeCode) } : {}),
+          storeName: String(placeName || doc.data().name || '').trim(),
+          headline: String(title || '').trim(),
+          ...(String(message || '').trim() ? { message: String(message).trim().slice(0, 300) } : {})
+        }
       }).catch((error) => ({ success: false, error: error.message }))));
     return { audience: audience.length, sent: results.filter((r) => r && r.success).length, throttled: false };
   } catch (error) {

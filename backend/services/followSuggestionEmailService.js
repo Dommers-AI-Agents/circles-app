@@ -69,6 +69,8 @@ const selectCandidates = (users, { now = new Date(), maxAgeDays = maxAccountAgeD
     if (!email || email.endsWith('@privaterelay.appleid.com')) { skipped.no_usable_email++; continue; }
     // App Review and test accounts get no growth email (Wes, 2026-09-16)
     if (isHiddenAccount(user)) { skipped.internal++; continue; }
+    // Joined on a store's web page and has no app: profiles only open in the app
+    if (require('./storeWebEmails').isWebOnly(user)) { skipped.web_only = (skipped.web_only || 0) + 1; continue; }
     const createdAt = toDate(user.createdAt);
     if (!createdAt || daysBetween(now, createdAt) > maxAgeDays) { skipped.too_old++; continue; }
     if (user.emailPreferences && user.emailPreferences[PREFERENCE_KEY] === false) { skipped.opted_out++; continue; }

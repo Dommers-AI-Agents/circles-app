@@ -530,11 +530,12 @@ class RewardService {
     return home;
   }
 
-  async attributeClipSignup(userId, stickerCode) {
+  async attributeClipSignup(userId, stickerCode, { source = 'app_clip', stat = 'clipSignups' } = {}) {
     try {
       const venue = await this.findVenueByCode(stickerCode);
       const update = {
-        acquisitionSource: 'app_clip',
+        // 'app_clip', or 'store_web' for the store's web page (no app on that phone)
+        acquisitionSource: source,
         acquisitionStickerCode: String(stickerCode || '').trim().toUpperCase(),
         acquisitionAt: new Date().toISOString()
       };
@@ -551,7 +552,7 @@ class RewardService {
       }
       await this.db.collection(COLLECTIONS.USERS).doc(userId).update(update);
       if (update.acquisitionVenueId) {
-        await this.incrementVenueStats(update.acquisitionVenueId, 'clipSignups');
+        await this.incrementVenueStats(update.acquisitionVenueId, stat);
       }
 
       // Generic signup FavCoin bonus (fire-and-forget; dedup'd once per user)

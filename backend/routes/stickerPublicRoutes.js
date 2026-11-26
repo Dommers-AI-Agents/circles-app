@@ -11,6 +11,9 @@ const router = express.Router();
 const rewardService = require('../services/rewardService');
 const rewardConfig = require('../config/rewardConfig');
 const nfcStickers = require('../services/nfcStickerService');
+const { isAppleDevice } = require('../utils/clientPlatform');
+const storePage = require('../services/storePagePreview');
+const { renderStorePage } = require('../views/storePage');
 
 router.get('/:code', async (req, res) => {
   const code = String(req.params.code).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -31,6 +34,20 @@ router.get('/:code', async (req, res) => {
       rewardService.incrementVenueStats(venue.venueId, 'scans');
       // An NFC sticker (?t=<tag>) opened without the app, e.g. on Android
       if (req.query?.t) nfcStickers.recordTap(venue, code, String(req.query.t));
+      // No app and no App Clip on this phone (Android, or anything that isn't
+      // Apple's): the store's own web page, where they sign in with an email
+      // code, save the store and get the same points (Wes, 2026-11-26).
+      // ?web=1 shows it on any device. STORE_WEB_PAGE=false turns it off.
+      const wantsWeb = req.query?.web === '1' || !isAppleDevice(req.get('user-agent'));
+      if (wantsWeb && storePage.storeWebPageEnabled() && !venue.genericJoin) {
+        const preview = await storePage.previewForCode(code, {
+          venue, tag: req.query?.t ? String(req.query.t) : null, couponId
+        }).catch((error) => { console.error('⚠️ Store web page preview failed:', error.message); return null; });
+        if (preview) {
+          res.set('Cache-Control', 'no-store');
+          return res.send(renderStorePage(preview));
+        }
+      }
     }
   } catch (error) {
     console.error('⚠️ Sticker landing lookup failed:', error.message);

@@ -285,14 +285,24 @@ async function loadCustomers(venue) {
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const emailHtml = ({ title, body, venueName, unsub }) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+const REWARDS_URL = 'https://api.favcircles.com/app/open?path=rewards';
+/**
+ * Where the email's button goes: the app's rewards, or the store's web page
+ * for a customer who joined there and has no app (services/storeWebEmails).
+ */
+const rewardsUrlFor = (user, venue) => {
+  const web = require('./storeWebEmails');
+  return web.isWebOnly(user) && venue && venue.windowCode ? web.storePageUrl(venue.windowCode) : REWARDS_URL;
+};
+
+const emailHtml = ({ title, body, venueName, unsub, url = REWARDS_URL }) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#EEF1F6;">
   <div style="max-width:520px;margin:0 auto;padding:28px 20px;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#0F1E3A;">
     <div style="background:#fff;border-radius:14px;padding:26px 24px;">
       <p style="margin:0 0 6px;font-size:13px;color:#6B7280;">A note from ${esc(venueName)} on FavCircles</p>
       <h1 style="margin:0 0 12px;font-size:22px;">${esc(title)}</h1>
       <p style="margin:0 0 18px;font-size:16px;line-height:1.55;">${esc(body)}</p>
-      <a href="https://api.favcircles.com/app/open?path=rewards" style="display:inline-block;background:#3478F6;color:#fff;text-decoration:none;font-weight:600;padding:12px 18px;border-radius:10px;">Open my rewards</a>
+      <a href="${url}" style="display:inline-block;background:#3478F6;color:#fff;text-decoration:none;font-weight:600;padding:12px 18px;border-radius:10px;">Open my rewards</a>
     </div>
     <p style="font-size:12px;color:#6B7280;text-align:center;margin:18px 0 0;">
       You get this because you earn rewards at ${esc(venueName)} in FavCircles.
@@ -346,8 +356,8 @@ async function deliver(venue, globalPlaceId, nudge, customer, now) {
     await require('./emailService').sendEmail({
       to: customer.user.email,
       subject: nudge.message.title,
-      html: emailHtml({ ...nudge.message, venueName: venue.venueName || 'your store', unsub }),
-      text: `${nudge.message.title}\n\n${nudge.message.body}\n\nOpen my rewards: https://api.favcircles.com/app/open?path=rewards\nStop these emails: ${unsub}`,
+      html: emailHtml({ ...nudge.message, venueName: venue.venueName || 'your store', unsub, url: rewardsUrlFor(customer.user, venue) }),
+      text: `${nudge.message.title}\n\n${nudge.message.body}\n\nOpen my rewards: ${rewardsUrlFor(customer.user, venue)}\nStop these emails: ${unsub}`,
       headers: { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
       // Tracked by nudge type (services/emailTracking): store_win_back, store_coupon_ending…
       kind: `store_${String(nudge.type).replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)}`

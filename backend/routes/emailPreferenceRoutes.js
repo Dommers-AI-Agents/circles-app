@@ -6,6 +6,7 @@
 // users/{uid}.emailPreferences[kind] = false; anything else is a 400.
 const express = require('express');
 const followSuggestions = require('../services/followSuggestionEmailService');
+const { escapeHtml } = require('../utils/text');
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ const LABELS = {
   productUpdates: 'product update emails',
   activityEmails: 'emails about followers and comments',
   messageEmails: 'emails about unread messages',
-  storeNudges: 'emails from stores where you earn rewards'
+  storeNudges: 'emails from stores'
 };
 
 const page = (title, body) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -33,6 +34,19 @@ const handleUnsubscribe = async (req, res) => {
   const uid = String(req.query.uid || '').replace(/[^a-zA-Z0-9._-]/g, '');
   const kind = String(req.query.kind || '');
   const sig = String(req.query.sig || '');
+  // "Stop emails from this store" (kind "store:<place>", services/storeWebEmails):
+  // turns that store's bell off. They keep the store and their points.
+  const storePlaceId = require('../services/storeWebEmails').placeFromStopKind(kind);
+  if (storePlaceId && uid && followSuggestions.verifyUnsubscribeToken(uid, kind, sig)) {
+    try {
+      const { placeName } = await require('../services/storeWebEmails').stopStoreEmails(uid, storePlaceId);
+      const name = placeName ? escapeHtml(placeName) : 'that store';
+      return res.send(page('Done', `We won't email you ${name}'s specials and events any more. Your points there are still yours.`));
+    } catch (e) {
+      console.error('Store email stop failed:', e.message);
+      return res.status(500).send(page('Something went wrong', 'Please try the link again in a moment.'));
+    }
+  }
   if (!uid || !KNOWN_KINDS.has(kind) || !followSuggestions.verifyUnsubscribeToken(uid, kind, sig)) {
     return res.status(400).send(page("That link didn't work", 'It may be incomplete or from an older email. You can manage emails from the app.'));
   }

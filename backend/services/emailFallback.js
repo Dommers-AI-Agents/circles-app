@@ -19,12 +19,21 @@
 //
 // Connection requests and acceptances are not here: those already email
 // every recipient (Wes, 2026-10-01: keep emailing everyone).
+//
+// A store's alerts (its new specials, events and announcements, to people
+// who turned on its bell) are here since 2026-11-26: a customer who joined
+// on the store's web page has no app at all (there is no Android app), so
+// email is the only way the store reaches them. Those are the store's own
+// emails: already at most one per store per day (services/placeAlerts), so
+// they don't use the daily cap or the round-up, their unsubscribe kind is
+// "storeNudges", and each one can stop just that store.
 const { getFirestore } = require('../config/firebase');
 const { localDateKey, localClock } = require('../utils/localClock');
 const emailService = require('./emailService');
 
 const STATE = 'emailFallbackState';
 const PREFERENCE_KEY = 'activityEmails';
+const STORE_PREFERENCE_KEY = 'storeNudges'; // "emails from stores" (emailPreferenceRoutes)
 const DAILY_CAP = 3;
 const DIGEST_HOUR = 19;          // the evening round-up, user-local
 const MAX_PENDING = 25;
@@ -34,6 +43,23 @@ const NAVY = '#0F1E3A';
 
 const db = () => getFirestore();
 const HOUR = 60 * 60 * 1000;
+
+const STORE_KINDS = { offer: 'New reward', event: 'New event', announcement: 'News' };
+/** "Sal's Bakery: Half-price wine tonight" (the push's own words, on one line) */
+const storeLine = (n) => {
+  const data = n.data || {};
+  const name = String(data.storeName || '').trim();
+  const headline = String(data.headline || '').trim();
+  if (name && headline) return `${name}: ${headline}`;
+  return [n.title, n.body].filter(Boolean).join(': ') || 'News from a store you follow';
+};
+const storeDetail = (n) => {
+  const data = n.data || {};
+  const label = STORE_KINDS[data.kind] || null;
+  const message = String(data.message || '').trim();
+  if (data.kind === 'offer') return label;
+  return message && message !== String(data.headline || '').trim() ? clip(message, 220) : label;
+};
 
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -90,8 +116,22 @@ const EMAIL_TYPES = {
     detail: () => null,
     url: () => `${BASE}/app/open`,
     button: 'Take a look'
+  },
+  // A store's new special, event or announcement (services/placeAlerts).
+  // The button opens the store's web page, which works on any phone.
+  store_alert: {
+    gapHours: 0,
+    store: true,
+    preference: STORE_PREFERENCE_KEY,
+    key: (n) => `store:${(n.data && n.data.placeId) || 'any'}`,
+    line: (n) => clip(storeLine(n), 140),
+    detail: (n) => storeDetail(n),
+    url: (n) => require('./storeWebEmails').storePageUrl(n.data && n.data.storeCode),
+    button: 'See it'
   }
 };
+
+const preferenceFor = (spec) => (spec && spec.preference) || PREFERENCE_KEY;
 
 // Statuses the app reports that mean a push will actually show
 const REACHABLE = new Set(['authorized', 'provisional', 'ephemeral']);
@@ -120,7 +160,11 @@ const decide = ({ notification, user, state, now = new Date() }) => {
   if (pushReachable(user)) return { action: 'skip', reason: 'push_reachable' };
   const email = String(user.email || '').trim();
   if (!email.includes('@')) return { action: 'skip', reason: 'no_email' };
-  if (user.emailPreferences && user.emailPreferences[PREFERENCE_KEY] === false) return { action: 'skip', reason: 'unsubscribed' };
+  // Apple's relay addresses forward nowhere useful for these, and nobody
+  // should hear from a test or closed account (services/hiddenAccounts)
+  if (/@privaterelay\.appleid\.com$/i.test(email)) return { action: 'skip', reason: 'relay_address' };
+  if (require('./hiddenAccounts').isHiddenAccount(user)) return { action: 'skip', reason: 'hidden_account' };
+  if (user.emailPreferences && user.emailPreferences[preferenceFor(spec)] === false) return { action: 'skip', reason: 'unsubscribed' };
 
   const zone = user.notificationPreferences && user.notificationPreferences.timezone;
   const day = localDateKey(zone, now);
@@ -139,6 +183,13 @@ const decide = ({ notification, user, state, now = new Date() }) => {
     url: spec.url(notification),
     at: now.toISOString()
   };
+  // A store's email: the store is already held to one a day, so it neither
+  // waits for the round-up nor uses up the day's other emails
+  if (spec.store) {
+    const placeId = (notification.data && notification.data.placeId) || null;
+    const storeName = (notification.data && notification.data.storeName) || null;
+    return { action: 'send', item: { ...item, store: { placeId, name: storeName } }, button: spec.button, next: { ...base, lastByKey } };
+  }
   if ((base.sentToday || 0) < DAILY_CAP) {
     return { action: 'send', item, button: spec.button, next: { ...base, lastByKey, sentToday: (base.sentToday || 0) + 1 } };
   }
@@ -153,7 +204,10 @@ const unsubscribeUrl = (userId) => {
   return make(userId, PREFERENCE_KEY);
 };
 
-const shell = ({ preheader, inner, unsub }) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+const phoneFooter = (unsub) => `You're getting this because notifications are off for FavCircles on your phone.<br>
+    Turn them on in Settings › FavCircles › Notifications, or <a href="${unsub}" style="color:#8C97AB;">stop these emails</a>.`;
+
+const shell = ({ preheader, inner, unsub, footer }) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#EEF1F6;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${esc(preheader)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EEF1F6;"><tr><td align="center" style="padding:24px 12px;">
@@ -167,16 +221,39 @@ const shell = ({ preheader, inner, unsub }) => `<!doctype html><html><head><meta
     <tr><td style="padding:26px 24px 28px;font-family:-apple-system,Helvetica,Arial,sans-serif;color:#1A2438;">${inner}</td></tr>
   </table>
   <div style="max-width:520px;font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#8C97AB;padding:14px 12px 0;text-align:center;">
-    You're getting this because notifications are off for FavCircles on your phone.<br>
-    Turn them on in Settings › FavCircles › Notifications, or <a href="${unsub}" style="color:#8C97AB;">stop these emails</a>.
+    ${footer || phoneFooter(unsub)}
   </div>
 </td></tr></table></body></html>`;
 
 const button = (label, url) => `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:20px;"><tr>
   <td style="background:${BRAND_BLUE};border-radius:10px;"><a href="${url}" style="display:inline-block;padding:12px 22px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">${esc(label)}</a></td></tr></table>`;
 
+/**
+ * Pure: a store's alert as an email. Its links stop that one store, or
+ * every store's emails; neither needs a login.
+ */
+const buildStore = ({ userId, item, buttonLabel }) => {
+  const web = require('./storeWebEmails');
+  const { unsubscribeUrl: make } = require('./followSuggestionEmailService');
+  const allStores = make(userId, STORE_PREFERENCE_KEY);
+  const stop = item.store.placeId ? web.stopUrl(userId, item.store.placeId) : allStores;
+  const name = item.store.name || 'this store';
+  const inner = `<div style="font-size:19px;line-height:26px;font-weight:700;">${esc(item.line)}</div>
+    ${item.detail ? `<div style="font-size:15px;line-height:22px;color:#5B6780;margin-top:8px;">${esc(item.detail)}</div>` : ''}
+    ${button(buttonLabel || 'See it', item.url)}`;
+  const footer = `You're getting this because you asked for emails from ${esc(name)}.<br>
+    <a href="${stop}" style="color:#8C97AB;">Stop emails from this store</a> · <a href="${allStores}" style="color:#8C97AB;">Stop emails from all stores</a>`;
+  return {
+    subject: item.line,
+    html: shell({ preheader: item.detail || `From ${name}`, inner, unsub: stop, footer }),
+    text: `${item.line}${item.detail ? `\n${item.detail}` : ''}\n\n${item.url}\n\nStop emails from this store: ${stop}\nStop emails from all stores: ${allStores}\n`,
+    unsubscribe: stop
+  };
+};
+
 /** Pure: one notification as an email. */
 const buildSingle = ({ userId, item, buttonLabel }) => {
+  if (item.store) return buildStore({ userId, item, buttonLabel });
   const unsub = unsubscribeUrl(userId);
   const inner = `<div style="font-size:19px;line-height:26px;font-weight:700;">${esc(item.line)}</div>
     ${item.detail ? `<div style="font-size:15px;line-height:22px;color:#5B6780;margin-top:8px;">${esc(item.detail)}</div>` : ''}
@@ -208,8 +285,8 @@ const buildDigest = ({ userId, items }) => {
   };
 };
 
-const send = async (to, email) => emailService.sendEmail({
-  to, subject: email.subject, html: email.html, text: email.text,
+const send = async (to, email, kind) => emailService.sendEmail({
+  to, subject: email.subject, html: email.html, text: email.text, ...(kind ? { kind } : {}),
   headers: { 'List-Unsubscribe': `<${email.unsubscribe}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
 });
 
@@ -233,7 +310,8 @@ const maybeEmail = (userId, user, notification) => {
         .catch(() => {});
     }
     if (outcome.action === 'send') {
-      await send(user.email, buildSingle({ userId, item: outcome.item, buttonLabel: outcome.button }));
+      await send(user.email, buildSingle({ userId, item: outcome.item, buttonLabel: outcome.button }),
+        outcome.item.store ? 'store_alert' : null);
       console.log(`📨 Email fallback sent to ${userId} (${notification.type})`);
     } else {
       console.log(`📨 Email fallback ${outcome.action} for ${userId} (${notification.type}): ${outcome.reason || 'queued for the evening'}`);
@@ -274,5 +352,5 @@ const runDigests = async ({ now = new Date(), log = console.log } = {}) => {
 };
 
 module.exports = {
-  EMAIL_TYPES, PREFERENCE_KEY, DAILY_CAP, pushReachable, decide, buildSingle, buildDigest, maybeEmail, runDigests
+  EMAIL_TYPES, PREFERENCE_KEY, STORE_PREFERENCE_KEY, DAILY_CAP, pushReachable, decide, buildSingle, buildStore, buildDigest, maybeEmail, runDigests
 };

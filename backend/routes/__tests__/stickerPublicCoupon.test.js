@@ -22,7 +22,8 @@ beforeAll(async () => {
 });
 afterAll(() => new Promise((resolve) => server.close(resolve)));
 const get = async (path) => {
-  const res = await fetch(`${base}${path}`);
+  // An iPhone: any other phone gets the store's web page (stickerPublicWeb.test.js)
+  const res = await fetch(`${base}${path}`, { headers: { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X)' } });
   return { status: res.status, text: await res.text() };
 };
 

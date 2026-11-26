@@ -15,16 +15,26 @@ const isClipSignup = ({ signupSource, stickerCode } = {}) =>
   signupSource === 'app_clip' && CLIP_CODE.test(String(stickerCode || ''));
 
 /**
+ * Joined on a store's web page (views/storePage.js, 2026-11-26): a phone
+ * with no app and no App Clip. Treated like a clip store sign-up (the store
+ * is their first place, their home starts there) but counted on its own, so
+ * the clip's numbers stay the clip's.
+ */
+const isStoreWebSignup = ({ signupSource, stickerCode } = {}) =>
+  signupSource === 'store_web' && CLIP_CODE.test(String(stickerCode || ''));
+
+/**
  * Runs the new-account steps. `user` is the created user doc plus `id`.
  * Returns { circlesCount, placesCount } (0 for clip signups: the clip never
  * renders them and their onboarding runs in the background).
  */
 async function finishNewAccount(user, { ip, provider, signupSource, stickerCode, client, sendWelcome = true } = {}) {
   const userId = user.id;
-  const clip = isClipSignup({ signupSource, stickerCode });
+  const web = isStoreWebSignup({ signupSource, stickerCode });
+  const clip = web || isClipSignup({ signupSource, stickerCode });
   if (clip) {
     // Analytics only — points still flow through /api/rewards/scan
-    await require('./rewardService').attributeClipSignup(userId, stickerCode);
+    await require('./rewardService').attributeClipSignup(userId, stickerCode, web ? { source: 'store_web', stat: 'webSignups' } : undefined);
   }
 
   let circlesCount = 0;
@@ -59,7 +69,9 @@ async function finishNewAccount(user, { ip, provider, signupSource, stickerCode,
     require('./signupMonitor').recordSignup({ ip, email: user.email, provider, userId });
     // Welcome email (fire-and-forget; never blocks signup). Not for an
     // instant account nobody has confirmed yet: it goes when they confirm.
-    if (user.email && sendWelcome) {
+    // A store-page account gets no "welcome to the app" email: there is no
+    // app on that phone. Its first email is the store's own (storeWebEmails).
+    if (user.email && sendWelcome && !web) {
       require('./storeWelcomeEmailService').sendGenericWelcome(userId, user.email, user.displayName)
         .catch((err) => console.error('Welcome email failed:', err.message));
     }
@@ -93,4 +105,4 @@ const authUserPayload = (user, id) => ({
   emailUnverified: user.emailUnverified === true
 });
 
-module.exports = { isClipSignup, finishNewAccount, authUserPayload };
+module.exports = { isClipSignup, isStoreWebSignup, finishNewAccount, authUserPayload };
