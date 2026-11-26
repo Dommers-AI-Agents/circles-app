@@ -30,7 +30,7 @@ export function CirclePage() {
       await deleteCircle(circleId);
       await queryClient.invalidateQueries({ queryKey: ['circles'] });
       toast('Circle moved to the trash');
-      navigate('/', { replace: true });
+      navigate('/me', { replace: true });
     } catch (e) {
       setRemoving(false);
       toast(messageOf(e));
@@ -68,7 +68,9 @@ export function CirclePage() {
             ) : null}
             {places.data && places.data.length > 0 ? (
               <ul className="list card" style={{ marginTop: 16, overflow: 'hidden' }}>
-                {places.data.map((place) => <li key={place._id}><PlaceRow place={place} /></li>)}
+                {places.data.map((place) => (
+                  <li key={place._id}><PlaceRow place={place} onOpen={(p) => navigate(`/place/${p._id}`)} /></li>
+                ))}
               </ul>
             ) : null}
             {editable ? (
