@@ -15,6 +15,9 @@ include <../totem-print/totem.scad>
 part = "none";            // totem.scad draws nothing: it lends the heart outline, the mark and arc text
 design = "show";
 
+STORE_NAME = "FAVCIRCLES";         // the bottom line: FavCircles for now, a store's own name later
+// place categories either side of the label (Wes, 2026-11-26: "you can still fit some categories")
+SIDE_ICONS = [["coffee", "food", "drink"], ["shop", "music", "park"]];
 T_BASE = 3.2; T_RAISE = 0.8;          // plaque body, and how far the lettering stands up
 T_W = 90; T_CORNER = 11; T_RIM = 1.8; T_RIM_IN = 2.2;
 T_LABEL_D = 38.6; T_LABEL_T = 0.6;    // 1½ in round label with the NFC sticker under it
@@ -25,9 +28,14 @@ H_S = 50; H_EDGE = 9;                 // heart tile: 118 mm wide
 H_LABEL_Y = 9;
 
 module words(t, size, track = 1.1) { text(t, size = size, font = FONT, halign = "center", valign = "center", spacing = track); }
-module brand(size) {                  // the mark, then the name
-  translate([-size * 5.6, 0]) logo2d(size * 2.2);
-  translate([size * 1.6, 0]) words("FAVCIRCLES", size, 1.14);
+function fit(t, maxw, maxsize, track = 1.14) = min(maxsize, maxw / ((cwsum(t, len(t)) + (track - 1) * (len(t) - 1)) * 1.38));
+module brand(size, maxw) {            // FavCircles gets its mark beside it; a store's name stands alone, as big as fits
+  if (STORE_NAME == "FAVCIRCLES") { translate([-size * 5.6, 0]) logo2d(size * 2.2); translate([size * 1.6, 0]) words("FAVCIRCLES", size, 1.14); }
+  else words(STORE_NAME, fit(STORE_NAME, maxw, size * 1.25), 1.14);
+}
+module side_icons2d(x, y0, step) {
+  for (si = [0, 1]) for (i = [0:len(SIDE_ICONS[si]) - 1])
+    translate([(si == 0 ? -1 : 1) * x, y0 - i * step]) ring_icon(SIDE_ICONS[si][i]);
 }
 
 // ---------- tile / sign ----------
@@ -40,7 +48,8 @@ module tile_raised2d(foot = 0) {
   translate([0, 33.5]) words("LOVE THIS PLACE?", 5.4);
   translate([0, T_LABEL_Y]) ring2d(T_LABEL_D / 2 + 2.2, 1.4);     // a collar round the label
   translate([0, -26]) words("SAVE IT IN ONE TAP", 4.9);
-  translate([0, -36.5]) brand(3.3);
+  translate([0, -36.5]) brand(3.3, 70);
+  side_icons2d(33.5, T_LABEL_Y + 11, 11);
 }
 // a plaque: the body with the label recess, and what stands up on it (the second colour)
 module plaque_body(label_y) {
@@ -61,7 +70,8 @@ module heart_raised2d() {
   translate([0, H_LABEL_Y]) ring2d(T_LABEL_D / 2 + 2.2, 1.4);
   translate([0, H_LABEL_Y]) arc_text2d("LOVE IT HERE?", T_LABEL_D / 2 + 9.6, 5.0);
   translate([0, -22]) words("SAVE THIS PLACE", 4.6);
-  translate([0, -32]) words("FAVCIRCLES", 3.2, 1.14);
+  translate([0, -32]) words(STORE_NAME, fit(STORE_NAME, 44, 3.4), 1.14);
+  side_icons2d(40, H_LABEL_Y + 10, 11);
 }
 module heart_body() { plaque_body(H_LABEL_Y) heart_tile2d(); }
 module heart_up() { plaque_up() heart_raised2d(); }
