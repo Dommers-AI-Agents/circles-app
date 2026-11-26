@@ -118,7 +118,9 @@ const EMAIL_TYPES = {
     button: 'Take a look'
   },
   // A store's new special, event or announcement (services/placeAlerts).
-  // The button opens the store's web page, which works on any phone.
+  // Someone with the app (notifications off) lands on the store in the app;
+  // someone who joined on the store's web page has no app, so their button
+  // opens that page, where their points are.
   store_alert: {
     gapHours: 0,
     store: true,
@@ -126,8 +128,12 @@ const EMAIL_TYPES = {
     key: (n) => `store:${(n.data && n.data.placeId) || 'any'}`,
     line: (n) => clip(storeLine(n), 140),
     detail: (n) => storeDetail(n),
-    url: (n) => require('./storeWebEmails').storePageUrl(n.data && n.data.storeCode),
-    button: 'See it'
+    url: (n, user) => {
+      const web = require('./storeWebEmails');
+      if (web.isWebOnly(user) && n.data && n.data.storeCode) return web.storePageUrl(n.data.storeCode);
+      return n.data && n.data.placeId ? `${BASE}/place/${encodeURIComponent(n.data.placeId)}` : `${BASE}/app/open`;
+    },
+    button: (n, user) => (require('./storeWebEmails').isWebOnly(user) ? 'Open my points there' : 'See it')
   }
 };
 
@@ -160,10 +166,13 @@ const decide = ({ notification, user, state, now = new Date() }) => {
   if (pushReachable(user)) return { action: 'skip', reason: 'push_reachable' };
   const email = String(user.email || '').trim();
   if (!email.includes('@')) return { action: 'skip', reason: 'no_email' };
-  // Apple's relay addresses forward nowhere useful for these, and nobody
-  // should hear from a test or closed account (services/hiddenAccounts)
-  if (/@privaterelay\.appleid\.com$/i.test(email)) return { action: 'skip', reason: 'relay_address' };
+  // Nobody should hear from a test or closed account (services/hiddenAccounts).
+  // A store's email skips Apple's relay addresses, as store nudges do.
   if (require('./hiddenAccounts').isHiddenAccount(user)) return { action: 'skip', reason: 'hidden_account' };
+  if (spec.store && /@privaterelay\.appleid\.com$/i.test(email)) return { action: 'skip', reason: 'relay_address' };
+  // Joined on a store's web page and has no app: the other rows' buttons
+  // only open in the app, so only the store's own emails go
+  if (!spec.store && require('./storeWebEmails').isWebOnly(user)) return { action: 'skip', reason: 'web_only' };
   if (user.emailPreferences && user.emailPreferences[preferenceFor(spec)] === false) return { action: 'skip', reason: 'unsubscribed' };
 
   const zone = user.notificationPreferences && user.notificationPreferences.timezone;
@@ -180,18 +189,19 @@ const decide = ({ notification, user, state, now = new Date() }) => {
     type: notification.type,
     line: spec.line(notification),
     detail: spec.detail(notification),
-    url: spec.url(notification),
+    url: spec.url(notification, user),
     at: now.toISOString()
   };
+  const buttonLabel = typeof spec.button === 'function' ? spec.button(notification, user) : spec.button;
   // A store's email: the store is already held to one a day, so it neither
   // waits for the round-up nor uses up the day's other emails
   if (spec.store) {
     const placeId = (notification.data && notification.data.placeId) || null;
     const storeName = (notification.data && notification.data.storeName) || null;
-    return { action: 'send', item: { ...item, store: { placeId, name: storeName } }, button: spec.button, next: { ...base, lastByKey } };
+    return { action: 'send', item: { ...item, store: { placeId, name: storeName } }, button: buttonLabel, next: { ...base, lastByKey } };
   }
   if ((base.sentToday || 0) < DAILY_CAP) {
-    return { action: 'send', item, button: spec.button, next: { ...base, lastByKey, sentToday: (base.sentToday || 0) + 1 } };
+    return { action: 'send', item, button: buttonLabel, next: { ...base, lastByKey, sentToday: (base.sentToday || 0) + 1 } };
   }
   const pending = [...(base.pending || []), item].slice(-MAX_PENDING);
   return { action: 'queue', item, next: { ...base, lastByKey, pending } };

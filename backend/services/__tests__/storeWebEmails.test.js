@@ -9,6 +9,7 @@ const { decide, buildSingle, DAILY_CAP } = require('../emailFallback');
 const { isStoreWebSignup, isClipSignup } = require('../newAccountService');
 
 const user = { email: 'pat@example.com', notificationPreferences: { timezone: 'America/New_York' } };
+const webUser = { ...user, acquisitionSource: 'store_web' };
 const alert = (extra = {}) => ({
   type: 'store_alert', title: 'Demo Cafe: Half-price wine tonight', body: 'Bottles are half off after 5.',
   data: { type: 'store_alert', placeId: 'gp1', kind: 'announcement', storeCode: 'win123', storeName: 'Demo <Cafe>', headline: 'Half-price wine tonight', message: 'Bottles are half off after 5.', ...extra }
@@ -37,9 +38,17 @@ test('the stop link names one store, and only a well-formed one reads back', () 
 });
 
 describe("a store's alert by email", () => {
-  test('goes to a follower a push cannot reach, with the store page behind the button', () => {
-    const out = decide({ notification: alert(), user, state: null });
+  test('someone with the app (notifications off) lands on the store in the app', () => {
+    const out = decide({ notification: alert(), user: { ...user, deviceTokens: [{ token: 't' }], pushStatus: { status: 'denied' } }, state: null });
     expect(out.action).toBe('send');
+    expect(out.item.url).toBe('https://api.favcircles.com/place/gp1');
+    expect(out.button).toBe('See it');
+  });
+
+  test('a web customer gets it with the store page behind the button', () => {
+    const out = decide({ notification: alert(), user: webUser, state: null });
+    expect(out.action).toBe('send');
+    expect(out.button).toBe('Open my points there');
     expect(out.item.line).toBe('Demo <Cafe>: Half-price wine tonight');
     expect(out.item.detail).toBe('Bottles are half off after 5.');
     expect(out.item.url).toBe('https://api.favcircles.com/s/WIN123?web=1');
@@ -68,6 +77,12 @@ describe("a store's alert by email", () => {
     expect(decide({ notification: alert(), user: { ...user, emailPreferences: { activityEmails: false } }, state: null }).action).toBe('send');
     expect(decide({ notification: alert(), user: { ...user, isTestAccount: true }, state: null }).reason).toBe('hidden_account');
     expect(decide({ notification: alert(), user: { ...user, email: 'x@privaterelay.appleid.com' }, state: null }).reason).toBe('relay_address');
+  });
+
+  test('a web customer gets only store emails; a relay address still gets the others', () => {
+    const comment = { type: 'place_comment', title: 'A comment', body: 'hi', data: { placeId: 'p1' } };
+    expect(decide({ notification: comment, user: webUser, state: null }).reason).toBe('web_only');
+    expect(decide({ notification: comment, user: { ...user, email: 'x@privaterelay.appleid.com' }, state: null }).action).toBe('send');
   });
 });
 

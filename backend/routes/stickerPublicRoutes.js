@@ -30,8 +30,9 @@ router.get('/:code', async (req, res) => {
       venueName = venue.venueName;
       if (couponId) coupon = require('../services/storeCoupons').preview(venue, couponId);
       // A landing-page hit means the app wasn't installed — count the scan.
-      // (Installed-app scans are counted by POST /api/rewards/scan.)
-      rewardService.incrementVenueStats(venue.venueId, 'scans');
+      // (Installed-app scans are counted by POST /api/rewards/scan.) Not a
+      // ?web=1 open: that is a button in one of our emails, or a preview.
+      if (req.query?.web !== '1') rewardService.incrementVenueStats(venue.venueId, 'scans');
       // An NFC sticker (?t=<tag>) opened without the app, e.g. on Android
       if (req.query?.t) nfcStickers.recordTap(venue, code, String(req.query.t));
       // No app and no App Clip on this phone (Android, or anything that isn't

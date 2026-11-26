@@ -129,7 +129,8 @@
 
   // ---- the scan: save + points (window), or the visit's points (register)
   function scanBody(extra) {
-    var body = { code: store.code, save: true };
+    // counted: this page's visit was counted as a scan when it was served
+    var body = { code: store.code, save: true, counted: true };
     if (store.tag) body.t = store.tag;
     if (store.couponId) body.c = store.couponId;
     for (var key in extra) if (Object.prototype.hasOwnProperty.call(extra, key)) body[key] = extra[key];

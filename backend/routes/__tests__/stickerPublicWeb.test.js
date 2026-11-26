@@ -62,8 +62,9 @@ test('an iPhone keeps the page that opens the App Clip or the app', async () => 
   expect(res.text).not.toContain('store-page.js');
 });
 
-test('?web=1 shows the store page on any device', async () => {
+test('?web=1 shows the store page on any device, and is not counted as a scan', async () => {
   expect((await get('/s/WIN123?web=1', IPHONE)).text).toContain('store-page.js');
+  expect(mockStats).not.toHaveBeenCalled();
 });
 
 test('the switch off, the generic code, and an unknown code keep the old page', async () => {
