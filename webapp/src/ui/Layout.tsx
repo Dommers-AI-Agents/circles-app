@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useUnreadMessages } from '../realtime/badges';
+import { LiveUpdates } from '../realtime/LiveUpdates';
 import { ToastHost } from './kit';
 
 const icon = (path: string) => (
@@ -33,6 +34,7 @@ export function Layout() {
         ))}
       </nav>
       <ToastHost />
+      <LiveUpdates />
     </div>
   );
 }

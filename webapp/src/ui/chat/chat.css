@@ -1,0 +1,94 @@
+/* Chat pieces: bubbles, share cards, the composer, the pickers. Colours come
+   from the tokens so both themes work. */
+
+/* ---- one message */
+.msg { display: flex; align-items: flex-end; gap: 8px; margin-top: 2px; }
+.msg.run-start { margin-top: 10px; }
+.msg.mine { justify-content: flex-end; }
+.msg-avatar { flex: 0 0 28px; width: 28px; align-self: flex-end; margin-bottom: 20px; }
+.msg.run-end .msg-avatar { margin-bottom: 22px; }
+.msg-col { display: flex; flex-direction: column; max-width: min(78%, 520px); min-width: 0; }
+.msg.mine .msg-col { align-items: flex-end; }
+.msg-name { margin: 0 12px 3px; color: var(--muted); font-weight: 600; }
+.msg-line { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.msg.mine .msg-line { flex-direction: row-reverse; }
+.msg-foot { margin: 3px 6px 0; min-height: 18px; }
+.msg:not(.run-end) .msg-foot:empty { display: none; }
+
+.bubble {
+  position: relative; min-width: 0; max-width: 100%; padding: 9px 13px; border-radius: 19px;
+  background: var(--card); border: 1px solid var(--line); color: var(--ink);
+  overflow-wrap: anywhere; -webkit-touch-callout: none;
+}
+.msg.mine .bubble { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.msg.theirs:not(.run-end) .bubble { border-bottom-left-radius: 7px; }
+.msg.theirs:not(.run-start) .bubble { border-top-left-radius: 7px; }
+.msg.mine:not(.run-end) .bubble { border-bottom-right-radius: 7px; }
+.msg.mine:not(.run-start) .bubble { border-top-right-radius: 7px; }
+.msg.mine .bubble a { color: inherit; text-decoration: underline; }
+.bubble.has-card { padding: 4px; }
+.msg.mine .bubble.has-card { background: var(--card); border-color: var(--line); color: var(--ink); }
+.msg.mine .bubble.has-card a { text-decoration: none; }
+.bubble.has-card .bubble-text { padding: 5px 9px 4px; }
+.bubble.is-deleted { background: transparent; border: 1px dashed var(--line); color: var(--muted); }
+.msg.mine .bubble.is-deleted { background: transparent; border-color: var(--line); color: var(--muted); }
+.bubble-text { white-space: pre-wrap; font-size: 16px; line-height: 1.38; }
+.bubble-text.deleted { font-style: italic; }
+.bubble-edited { display: block; margin-top: 2px; font-size: 11px; opacity: 0.75; text-align: right; }
+.bubble.has-card .bubble-edited { padding: 0 9px 4px; }
+.bubble-photo { display: block; }
+/* A fixed height, so a photo loading above what's being read never shifts the chat */
+.bubble-photo img { display: block; height: 220px; width: auto; min-width: 120px; max-width: min(280px, 100%); border-radius: 15px; object-fit: cover; background: var(--line); }
+
+.msg-more {
+  flex: 0 0 auto; width: 32px; height: 32px; border: 0; border-radius: 16px; background: transparent;
+  color: var(--muted); font-size: 18px; line-height: 1; opacity: 0; transition: opacity 0.12s;
+}
+.msg:hover .msg-more, .msg-more:focus-visible { opacity: 1; }
+.msg-more:hover { background: color-mix(in srgb, var(--line) 70%, transparent); }
+@media (hover: none) { .msg-more { display: none; } }
+
+/* ---- a place, circle or location in a bubble */
+.share-card {
+  display: flex; align-items: center; gap: 10px; min-width: 210px; max-width: 300px; padding: 6px 12px 6px 6px;
+  border-radius: 15px; background: var(--card); color: var(--ink); text-decoration: none;
+}
+.msg.mine .bubble .share-card { color: var(--ink); text-decoration: none; }
+.share-thumb { flex: 0 0 auto; width: 56px; height: 56px; border-radius: 11px; object-fit: cover; background: color-mix(in srgb, var(--brand) 14%, var(--card)); display: flex; align-items: center; justify-content: center; font-size: 26px; }
+.share-words { display: flex; flex-direction: column; min-width: 0; }
+.share-words .small { color: var(--muted); }
+.share-kind { color: var(--brand) !important; font-weight: 700; }
+
+/* ---- the composer */
+.composer {
+  display: flex; align-items: flex-end; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.composer textarea {
+  flex: 1; min-width: 0; min-height: 42px; max-height: 150px; padding: 10px 14px; resize: none; overflow-y: hidden;
+  border: 1px solid var(--line); border-radius: 21px; background: var(--bg); font-size: 16px; line-height: 1.35;
+}
+.composer textarea:focus { outline: 2px solid var(--brand); outline-offset: 0; }
+.composer-photo, .composer-send {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px;
+  border: 0; border-radius: 21px; background: transparent; color: var(--brand);
+}
+.composer-photo svg, .composer-send svg { width: 24px; height: 24px; }
+.composer-send { background: var(--brand); color: var(--brand-ink); }
+.composer-send svg { width: 20px; height: 20px; }
+.composer-send:disabled { background: var(--line); color: var(--faint); cursor: default; }
+.composer-photo:disabled { opacity: 0.5; }
+
+/* ---- pickers and sheets */
+.chat-people { overflow: hidden; margin-bottom: 8px; }
+.chat-people .item { min-height: 58px; }
+.chat-pad { padding: 4px 4px 12px; }
+.chat-note { padding: 16px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.chat-actions { overflow: hidden; }
+.chat-actions .item { min-height: 50px; font-size: 16px; font-weight: 600; }
+.chat-actions .item + .item { border-top: 1px solid var(--line); }
+.danger-text { color: var(--danger) !important; }
+.share-preview { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 14px; }
+.share-preview-mark { font-size: 22px; }
+.linkish { border: 0; padding: 0; background: none; color: var(--brand); font: inherit; font-weight: 600; cursor: pointer; }
+.linkish.muted { color: var(--muted); }

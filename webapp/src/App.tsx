@@ -23,6 +23,7 @@ import { ConversationPage } from './pages/ConversationPage';
 import { LocalsPage } from './pages/LocalsPage';
 import { RewardsPage } from './pages/RewardsPage';
 import { StoreRewardsPage } from './pages/StoreRewardsPage';
+import { TrashPage } from './pages/TrashPage';
 
 export function App() {
   const { session } = useAuth();
@@ -41,6 +42,7 @@ export function App() {
         <Route path="/me" element={<MePage />} />
         <Route path="/me/edit" element={<EditProfilePage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/trash" element={<TrashPage />} />
         <Route path="/feed" element={<FeedPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/messages" element={<MessagesPage />} />

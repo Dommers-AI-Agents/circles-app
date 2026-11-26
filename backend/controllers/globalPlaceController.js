@@ -318,6 +318,12 @@ exports.getGlobalPlace = async (req, res, next) => {
         savesSnap.docs.map(serializeDoc), viewerId, isVisibleToViewer);
       if (chosen) {
         representativeSave = overlayVenueFields(chosen, placeData);
+        // Someone else's save: their notes stay theirs (same rule as every
+        // other place read; this one sent them, 2026-11-26)
+        if (representativeSave.addedBy !== viewerId) {
+          delete representativeSave.privateNotes;
+          delete representativeSave.notes;
+        }
         const userMap = await buildAddedByUserMap([chosen]);
         representativeSave.addedByUser = userMap.get(chosen.addedBy) || null;
       }

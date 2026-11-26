@@ -40,8 +40,6 @@ const digestSkipReason = (user, now = Date.now()) => {
   const email = (user.email || '').trim();
   if (!email || email.endsWith('@privaterelay.appleid.com')) return 'no_usable_email';
   if (isHiddenAccount(user)) return 'internal';
-  // Joined on a store's web page and has no app: the map only opens in the app
-  if (require('./storeWebEmails').isWebOnly(user)) return 'web_only';
   const last = toMs(user.mapDigest && user.mapDigest.lastSentAt);
   if (last !== null && now - last < MIN_DAYS_BETWEEN_DIGESTS * 86400000) return 'sent_recently';
   if (recentlyEmailed(user, now)) return 'other_email_recently';

@@ -1,5 +1,6 @@
 // "Me": who I am, and my circles in the order I arranged them.
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { myCircles } from '../api/circles';
 import { me } from '../api/users';
@@ -9,9 +10,19 @@ import { plural } from '../logic/labels';
 import { Avatar, ConfirmSheet, Empty, Head, LoadError, Spinner } from '../ui/kit';
 import { CircleCard } from '../ui/CircleCard';
 import { CircleEditSheet } from '../ui/CircleEditSheet';
+import { PushSwitch } from '../ui/PushSwitch';
+import { useUnreadNotifications } from '../realtime/badges';
+
+const LINKS = [
+  { to: '/people', mark: '👥', title: 'People', detail: 'Find friends, requests, who you follow' },
+  { to: '/rewards', mark: '🎁', title: 'My rewards', detail: 'Points, coupons and tickets at stores' },
+  { to: '/notifications', mark: '🔔', title: 'Notifications', detail: 'What happened while you were away' },
+  { to: '/trash', mark: '🗑️', title: 'Trash', detail: 'Put back a circle or a place' }
+];
 
 export function MePage() {
   const { session, signOut } = useAuth();
+  const unread = useUnreadNotifications();
   const [creating, setCreating] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const profile = useQuery({ queryKey: ['me'], queryFn: me });
@@ -21,8 +32,9 @@ export function MePage() {
 
   return (
     <>
-      <Head title="FavCircles" lead>
-        <button className="icon-btn" onClick={() => setLeaving(true)}>Sign out</button>
+      <Head title="Me" lead>
+        <Link className="icon-btn" to="/me/edit">Edit</Link>
+        <Link className="icon-btn" to="/settings" aria-label="Settings">Settings</Link>
       </Head>
       <main className="page">
         <div className="profile-top">
@@ -39,6 +51,23 @@ export function MePage() {
             <span><b>{user.followingCount ?? 0}</b> following</span>
           </div>
         ) : null}
+
+        <ul className="list card" style={{ marginTop: 18, overflow: 'hidden' }}>
+          {LINKS.map((link) => (
+            <li key={link.to}>
+              <Link className="item" to={link.to}>
+                <span className="thumb" style={{ width: 40, height: 40, fontSize: 20 }} aria-hidden="true">{link.mark}</span>
+                <span className="grow">
+                  <span style={{ display: 'block', fontWeight: 600 }}>{link.title}</span>
+                  <span className="small muted">{link.detail}</span>
+                </span>
+                {link.to === '/notifications' && unread > 0 ? <span className="chip">{unread} new</span> : null}
+                <span className="muted" aria-hidden="true">›</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <PushSwitch />
 
         <div className="row" style={{ margin: '22px 4px 10px' }}>
           <p className="section-title grow" style={{ margin: 0 }}>
@@ -58,6 +87,7 @@ export function MePage() {
             {circles.data.map((circle) => <CircleCard key={circle._id} circle={circle} />)}
           </div>
         ) : null}
+        <button className="btn block plain" style={{ marginTop: 26 }} onClick={() => setLeaving(true)}>Sign out</button>
       </main>
       {creating ? <CircleEditSheet onClose={() => setCreating(false)} /> : null}
       {leaving ? (

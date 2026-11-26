@@ -729,7 +729,7 @@ const editMessage = async (req, res) => {
     // Populate sender details
     const senderDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     if (senderDoc.exists) {
-      updatedMessage.senderDetails = serializeDoc(senderDoc);
+      updatedMessage.senderDetails = partnerCard(senderDoc); // the public card, like every other message reply (was the whole user record until 2026-11-26)
     }
 
     res.status(200).json({

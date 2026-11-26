@@ -1,0 +1,15 @@
+.convo-new { margin: 14px 0 12px; }
+.convo-list { overflow: hidden; }
+.convo { min-height: 72px; }
+.convo:hover { background: color-mix(in srgb, var(--line) 40%, transparent); }
+.convo > .grow { display: flex; flex-direction: column; gap: 2px; }
+.convo-top, .convo-bottom { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.convo-top strong { font-size: 16px; }
+.convo-time { flex: 0 0 auto; color: var(--faint); }
+.convo-preview { color: var(--muted); font-size: 14px; }
+.convo.unread .convo-preview { color: var(--ink); font-weight: 600; }
+.convo.unread .convo-time { color: var(--brand); font-weight: 700; }
+.convo-unread {
+  flex: 0 0 auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
+  background: var(--brand); color: var(--brand-ink); font-size: 12px; font-weight: 700; line-height: 20px; text-align: center;
+}

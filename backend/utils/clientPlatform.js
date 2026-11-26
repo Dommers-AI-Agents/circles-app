@@ -16,4 +16,13 @@ const isAppleDevice = (userAgent) => {
   return /iPhone|iPad|iPod|Macintosh/i.test(ua);
 };
 
-module.exports = { isAppleDevice };
+/**
+ * True for the fetchers that draw a link's preview (a messaging app, a
+ * search engine). They must keep getting the share page with its title and
+ * picture, never a redirect to an app that needs a sign-in.
+ */
+const isLinkPreviewBot = (userAgent) =>
+  /bot\b|bot\/|crawler|spider|facebookexternalhit|facebot|whatsapp|telegram|slack|discord|twitter|linkedin|pinterest|skype|preview|embedly|quora|vkshare|redditbot|applebot|googlebot|bingbot|duckduck|curl|wget|python-requests|okhttp|node-fetch|headless/i
+    .test(String(userAgent || ''));
+
+module.exports = { isAppleDevice, isLinkPreviewBot };

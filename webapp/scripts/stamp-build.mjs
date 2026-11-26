@@ -7,7 +7,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(fileURLToPath(import.meta.url), '..', '..');
-const SOURCES = ['src', 'index.html', 'package.json', 'vite.config.ts'];
+const SOURCES = ['src', 'public', 'index.html', 'package.json', 'vite.config.ts'];
 
 export function sourceHash(base = root) {
   const files = [];

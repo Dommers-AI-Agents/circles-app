@@ -131,6 +131,24 @@ router.route('/push-status')
 router.route('/notification-preferences')
   .put(updateNotificationPreferences);
 
+// The email switches (services/emailPreferences): the same opt-outs the
+// unsubscribe link in each email flips, changeable while signed in
+router.route('/me/email-preferences')
+  .get(async (req, res) => {
+    try {
+      res.json({ success: true, data: { switches: await require('../services/emailPreferences').read(req.user.uid) } });
+    } catch (error) {
+      require('../utils/serviceError').sendServiceError(res, error, { log: 'Email preferences read failed', fallbackMessage: "Couldn't load your email settings." });
+    }
+  })
+  .put(async (req, res) => {
+    try {
+      res.json({ success: true, data: { switches: await require('../services/emailPreferences').update(req.user.uid, req.body) } });
+    } catch (error) {
+      require('../utils/serviceError').sendServiceError(res, error, { log: 'Email preferences save failed', fallbackMessage: "Couldn't save that. Please try again." });
+    }
+  });
+
 router.route('/change-password')
   .post(changePassword);
 

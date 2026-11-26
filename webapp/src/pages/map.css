@@ -1,0 +1,109 @@
+/* The map tab: a full-height map between the header and the tab bar, with
+   chips on top, notes and buttons floating over it and a card at the bottom. */
+.map-head { gap: 12px; }
+.map-head h1.lead { flex: 0 0 auto; }
+.map-search {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px;
+  border: 1px solid var(--line); border-radius: 20px; background: var(--card); color: var(--muted);
+  font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.map-search:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+.map-main {
+  display: flex; flex-direction: column;
+  height: calc(100vh - var(--head-h) - var(--safe-t) - var(--tab-h) - var(--safe-b));
+  height: calc(100dvh - var(--head-h) - var(--safe-t) - var(--tab-h) - var(--safe-b));
+  min-height: 320px;
+}
+.map-chips {
+  flex: 0 0 auto; display: flex; gap: 8px; padding: 10px 12px; overflow-x: auto; scrollbar-width: none;
+  border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 86%, transparent);
+}
+.map-chips::-webkit-scrollbar { display: none; }
+.map-chip {
+  flex: 0 0 auto; min-height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 18px;
+  background: var(--card); color: var(--ink); font-size: 14px; font-weight: 600; white-space: nowrap;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+}
+.map-chip.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.map-chip.friends.on { background: var(--teal); border-color: var(--teal); }
+
+/* The map's own stacking context: Leaflet's panes go up to z-index 1000 and
+   must stay under the header, the tab bar, sheets and toasts. */
+.map-stage { position: relative; flex: 1; min-height: 0; isolation: isolate; z-index: 0; }
+.map-canvas { position: absolute; inset: 0; background: var(--line); }
+.map-canvas.leaflet-container { font: inherit; background: color-mix(in srgb, var(--line) 70%, var(--bg)); }
+.map-canvas .leaflet-control-attribution {
+  background: color-mix(in srgb, var(--card) 85%, transparent); color: var(--muted); font-size: 11px;
+}
+.map-canvas .leaflet-control-attribution a { color: var(--brand); }
+.map-canvas .leaflet-bar a { background: var(--card); color: var(--ink); border-bottom-color: var(--line); }
+.map-canvas .leaflet-bar { border: 1px solid var(--line); box-shadow: var(--shadow); }
+@media (prefers-color-scheme: dark) {
+  /* Darker tiles in dark mode, so the map isn't a white slab */
+  .map-canvas .leaflet-tile-pane { filter: brightness(0.72) contrast(1.08) saturate(0.85); }
+}
+
+.map-notes {
+  position: absolute; z-index: 1100; top: 10px; left: 12px; right: 64px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none;
+}
+.map-note {
+  pointer-events: auto; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--line);
+  border-radius: 16px; background: var(--card); color: var(--ink); font-size: 13px; font-weight: 600; box-shadow: var(--shadow);
+}
+button.map-note { cursor: pointer; color: var(--brand); }
+.map-dot-spin {
+  display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--brand);
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+
+.map-actions {
+  position: absolute; z-index: 1100; right: 12px; bottom: 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.map-fab {
+  display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; border: 0; border-radius: 50%;
+  background: var(--brand); color: var(--brand-ink); font-size: 30px; font-weight: 500; line-height: 1; box-shadow: var(--shadow);
+}
+.map-fab.plain { width: 46px; height: 46px; margin-left: 3px; background: var(--card); color: var(--brand); border: 1px solid var(--line); }
+.map-fab:disabled { opacity: 0.7; }
+
+.map-bottom {
+  position: absolute; z-index: 1100; left: 12px; right: 76px; bottom: 16px;
+  display: flex; flex-direction: column; gap: 10px; max-width: 520px; pointer-events: none;
+}
+.map-bottom > * { pointer-events: auto; }
+.map-card { padding: 12px 14px; }
+.map-card p.small { margin: 4px 0 10px; }
+.map-card-line { margin-top: 8px; }
+.map-card-buttons { margin-top: 12px; gap: 10px; }
+.map-card-buttons .btn { min-height: 42px; }
+.map-card-mark {
+  flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 22px; background: color-mix(in srgb, var(--brand) 16%, var(--card));
+}
+.map-card-mark.friend { background: color-mix(in srgb, var(--teal) 20%, var(--card)); }
+.map-first { display: flex; align-items: center; gap: 12px; }
+.map-first p.small { margin: 2px 0 0; }
+.map-first-mark { font-size: 30px; }
+@media (max-width: 420px) {
+  .map-first { flex-wrap: wrap; }
+  .map-first .btn { width: 100%; }
+}
+
+/* ---- pins (map/pins.ts): round, coloured, a category mark; dots when crowded */
+.fc-pin {
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  background: var(--brand); border: 2px solid #fff; box-shadow: 0 2px 8px rgba(15, 30, 58, 0.35);
+  transition: transform 0.12s ease;
+}
+.fc-pin.friend { background: var(--teal); }
+.fc-pin.full span { font-size: 18px; line-height: 1; }
+.fc-pin.full.selected { border-width: 3px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 35%, transparent), 0 4px 12px rgba(15, 30, 58, 0.4); }
+.fc-pin.full.selected span { font-size: 22px; }
+.fc-pin.dot { border-width: 2px; box-shadow: 0 1px 4px rgba(15, 30, 58, 0.35); }
+.fc-pin:hover { transform: scale(1.08); }
+.fc-me {
+  border-radius: 50%; background: #2f80ff; border: 3px solid #fff;
+  box-shadow: 0 0 0 6px rgba(47, 128, 255, 0.22), 0 1px 4px rgba(0, 0, 0, 0.3);
+}

@@ -222,6 +222,9 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 // FavCircles in a browser: app.favcircles.com serves the web app for its
 // own paths (routes/webAppRoutes); everything else falls through
 app.use(require('./routes/webAppRoutes').webApp);
+// A shared place / circle / profile link on a phone that can't have the iOS
+// app opens in the web app instead of a page whose button is the App Store
+app.use(require('./routes/webAppRoutes').sharedLinksToWebApp);
 
 // Images are now served from Firebase Storage, not local filesystem
 
@@ -298,6 +301,7 @@ app.use('/api/messages', messageLimiter, messagingRoutes);
 app.use('/api/suggestions', suggestionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/sse', sseRoutes);
+app.use('/api/web-push', require('./routes/webPushRoutes')); // browser notifications for the web app
 app.use('/api', activityRoutes);
 app.use('/api/app', require('./routes/appRoutes'));
 // Block / unblock (App Store guideline 1.2). The router existed but was never

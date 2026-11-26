@@ -34,7 +34,7 @@ test('the stop link names one store, and only a well-formed one reads back', () 
   expect(web.placeFromStopKind('store:gp1')).toBe('gp1');
   expect(web.placeFromStopKind('storeNudges')).toBeNull();
   expect(web.placeFromStopKind('store:../users')).toBeNull();
-  expect(web.storePageUrl('win123')).toBe('https://api.favcircles.com/s/WIN123?web=1');
+  expect(web.storePageUrl('win123')).toBe('https://app.favcircles.com/s/WIN123?web=1');
 });
 
 describe("a store's alert by email", () => {
@@ -51,7 +51,7 @@ describe("a store's alert by email", () => {
     expect(out.button).toBe('Open my points there');
     expect(out.item.line).toBe('Demo <Cafe>: Half-price wine tonight');
     expect(out.item.detail).toBe('Bottles are half off after 5.');
-    expect(out.item.url).toBe('https://api.favcircles.com/s/WIN123?web=1');
+    expect(out.item.url).toBe('https://app.favcircles.com/s/WIN123?web=1');
     const mail = buildSingle({ userId: 'u1', item: out.item, buttonLabel: out.button });
     expect(mail.html).toContain('Demo &lt;Cafe&gt;: Half-price wine tonight');
     expect(mail.html).toContain('href="https://x/unsub?uid=u1&kind=store:gp1"');
@@ -79,9 +79,10 @@ describe("a store's alert by email", () => {
     expect(decide({ notification: alert(), user: { ...user, email: 'x@privaterelay.appleid.com' }, state: null }).reason).toBe('relay_address');
   });
 
-  test('a web customer gets only store emails; a relay address still gets the others', () => {
+  test('a web customer also gets what opens in the web app, but not a Moment; a relay address still gets the others', () => {
     const comment = { type: 'place_comment', title: 'A comment', body: 'hi', data: { placeId: 'p1' } };
-    expect(decide({ notification: comment, user: webUser, state: null }).reason).toBe('web_only');
+    expect(decide({ notification: comment, user: webUser, state: null }).action).toBe('send');
+    expect(decide({ notification: { type: 'moment_tag', body: 'tagged', data: { videoId: 'v1' } }, user: webUser, state: null }).reason).toBe('web_only');
     expect(decide({ notification: comment, user: { ...user, email: 'x@privaterelay.appleid.com' }, state: null }).action).toBe('send');
   });
 });
@@ -94,7 +95,7 @@ test('the welcome says what they got and how to get back, escaped', () => {
   });
   expect(mail.subject).toBe("You're in at Demo <Cafe>. +25 points.");
   expect(mail.html).toContain('You&#39;re in at Demo &lt;Cafe&gt;. +25 points.');
-  expect(mail.html).toContain('href="https://api.favcircles.com/s/WIN123?web=1"');
+  expect(mail.html).toContain('href="https://app.favcircles.com/s/WIN123?web=1"');
   expect(mail.html).toContain('Free coffee');
   expect(mail.html).toContain('Your coupon:</b> 20% off');
   expect(mail.html).toContain('Stop emails from this store');

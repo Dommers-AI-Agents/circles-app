@@ -1,0 +1,49 @@
+/* Add a place: search, by hand, and the save form. */
+.add-page { padding-top: 14px; }
+.add-lede { margin: 2px 2px 14px; color: var(--muted); }
+.add-search { display: flex; gap: 8px; align-items: center; }
+.add-search .input { flex: 1; min-width: 0; height: 46px; }
+.add-search .btn { flex: 0 0 auto; min-height: 46px; border-radius: 13px; }
+.add-hint { margin: 8px 4px 0; }
+.add-start { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 16px; }
+.add-start-mark { font-size: 28px; }
+.add-start p { margin-top: 2px; }
+.add-results-title { margin-top: 18px; }
+.add-results { overflow: hidden; }
+.add-results .item { min-height: 72px; }
+.add-result-name, .add-result-line { display: block; }
+.add-result-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.add-foot { margin: 10px 4px 0; }
+.add-hand-cta { display: flex; align-items: center; gap: 12px; margin-top: 18px; padding: 14px 16px; }
+.add-hand-cta p { margin-top: 2px; }
+
+.add-map-head { margin: 4px 2px 8px; }
+.add-handmap-frame { overflow: hidden; padding: 0; }
+/* Its own stacking context: Leaflet's panes must stay under sheets and the tab bar */
+.add-handmap { height: 280px; isolation: isolate; z-index: 0; background: color-mix(in srgb, var(--line) 70%, var(--bg)); cursor: crosshair; }
+.add-handmap .leaflet-control-attribution { background: color-mix(in srgb, var(--card) 85%, transparent); color: var(--muted); font-size: 11px; }
+.add-handmap .leaflet-control-attribution a { color: var(--brand); }
+.add-handmap .leaflet-bar a { background: var(--card); color: var(--ink); border-bottom-color: var(--line); }
+@media (prefers-color-scheme: dark) {
+  .add-handmap .leaflet-tile-pane { filter: brightness(0.72) contrast(1.08) saturate(0.85); }
+}
+.add-notice {
+  margin-top: 14px; padding: 12px 14px; box-shadow: none;
+  background: color-mix(in srgb, var(--gold) 16%, var(--card)); border-color: color-mix(in srgb, var(--gold) 45%, var(--line));
+}
+.add-notice p { margin-top: 4px; }
+
+.add-venue { padding: 12px 14px; }
+.add-venue-name, .add-venue-line { display: block; overflow-wrap: anywhere; }
+.add-venue-source { margin-top: 6px; }
+.add-options { padding: 0 12px; }
+.add-options .radio { cursor: pointer; }
+.add-last { margin-left: 8px; vertical-align: 1px; }
+.add-none { margin: 0; padding: 14px 4px 4px; color: var(--muted); }
+.add-new-circle { margin: 2px 0 6px; }
+.add-gap { margin-top: 18px; }
+.add-rating { padding: 12px 14px; }
+.add-range { width: 100%; height: 40px; margin: 6px 0 0; accent-color: var(--brand); }
+.add-range-ends { display: flex; justify-content: space-between; margin-top: -4px; }
+.add-save { margin-top: 12px; }
+.add-sheet-gap { margin-top: 10px; }

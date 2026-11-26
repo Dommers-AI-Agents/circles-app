@@ -1,0 +1,7 @@
+/* App-wide search. */
+.search-where { margin: 8px 4px 0; }
+.search-where-btn { min-height: 32px; padding: 0 2px; border: 0; background: none; color: var(--brand); font: inherit; font-weight: 600; }
+.search-list { overflow: hidden; }
+.search-list .place-row { min-height: 64px; }
+.search-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--muted); font-size: 15px; }
+.search-dot { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--brand); border-radius: 50%; animation: spin 0.8s linear infinite; }

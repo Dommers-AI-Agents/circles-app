@@ -1,0 +1,117 @@
+/* The Activity feed: every row a card with a picture */
+.feed-list { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; }
+.feed-card { overflow: hidden; }
+.feed-head { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px 10px; }
+.feed-avatar { flex: 0 0 auto; display: inline-flex; border-radius: 50%; }
+.feed-sentence { font-size: 15px; line-height: 1.35; padding-top: 2px; overflow-wrap: anywhere; }
+.feed-actor { color: var(--ink); font-weight: 700; }
+.feed-time { color: var(--faint); font-size: 13px; white-space: nowrap; }
+
+.feed-open { display: block; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; color: inherit; }
+.feed-picture { position: relative; height: 220px; background: var(--line); overflow: hidden; }
+.feed-photo { display: block; width: 100%; height: 100%; object-fit: cover; }
+.feed-chip {
+  position: absolute; left: 12px; bottom: 12px; max-width: calc(100% - 24px); padding: 5px 11px; border-radius: 999px;
+  background: rgba(10, 16, 30, 0.72); color: #fff; font-size: 13px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.feed-quote { display: block; padding: 10px 14px 0; font-size: 15px; font-style: italic; color: var(--ink); overflow-wrap: anywhere; }
+.feed-page-sentence { display: block; padding: 10px 14px 0; font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
+
+/* still map: tiles placed around the centre, which is the pin */
+.feed-map { position: absolute; inset: 0; overflow: hidden; background: #e8e4da; }
+.feed-map-tiles { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.feed-map-tiles img { position: absolute; width: 256px; height: 256px; max-width: none; user-select: none; }
+.feed-map-pin {
+  position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -22px 0 0 -11px;
+  border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--brand); border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.feed-map-credit {
+  position: absolute; right: 0; top: 0; padding: 1px 6px; background: rgba(255, 255, 255, 0.8); color: #333; font-size: 10px;
+  border-bottom-left-radius: 6px;
+}
+
+/* poster: the row's mark and name on its colour */
+.feed-poster {
+  --tint: var(--brand);
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 18px 20px 40px;
+  background:
+    radial-gradient(circle at 85% 20%, color-mix(in srgb, var(--tint) 38%, transparent) 0, transparent 55%),
+    linear-gradient(150deg, color-mix(in srgb, var(--tint) 26%, var(--card)) 0%, color-mix(in srgb, var(--tint) 10%, var(--card)) 100%);
+}
+.feed-poster.tint-like { --tint: #e5484d; }
+.feed-poster.tint-comment { --tint: #1b9aaa; }
+.feed-poster.tint-circle { --tint: #8e5bd6; }
+.feed-poster.tint-workout { --tint: #e0723c; }
+.feed-poster.tint-run { --tint: #2e9e6b; }
+.feed-poster.tint-mail { --tint: #d6457b; }
+.feed-poster.tint-people { --tint: #3478f6; }
+.feed-poster.tint-store { --tint: #c79a14; }
+.feed-poster-mark { font-size: 40px; line-height: 1; }
+.feed-poster-title {
+  font-size: 22px; line-height: 1.2; font-weight: 800; color: var(--ink);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+.feed-poster-detail { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* reactions and comments */
+.feed-actions { position: relative; display: flex; align-items: center; gap: 6px; padding: 8px 10px 10px; }
+.feed-summary { display: inline-flex; align-items: center; gap: 5px; padding-left: 4px; color: var(--muted); font-size: 14px; }
+.feed-summary-emoji { letter-spacing: -2px; font-size: 16px; }
+.feed-act {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border: 0; border-radius: 20px;
+  background: transparent; color: var(--muted); font-size: 14px; font-weight: 600;
+}
+.feed-act:active { background: var(--line); }
+.feed-act.on { color: var(--brand); background: color-mix(in srgb, var(--brand) 12%, transparent); }
+.feed-picker {
+  position: absolute; right: 8px; bottom: calc(100% - 4px); z-index: 5; display: flex; gap: 2px; padding: 6px; border-radius: 28px;
+}
+.feed-picker button {
+  width: 42px; height: 42px; border: 0; border-radius: 50%; background: transparent; font-size: 24px; line-height: 1;
+  transition: transform 0.12s ease;
+}
+.feed-picker button:hover, .feed-picker button:focus-visible { transform: scale(1.2); }
+.feed-picker button.on { background: color-mix(in srgb, var(--brand) 18%, transparent); }
+
+/* a burst: pages you swipe through */
+.feed-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+.feed-track::-webkit-scrollbar { display: none; }
+.feed-page { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; display: flex; flex-direction: column; }
+.feed-page .feed-open { flex: 1; }
+.feed-pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 10px 8px; border-top: 1px solid var(--line); }
+.feed-pager .icon-btn { font-size: 24px; }
+.feed-pager .icon-btn:disabled { color: var(--faint); opacity: 0.5; }
+.feed-dots { display: inline-flex; gap: 6px; }
+.feed-dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.feed-dots span.on { background: var(--brand); }
+
+/* a big burst: the stack, then "Show all" */
+.feed-stack { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+.feed-stack .feed-picture { height: 110px; }
+.feed-stack .feed-poster { padding: 8px; }
+.feed-stack .feed-poster-title { font-size: 13px; -webkit-line-clamp: 2; }
+.feed-stack .feed-poster-mark { font-size: 24px; }
+.feed-stack .feed-poster-detail, .feed-stack .feed-map-credit { display: none; }
+.feed-showall { margin: 10px 0 0; border-radius: 0; min-height: 46px; }
+
+/* comments sheet */
+.feed-compose { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.feed-compose .input { flex: 1; min-width: 0; }
+.feed-comments { margin-top: 4px; }
+.feed-comment { display: flex; align-items: flex-start; gap: 10px; padding: 10px 2px; }
+.feed-comment-text { margin-top: 2px; font-size: 15px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.feed-comment-del { color: var(--faint); font-size: 14px; }
+
+/* header bell and the end of the feed */
+.feed-bell { position: relative; color: var(--ink); }
+.feed-bell-count {
+  position: absolute; top: 2px; right: 0; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: #e5484d; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+.feed-end { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px; text-align: center; color: var(--muted); }
+
+@media (min-width: 700px) {
+  .feed-picture { height: 300px; }
+}

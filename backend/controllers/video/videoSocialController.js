@@ -5,6 +5,7 @@
 const { getFirestore, FieldValue, admin } = require('../../config/firebase');
 const { sendServiceError } = require('../../utils/serviceError');
 const { COLLECTIONS, serializeDoc } = require('../../models/FirestoreModels');
+const { projectPublicUser } = require('../../services/publicUserProjection');
 const { queryInChunks } = require('../../utils/firestoreChunks');
 const { clampPagination } = require('../../utils/pagination');
 const db = getFirestore();
@@ -319,10 +320,12 @@ exports.createVideoComment = async (req, res) => {
     const commentDoc = await commentRef.get();
     const comment = serializeDoc(commentDoc);
     
-    // Get user details
+    // Get user details: the public card only. The comment is broadcast to
+    // everyone watching this Moment; it carried the whole user record,
+    // email included, before 2026-11-26.
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
     if (userDoc.exists) {
-      comment.user = serializeDoc(userDoc);
+      comment.user = projectPublicUser(serializeDoc(userDoc));
     }
     
     // Update video comment count

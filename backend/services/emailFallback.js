@@ -102,6 +102,7 @@ const EMAIL_TYPES = {
     button: 'See the comment'
   },
   moment_tag: {
+    appOnly: true,
     gapHours: 0,
     key: (n) => `tag:${(n.data && n.data.videoId) || 'any'}`,
     line: (n) => clip(n.body || 'You were tagged in a Moment', 120),
@@ -170,9 +171,10 @@ const decide = ({ notification, user, state, now = new Date() }) => {
   // A store's email skips Apple's relay addresses, as store nudges do.
   if (require('./hiddenAccounts').isHiddenAccount(user)) return { action: 'skip', reason: 'hidden_account' };
   if (spec.store && /@privaterelay\.appleid\.com$/i.test(email)) return { action: 'skip', reason: 'relay_address' };
-  // Joined on a store's web page and has no app: the other rows' buttons
-  // only open in the app, so only the store's own emails go
-  if (!spec.store && require('./storeWebEmails').isWebOnly(user)) return { action: 'skip', reason: 'web_only' };
+  // Joined on the web and has no app: everything here opens in the web app
+  // (routes/webAppRoutes sends the links there) except a Moment, which only
+  // the iOS app plays
+  if (spec.appOnly && require('./storeWebEmails').isWebOnly(user)) return { action: 'skip', reason: 'web_only' };
   if (user.emailPreferences && user.emailPreferences[preferenceFor(spec)] === false) return { action: 'skip', reason: 'unsubscribed' };
 
   const zone = user.notificationPreferences && user.notificationPreferences.timezone;

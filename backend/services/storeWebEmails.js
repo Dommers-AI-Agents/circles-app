@@ -5,7 +5,8 @@
 // and every email can stop that store's emails with one tap and no login.
 const { escapeHtml: esc } = require('../utils/text');
 
-const BASE_URL = 'https://api.favcircles.com';
+// The web app's host: the store page and the web app share one sign-in there
+const WEB_APP_URL = 'https://app.favcircles.com';
 const STOP_PREFIX = 'store:';
 const INK = '#1B1E24';
 const GOLD = '#F6C945';
@@ -18,10 +19,10 @@ const GOLD = '#F6C945';
 const isWebOnly = (user) => !!user && user.acquisitionSource === 'store_web'
   && !(Array.isArray(user.deviceTokens) && user.deviceTokens.length) && !user.clipInstallConvertedAt;
 
-/** The store's page, opened as the web page on any phone. */
+/** The store's page on the web app's host, opened as the web page on any phone. */
 const storePageUrl = (code) => (code
-  ? `${BASE_URL}/s/${encodeURIComponent(String(code).toUpperCase())}?web=1`
-  : `${BASE_URL}/app/open`);
+  ? `${WEB_APP_URL}/s/${encodeURIComponent(String(code).toUpperCase())}?web=1`
+  : WEB_APP_URL);
 
 /** The unsubscribe "kind" that means one store's emails (see emailPreferenceRoutes). */
 const stopKind = (globalPlaceId) => `${STOP_PREFIX}${globalPlaceId}`;

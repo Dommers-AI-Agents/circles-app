@@ -1,0 +1,16 @@
+/* Another person's profile. */
+.user-name { overflow-wrap: anywhere; }
+.user-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.user-chips:empty { display: none; }
+.user-bio { margin: 6px 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.user-counts { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 10px -6px 0; font-size: 14px; color: var(--muted); }
+.user-counts > * { display: inline-flex; align-items: center; gap: 5px; min-height: 40px; padding: 0 8px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 14px; }
+.user-counts button:active { background: var(--line); }
+.user-counts b { color: var(--ink); }
+.user-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.user-actions .btn { flex: 1 1 0; min-width: 104px; padding: 0 12px; white-space: nowrap; }
+.user-note { margin-top: 14px; padding: 14px 16px; }
+.user-note p { margin: 4px 0 0; }
+.user-note .row, .user-note .btn.block { margin-top: 12px; }
+.user-hint { margin: 8px 2px 0; }
+.sheet-choice { margin-bottom: 8px; }

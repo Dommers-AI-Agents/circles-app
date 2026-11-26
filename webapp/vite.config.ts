@@ -18,7 +18,7 @@ export default defineConfig(({ command }) => ({
     port: 5173,
     // `npm run dev` talks to a backend on :8099 (PORT=8099 node server.js)
     // API_TARGET points the dev server at another backend (default :8099)
-    proxy: { '/api': process.env.API_TARGET || 'http://localhost:8099', '/s': process.env.API_TARGET || 'http://localhost:8099' }
+    proxy: { '/api': process.env.API_TARGET || 'http://localhost:8099', '^/s/': process.env.API_TARGET || 'http://localhost:8099' }
   },
   test: { environment: 'node', include: ['src/**/*.test.ts'] }
 }));

@@ -67,6 +67,14 @@ function webApp(req, res, next) {
     res.set('Cache-Control', 'public, max-age=3600');
     return res.send(JSON.stringify(MANIFEST));
   }
+  // The service worker must be served from the root to cover every screen
+  if (req.path === '/sw.js') {
+    const worker = path.join(APP_DIR, 'sw.js');
+    if (!fs.existsSync(worker)) return next();
+    res.type('application/javascript');
+    res.set('Cache-Control', 'no-cache');
+    return res.sendFile(worker);
+  }
   if (!isWebAppPath(req.path)) return next();
   const index = path.join(APP_DIR, 'index.html');
   if (!fs.existsSync(index)) return next();
@@ -77,4 +85,58 @@ function webApp(req, res, next) {
   return res.sendFile(index);
 }
 
-module.exports = { webApp, isWebAppPath, servesWebApp, appHosts, webAppEnabled, APP_PATHS, APP_DIR };
+// Links the iOS app shares (https://api.favcircles.com/place/<id>, /circle/<id>,
+// /user/<id>) open the same thing in the web app on a phone that can't have
+// the iOS app: before this, the share page's button led an Android phone to
+// the App Store. Apple devices and link-preview fetchers keep the share page.
+const SHARED_LINK = /^\/(place|circle|user)\/[A-Za-z0-9._-]{1,200}\/?$/;
+const SHARE_HOSTS = new Set(['api.favcircles.com', 'favcircles.com', 'www.favcircles.com']);
+
+/**
+ * Pure: the web app screen behind one of the "open the app" links our
+ * emails and pushes use (/app/open?path=rewards, /app/messages/<id>,
+ * /app/map, /daily-summary), or null when the link isn't one of them.
+ */
+const appLinkPath = (urlPath, query = '') => {
+  const clean = String(urlPath || '').replace(/\/$/, '');
+  if (clean === '/app/map') return '/';
+  if (clean === '/app/daily-summary' || clean === '/daily-summary') return '/feed';
+  if (clean === '/app/messages') return '/messages';
+  const chat = /^\/app\/messages\/([A-Za-z0-9_-]{1,200})$/.exec(clean);
+  if (chat) return `/messages/${chat[1]}`;
+  if (clean === '/app/open') {
+    const wanted = new URLSearchParams(String(query).replace(/^\?/, '')).get('path');
+    return { rewards: '/rewards', messages: '/messages', people: '/people', feed: '/feed' }[wanted] || '/';
+  }
+  return null;
+};
+
+/** Pure: where a shared link should send this visitor, or null to leave it. */
+const sharedLinkRedirect = ({ method, host, urlPath, userAgent, query = '' }) => {
+  if (!webAppEnabled() || method !== 'GET') return null;
+  const name = String(host || '').split(':')[0].toLowerCase();
+  if (!SHARE_HOSTS.has(name)) return null;
+  const shared = SHARED_LINK.test(String(urlPath || ''));
+  const appLink = shared ? null : appLinkPath(urlPath, query);
+  if (!shared && appLink === null) return null;
+  const { isAppleDevice, isLinkPreviewBot } = require('../utils/clientPlatform');
+  if (isAppleDevice(userAgent) || isLinkPreviewBot(userAgent)) return null;
+  return shared ? `https://${DEFAULT_HOST}${urlPath}${query}` : `https://${DEFAULT_HOST}${appLink}`;
+};
+
+function sharedLinksToWebApp(req, res, next) {
+  const queryAt = req.originalUrl.indexOf('?');
+  const target = sharedLinkRedirect({
+    method: req.method, host: req.headers.host, urlPath: req.path, userAgent: req.get('user-agent'),
+    query: queryAt >= 0 ? req.originalUrl.slice(queryAt) : ''
+  });
+  if (!target) return next();
+  res.set('Cache-Control', 'no-store');
+  res.set('Vary', 'User-Agent');
+  return res.redirect(302, target);
+}
+
+module.exports = {
+  webApp, sharedLinksToWebApp, sharedLinkRedirect, appLinkPath, isWebAppPath, servesWebApp, appHosts, webAppEnabled,
+  APP_PATHS, APP_DIR, DEFAULT_HOST
+};

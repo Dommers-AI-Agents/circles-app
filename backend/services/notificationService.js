@@ -44,6 +44,12 @@ class NotificationService {
       // for this type still applies.
       if (this.isNotificationEnabled(notification.type, notificationPreferences)) {
         require('./emailFallback').maybeEmail(userId, userData, notification);
+        // The web app, in any browser where they turned notifications on
+        // (services/webPush: its own list, not deviceTokens). Same switches
+        // and quiet hours as the phone; never delays or fails the push below.
+        if (!this.isInQuietHours(notificationPreferences)) {
+          require('./webPush').sendToUser(userId, notification).catch(() => {});
+        }
       }
       
       console.log(`🔔 User ${userId} has ${deviceTokens.length} device tokens`);

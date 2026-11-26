@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { isWebAppPath, servesWebApp, APP_DIR } = require('../webAppRoutes');
+const { isWebAppPath, servesWebApp, sharedLinkRedirect, APP_DIR } = require('../webAppRoutes');
 
 afterEach(() => { delete process.env.WEB_APP; delete process.env.WEB_APP_HOSTS; });
 
@@ -28,6 +28,35 @@ test('only GETs on the app host get the page, and the switch turns it off', () =
   expect(ask()).toBe(false);
 });
 
+test('a shared link opens in the web app on a phone that cannot have the iOS app', () => {
+  const ANDROID = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36';
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15';
+  const ask = (extra) => sharedLinkRedirect({ method: 'GET', host: 'api.favcircles.com', urlPath: '/place/abc123', userAgent: ANDROID, ...extra });
+  expect(ask()).toBe('https://app.favcircles.com/place/abc123');
+  expect(ask({ urlPath: '/circle/c1', query: '?ref=u1' })).toBe('https://app.favcircles.com/circle/c1?ref=u1');
+  expect(ask({ urlPath: '/user/u1' })).toBe('https://app.favcircles.com/user/u1');
+  // The iPhone keeps the page that opens the app; a messaging app's preview keeps its title and picture
+  expect(ask({ userAgent: IPHONE })).toBeNull();
+  expect(ask({ userAgent: 'WhatsApp/2.23.20 A' })).toBeNull();
+  expect(ask({ userAgent: 'facebookexternalhit/1.1' })).toBeNull();
+  expect(ask({ userAgent: 'Mozilla/5.0 (compatible; Googlebot/2.1)' })).toBeNull();
+  // Not the app's own host (it serves the app there already), not other pages, not writes
+  expect(ask({ host: 'app.favcircles.com' })).toBeNull();
+  expect(ask({ urlPath: '/connect/u1' })).toBeNull();
+  // The "open the app" links in our emails land on the matching screen
+  expect(ask({ urlPath: '/app/open' })).toBe('https://app.favcircles.com/');
+  expect(ask({ urlPath: '/app/open', query: '?path=rewards' })).toBe('https://app.favcircles.com/rewards');
+  expect(ask({ urlPath: '/app/messages/c1' })).toBe('https://app.favcircles.com/messages/c1');
+  expect(ask({ urlPath: '/app/map' })).toBe('https://app.favcircles.com/');
+  expect(ask({ urlPath: '/daily-summary' })).toBe('https://app.favcircles.com/feed');
+  expect(ask({ urlPath: '/app/open', userAgent: IPHONE })).toBeNull();
+  expect(ask({ urlPath: '/app/widget/water' })).toBeNull();
+  expect(ask({ urlPath: '/place/abc/extra' })).toBeNull();
+  expect(ask({ method: 'POST' })).toBeNull();
+  process.env.WEB_APP = 'false';
+  expect(ask()).toBeNull();
+});
+
 // Same walk as webapp/scripts/stamp-build.mjs
 const sourceHash = (base) => {
   const files = [];
@@ -35,7 +64,7 @@ const sourceHash = (base) => {
     if (fs.statSync(p).isDirectory()) fs.readdirSync(p).sort().forEach((name) => walk(path.join(p, name)));
     else files.push(p);
   };
-  ['src', 'index.html', 'package.json', 'vite.config.ts'].forEach((name) => walk(path.join(base, name)));
+  ['src', 'public', 'index.html', 'package.json', 'vite.config.ts'].forEach((name) => walk(path.join(base, name)));
   const hash = crypto.createHash('sha256');
   for (const file of files) {
     hash.update(path.relative(base, file));

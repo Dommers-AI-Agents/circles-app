@@ -5,6 +5,8 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/firebaseAuth');
 const { perUserLimit } = require('../middleware/security');
+const webVenueSearch = require('../services/webVenueSearch');
+const { sendServiceError } = require('../utils/serviceError');
 
 const {
   getGlobalPlace,
@@ -21,6 +23,20 @@ const {
 
 // All routes require authentication
 router.use(protect);
+
+// Venue search for the web app's Add Place (no MapKit in a browser): Photon /
+// OpenStreetMap, cached and polite (services/webVenueSearch). This router is
+// mounted before firebasePlaceRoutes, so '/:id' there never sees it. The
+// per-account limit is the fleet-wide one (perUserLimit), not an
+// in-memory express-rate-limit that each instance counts on its own.
+router.get('/web-search', perUserLimit({ bucket: 'web-venue-search', windowMs: 3600000, max: 300 }), async (req, res) => {
+  try {
+    const data = await webVenueSearch.searchVenues({ q: req.query.q, lat: req.query.lat, lng: req.query.lng });
+    res.status(200).json({ success: true, data, attribution: webVenueSearch.ATTRIBUTION });
+  } catch (error) {
+    sendServiceError(res, error, { log: 'web venue search', fallbackMessage: 'Place search failed. Please try again.' });
+  }
+});
 
 // Global place routes
 router.route('/global/search')

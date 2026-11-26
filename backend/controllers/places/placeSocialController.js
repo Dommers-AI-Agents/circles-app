@@ -1051,10 +1051,12 @@ exports.getPlaceCommentReplies = async (req, res, next) => {
     for (const replyDoc of repliesSnapshot.docs) {
       const reply = serializeDoc(replyDoc);
       
-      // Get user details for each reply
+      // Get user details for each reply: the public card only, like the
+      // comment list (it sent the whole user record, email included, before
+      // 2026-11-26)
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(reply.userId).get();
       if (userDoc.exists) {
-        reply.user = serializeDoc(userDoc);
+        reply.user = projectPublicUser(serializeDoc(userDoc));
       }
       
       replies.push(reply);

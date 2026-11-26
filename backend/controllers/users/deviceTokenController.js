@@ -153,10 +153,15 @@ exports.updateNotificationPreferences = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'notificationPreferences must be an object' });
     }
     const userRef = db.collection(COLLECTIONS.USERS).doc(req.user.uid);
-    await userRef.set({
-      notificationPreferences,
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
+    // An EMPTY map is not "change nothing" to Firestore's merge: it replaces
+    // the whole map with {} and every saved switch is gone (found
+    // 2026-11-26). Nothing to change → write nothing.
+    if (Object.keys(notificationPreferences).length > 0) {
+      await userRef.set({
+        notificationPreferences,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
     
     console.log(`🔔 Notification preferences updated for user ${req.user.uid}`);
     

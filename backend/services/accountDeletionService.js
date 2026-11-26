@@ -204,6 +204,8 @@ async function deleteAccount(uid, { db = getFirestore(), auth = getAuth(), stora
     await deleteAll('walletPassRegistrations', db.collection('walletPassRegistrations').where('serial', '==', pass.id));
   }
   await deleteAll('walletPasses', db.collection('walletPasses').where('userId', '==', uid));
+  // Browsers that had the web app's notifications on (services/webPush)
+  await deleteAll('webPushSubscriptions', db.collection('webPushSubscriptions').where('userId', '==', uid));
   // An App Attest key belongs to the phone's install, not the person: the
   // next account signed in there keeps using it, so only the link goes
   await updateAll('appAttestKeys', db.collection('appAttestKeys').where('userId', '==', uid), () => ({ userId: null }));

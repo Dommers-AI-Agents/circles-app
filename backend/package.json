@@ -51,6 +51,7 @@
     "staticmaps": "^1.13.1",
     "stripe": "^22.6.2",
     "uuid": "^11.1.0",
+    "web-push": "^3.6.7",
     "which-country": "^1.0.0"
   },
   "devDependencies": {

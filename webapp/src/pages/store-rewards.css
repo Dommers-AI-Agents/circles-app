@@ -1,0 +1,18 @@
+/* One store's rewards */
+.sr-hero { position: relative; margin: 0 -16px; min-height: 180px; display: flex; align-items: flex-end; background: linear-gradient(140deg, #3478f6, #1b9aaa) center / cover no-repeat; }
+.sr-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(15, 30, 58, 0) 25%, rgba(15, 30, 58, 0.85) 100%); }
+.sr-hero > div { position: relative; z-index: 1; padding: 16px; color: #fff; }
+.sr-hero h2 { font-size: 26px; line-height: 1.15; }
+.sr-hero p { margin-top: 4px; font-size: 14px; color: rgba(255, 255, 255, 0.88); }
+.sr-place-link { display: inline-block; margin: 12px 2px 0; font-size: 14px; font-weight: 600; color: var(--brand); }
+.sr-balance { margin-top: 14px; }
+.sr-label { font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 12px; }
+.sr-points { font-size: 40px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.sr-star { font-size: 30px; }
+.sr-kind { font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+.sr-message { margin-top: 4px; white-space: pre-line; }
+.sr-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+.sr-tiles > div { padding: 12px 8px; text-align: center; }
+.sr-tiles b { display: block; font-size: 22px; font-weight: 800; }
+.sr-tiles span { display: block; font-size: 12px; color: var(--muted); }
+.rw-switch { position: relative; }

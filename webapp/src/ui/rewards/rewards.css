@@ -1,0 +1,65 @@
+/* Rewards and Locals: the pieces the three screens and their sheets share. */
+.rw-gain { color: #7a5c00; }
+@media (prefers-color-scheme: dark) { .rw-gain { color: var(--gold); } }
+.rw-card { padding: 14px; margin-top: 12px; }
+.rw-card h3 { font-size: 16px; font-weight: 700; }
+.rw-link { display: block; color: inherit; }
+.rw-link:active { background: color-mix(in srgb, var(--line) 60%, transparent); }
+.rw-points { font-size: 22px; font-weight: 800; line-height: 1.1; text-align: right; }
+.rw-points small { display: block; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.03em; text-transform: uppercase; }
+.rw-bar { height: 8px; margin: 12px 0 6px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.rw-bar > i { display: block; height: 100%; border-radius: 4px; background: var(--brand); transition: width 0.3s; }
+.rw-bar.ready > i { background: var(--ok); }
+.rw-ready { color: var(--ok); font-weight: 600; }
+.rw-more { margin-top: 8px; font-size: 14px; font-weight: 600; color: var(--brand); }
+.rw-actions { display: flex; gap: 10px; margin-top: 14px; }
+.rw-actions > * { flex: 1; }
+.rw-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.rw-row .amount { font-weight: 700; white-space: nowrap; }
+.rw-row .amount.plus { color: var(--ok); }
+.rw-steps { margin: 0; padding: 0; list-style: none; }
+.rw-steps li { display: flex; gap: 10px; padding: 7px 0; font-size: 14px; color: var(--muted); }
+.rw-steps li > span:first-child { flex: 0 0 22px; text-align: center; }
+
+/* the ticket shown at the counter */
+.ticket { margin: 6px 0 14px; padding: 22px 16px; text-align: center; border: 2px dashed color-mix(in srgb, var(--brand) 55%, var(--line)); background: var(--card); border-radius: 18px; }
+.ticket .what { font-size: 20px; font-weight: 800; }
+.ticket .where { margin-top: 2px; font-size: 14px; color: var(--muted); }
+.ticket .code { margin: 14px 0 6px; font: 800 52px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.12em; overflow-wrap: anywhere; }
+.ticket .left { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ticket .left.done { color: var(--ok); }
+.ticket .left.out { color: var(--danger); }
+.ticket .online { margin-top: 10px; font-size: 14px; color: var(--muted); }
+.ticket-note { margin: 0 4px 14px; font-size: 14px; color: var(--muted); text-align: center; }
+.ticket-live { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px; margin-top: 12px; text-align: left; border: 2px dashed color-mix(in srgb, var(--brand) 55%, var(--line)); color: inherit; }
+.ticket-live .code { font: 800 20px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; }
+.ticket-live .left { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--brand); white-space: nowrap; }
+
+/* the scanner */
+.scan-view { position: relative; margin-bottom: 14px; border-radius: 16px; overflow: hidden; background: #0c1424; aspect-ratio: 4 / 3; }
+.scan-view video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-view::after { content: ''; position: absolute; inset: 18% 22%; border: 3px solid rgba(255, 255, 255, 0.9); border-radius: 18px; pointer-events: none; }
+.scan-code { text-transform: uppercase; text-align: center; font: 700 24px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.2em; }
+.scan-code::placeholder { letter-spacing: 0.2em; color: var(--faint); font-weight: 500; }
+.scan-result { padding: 6px 2px 4px; text-align: center; }
+.scan-result h3 { font-size: 24px; font-weight: 800; line-height: 1.2; }
+.scan-result .store { margin-bottom: 4px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.scan-result .detail { margin-top: 8px; color: var(--muted); }
+.scan-result .coupon { margin: 14px 0 0; padding: 12px; text-align: left; font-size: 14px; }
+.scan-balance { margin-top: 16px; padding: 14px; text-align: left; }
+
+/* an on/off switch */
+.rw-switch { display: flex; align-items: center; gap: 12px; padding: 14px; cursor: pointer; }
+.rw-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.rw-switch .track { flex: 0 0 auto; position: relative; width: 50px; height: 30px; border-radius: 15px; background: var(--line); transition: background 0.2s; }
+.rw-switch .track::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 0.2s; }
+.rw-switch input:checked + .track { background: var(--ok); }
+.rw-switch input:checked + .track::after { transform: translateX(20px); }
+.rw-switch input:focus-visible + .track { outline: 2px solid var(--brand); outline-offset: 2px; }
+.rw-switch input:disabled + .track { opacity: 0.6; }
+.rw-check { display: flex; align-items: flex-start; gap: 12px; padding: 14px; margin-bottom: 14px; cursor: pointer; }
+.rw-check input { flex: 0 0 auto; width: 22px; height: 22px; margin: 1px 0 0; accent-color: var(--brand); }
+.rw-store-link { display: inline-block; margin-bottom: 2px; font-weight: 600; color: var(--muted); }
+.rw-section { margin-top: 24px; }
+.rw-section > h2 { font-size: 19px; font-weight: 800; margin: 0 2px; }
+.rw-section > p.lead-in { margin: 4px 2px 0; font-size: 14px; color: var(--muted); }

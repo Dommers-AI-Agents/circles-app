@@ -1,0 +1,5 @@
+/* Edit my profile. */
+.edit-profile { padding-top: 18px; }
+.edit-photo { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.edit-photo p { margin-top: 6px; }
+.edit-hint { margin: -6px 2px 14px; }

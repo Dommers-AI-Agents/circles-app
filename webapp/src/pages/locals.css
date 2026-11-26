@@ -1,0 +1,14 @@
+/* Locals */
+.lc-area { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--wash), var(--card); }
+.lc-area .btn { flex: 0 0 auto; }
+.lc-store .thumb { flex: 0 0 auto; }
+.lc-deals { margin: 10px 0 0; padding: 0; list-style: none; }
+.lc-deals li { display: flex; gap: 8px; padding: 4px 0; font-size: 15px; }
+.lc-item { display: flex; align-items: flex-start; gap: 12px; color: inherit; }
+.lc-title { display: block; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.lc-when { display: block; margin-top: 2px; font-weight: 600; color: var(--brand); }
+.lc-links { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: 14px; font-weight: 600; }
+.lc-links a { color: var(--brand); padding: 6px 0; }
+.lc-search { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.lc-search .input { flex: 1; min-width: 0; }
+.lc-credit { margin: 16px 2px 0; text-align: center; }

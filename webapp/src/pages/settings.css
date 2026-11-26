@@ -1,0 +1,21 @@
+/* Settings. */
+.settings-card { overflow: hidden; }
+.settings-card > * + * { border-top: 1px solid var(--line); }
+.settings-card .spinner { margin: 22px auto; }
+.settings-link {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 12px 16px;
+  border: 0; background: transparent; color: inherit; font-size: 16px; font-weight: 600; text-align: left;
+}
+.settings-link:active { background: color-mix(in srgb, var(--line) 60%, transparent); }
+.settings-link:disabled { opacity: 0.55; }
+.settings-link .small { display: block; margin-top: 2px; font-weight: 400; }
+.settings-link > span[aria-hidden] { color: var(--faint); font-size: 18px; }
+.settings-stores-only { font-size: 15px; color: var(--brand); }
+.settings-note { padding: 14px 16px; }
+.settings-inline { padding: 14px 16px; }
+.link-btn { padding: 0; border: 0; background: none; color: var(--brand); font: inherit; font-weight: 600; }
+.settings-mode { padding: 14px 16px; background: color-mix(in srgb, var(--brand) 8%, transparent); }
+.settings-mode p { margin: 4px 0 10px; }
+.settings-end { margin: 28px 0 8px; display: grid; gap: 6px; }
+.btn.settings-delete { color: var(--danger); }
+.settings-delete-body { margin-bottom: 16px; }

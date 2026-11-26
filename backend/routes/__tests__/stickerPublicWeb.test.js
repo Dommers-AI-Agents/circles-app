@@ -76,3 +76,21 @@ test('the switch off, the generic code, and an unknown code keep the old page', 
   mockVenue = null;
   expect((await get('/s/NOPE12', ANDROID)).text).toContain('Get the App');
 });
+
+// fetch won't send another Host header; node's http will
+const getAs = (path, headers) => new Promise((resolve, reject) => {
+  const { port } = server.address();
+  require('http').get({ host: '127.0.0.1', port, path, headers }, (res) => {
+    res.resume();
+    res.on('end', () => resolve({ status: res.statusCode, location: res.headers.location }));
+  }).on('error', reject);
+});
+
+test('on the QR host the store page moves to the web app host, so the sign-in is shared; uncounted there', async () => {
+  const res = await getAs('/s/win123?c=ABCDEF', { 'user-agent': ANDROID, host: 'api.favcircles.com' });
+  expect(res.status).toBe(302);
+  expect(res.location).toBe('https://app.favcircles.com/s/WIN123?c=ABCDEF');
+  expect(mockStats).not.toHaveBeenCalled();
+  const iphone = await getAs('/s/WIN123', { 'user-agent': IPHONE, host: 'api.favcircles.com' });
+  expect(iphone.status).toBe(200);
+});

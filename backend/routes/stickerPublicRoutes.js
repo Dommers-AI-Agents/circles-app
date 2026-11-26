@@ -29,17 +29,27 @@ router.get('/:code', async (req, res) => {
     if (venue && venue.active !== false) {
       venueName = venue.venueName;
       if (couponId) coupon = require('../services/storeCoupons').preview(venue, couponId);
+      // No app and no App Clip on this phone (Android, or anything that isn't
+      // Apple's): the store's own web page, where they sign in with an email
+      // code, save the store and get the same points (Wes, 2026-11-26).
+      // ?web=1 shows it on any device. STORE_WEB_PAGE=false turns it off.
+      const wantsWeb = req.query?.web === '1' || !isAppleDevice(req.get('user-agent'));
+      // The QR's link is on api.favcircles.com; the page lives on the web
+      // app's host, so the sign-in made at a store is the web app's sign-in
+      // too (a browser keeps them per host). Counted there, not here.
+      const webApp = require('./webAppRoutes');
+      const host = String(req.headers.host || '').split(':')[0].toLowerCase();
+      if (wantsWeb && storePage.storeWebPageEnabled() && !venue.genericJoin && webApp.webAppEnabled() && host === 'api.favcircles.com') {
+        const queryAt = req.originalUrl.indexOf('?');
+        res.set('Cache-Control', 'no-store');
+        return res.redirect(302, `https://${webApp.DEFAULT_HOST}/s/${code}${queryAt >= 0 ? req.originalUrl.slice(queryAt) : ''}`);
+      }
       // A landing-page hit means the app wasn't installed — count the scan.
       // (Installed-app scans are counted by POST /api/rewards/scan.) Not a
       // ?web=1 open: that is a button in one of our emails, or a preview.
       if (req.query?.web !== '1') rewardService.incrementVenueStats(venue.venueId, 'scans');
       // An NFC sticker (?t=<tag>) opened without the app, e.g. on Android
       if (req.query?.t) nfcStickers.recordTap(venue, code, String(req.query.t));
-      // No app and no App Clip on this phone (Android, or anything that isn't
-      // Apple's): the store's own web page, where they sign in with an email
-      // code, save the store and get the same points (Wes, 2026-11-26).
-      // ?web=1 shows it on any device. STORE_WEB_PAGE=false turns it off.
-      const wantsWeb = req.query?.web === '1' || !isAppleDevice(req.get('user-agent'));
       if (wantsWeb && storePage.storeWebPageEnabled() && !venue.genericJoin) {
         const preview = await storePage.previewForCode(code, {
           venue, tag: req.query?.t ? String(req.query.t) : null, couponId

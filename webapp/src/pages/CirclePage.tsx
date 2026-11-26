@@ -82,7 +82,7 @@ export function CirclePage() {
       {editing && data ? <CircleEditSheet circle={data} onClose={() => setEditing(false)} /> : null}
       {removing && data ? (
         <ConfirmSheet title={`Delete “${data.name}”?`} danger action="Move to the trash"
-          body="The circle and its places go to the trash. You can restore them from the iPhone app."
+          body="The circle and its places go to the trash. You can put them back from Me → Trash."
           onConfirm={remove} onClose={() => setRemoving(false)} />
       ) : null}
     </>
