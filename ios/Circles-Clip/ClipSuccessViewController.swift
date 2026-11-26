@@ -392,10 +392,13 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     /// the full app turns into notifications once they allow them
     private func connect(globalPlaceId: String) {
         let token = session.token
+        let newAccount = isNewAccount
         Task {
             do {
-                try await ClipAPIClient.shared.followPlace(globalPlaceId: globalPlaceId, bearer: token)
+                // Already following answers fine too; the bell is what matters
+                try? await ClipAPIClient.shared.followPlace(globalPlaceId: globalPlaceId, bearer: token)
                 try await ClipAPIClient.shared.turnOnPlaceAlerts(globalPlaceId: globalPlaceId, bearer: token)
+                if newAccount { try await ClipAPIClient.shared.setStoresOnlyNotifications(bearer: token) }
             } catch {
                 // The app's Follow and bell still work; never block the screen on it
                 print("⚠️ Clip couldn't connect the store: \(error.localizedDescription)")

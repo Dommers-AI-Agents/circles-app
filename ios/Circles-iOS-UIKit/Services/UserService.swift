@@ -307,6 +307,22 @@ class UserService {
         }
     }
 
+    /// Only these preference fields (the server merges them): the mode and
+    /// the questions asked, without resending a possibly stale whole map
+    func updateNotificationPreferenceFields(_ fields: [String: Any], completion: ((Result<Void, Error>) -> Void)? = nil) {
+        api.request(
+            endpoint: "users/notification-preferences",
+            method: .put,
+            body: ["notificationPreferences": fields],
+            requiresAuth: true
+        ) { [weak self] (result: Result<SimpleAPIResponse, APIError>) in
+            switch result {
+            case .success: completion?(.success(()))
+            case .failure(let error): completion?(.failure(self?.mapAPIErrorToUserError(error) ?? error))
+            }
+        }
+    }
+
     // MARK: - Activity privacy
 
     /// `PUT users/me/activity-privacy`. The whole grid is sent every time (the

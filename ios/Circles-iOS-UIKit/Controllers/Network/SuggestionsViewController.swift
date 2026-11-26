@@ -192,6 +192,10 @@ class SuggestionsViewController: BaseViewController {
                 switch result {
                 case .success(let suggestions):
                     self?.suggestions = suggestions.filter { !$0.isExpired }
+                    if let me = AuthService.shared.currentUser?.id,
+                       let toMe = suggestions.first(where: { $0.recipientId == me && $0.userId != me }) {
+                        NotificationScopeStore.shared.consider(.suggestion, name: toMe.userDetails?.displayName)
+                    }
                     self?.tableView.reloadData()
                     self?.updateEmptyState()
                 case .failure(let error):

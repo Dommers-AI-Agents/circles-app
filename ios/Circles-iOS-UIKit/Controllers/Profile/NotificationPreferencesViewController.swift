@@ -12,6 +12,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
     private var showingTimePicker = false
     
     private enum Section: Int, CaseIterable {
+        case sendMe
         case dailySummary
         case activityNotifications
         case socialNotifications
@@ -19,6 +20,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
         
         var title: String {
             switch self {
+            case .sendMe: return "Send Me"
             case .dailySummary: return "Weekly Summary"
             case .activityNotifications: return "Activity Notifications"
             case .socialNotifications: return "Social Notifications"
@@ -28,6 +30,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
         
         var footer: String? {
             switch self {
+            case .sendMe: return nil
             case .dailySummary: return "Every Wednesday: what happened in your network this week, plus your FavCoins 🌵"
             case .activityNotifications:
                 guard DwellCheckInMonitor.shared.isSupported else { return "Notifications about places and circles." }
@@ -38,6 +41,70 @@ class NotificationPreferencesViewController: BaseTableViewController {
         }
     }
     
+    /// All notifications / Stores I follow only / Let me choose (2026-11-26)
+    private enum SendMeRow: Int, CaseIterable {
+        case all
+        case storesOnly
+        case custom
+
+        var choice: NotificationScope.Choice {
+            switch self {
+            case .all: return .all
+            case .storesOnly: return .storesOnly
+            case .custom: return .custom
+            }
+        }
+        var title: String {
+            switch self {
+            case .all: return "All notifications"
+            case .storesOnly: return "Stores I follow only"
+            case .custom: return "Let me choose"
+            }
+        }
+        var detail: String {
+            switch self {
+            case .all: return "Friends, suggestions, messages, stores and more"
+            case .storesOnly: return "Only stores whose bell is on, plus your orders and lines"
+            case .custom: return "Pick each kind below"
+            }
+        }
+    }
+
+    private var everySwitchOn: Bool {
+        let p = preferences
+        return p.newMessages && p.newSuggestions && p.newPlaces && p.connectionRequests && p.circleInvites
+            && p.newFollowers && p.discoveryPrompts && p.weekendRecommendations && p.storeAlerts && p.dailySummary
+    }
+
+    private var scopeChoice: NotificationScope.Choice {
+        NotificationScope.choice(mode: NotificationScope.Mode(raw: preferences.mode), everySwitchOn: everySwitchOn)
+    }
+
+    /// "Let me choose" picked while every switch is still on: it stays the
+    /// selected row until a switch changes
+    private var pickedCustom = false
+
+    private func choose(_ row: SendMeRow) {
+        switch row {
+        case .all:
+            preferences.mode = NotificationScope.Mode.all.rawValue
+            preferences.newMessages = true; preferences.newSuggestions = true; preferences.newPlaces = true
+            preferences.connectionRequests = true; preferences.circleInvites = true; preferences.newFollowers = true
+            preferences.discoveryPrompts = true; preferences.weekendRecommendations = true
+            preferences.storeAlerts = true; preferences.dailySummary = true
+            pickedCustom = false
+        case .storesOnly:
+            preferences.mode = NotificationScope.Mode.storesOnly.rawValue
+            preferences.storeAlerts = true
+            pickedCustom = false
+        case .custom:
+            preferences.mode = NotificationScope.Mode.all.rawValue
+            pickedCustom = true
+        }
+        markAsChanged()
+        tableView.reloadData()
+    }
+
     private enum DailySummaryRow: Int, CaseIterable {
         case enabled
         case time
@@ -129,6 +196,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
                     switch result {
                     case .success(let user):
                         self.preferences = user.notificationPreferences ?? NotificationPreferences()
+                        NotificationScopeStore.shared.adopt(self.preferences)
                         ProximityNotificationScheduler.isEnabled = self.preferences.locationPrompts
                         self.updateTimePickerDate()
                         self.tableView.reloadData()
@@ -189,6 +257,7 @@ class NotificationPreferencesViewController: BaseTableViewController {
                 
                 switch result {
                 case .success:
+                    if let saved = self?.preferences { NotificationScopeStore.shared.adopt(saved) }
                     self?.hasChanges = false
                     self?.navigationItem.rightBarButtonItem?.isEnabled = false
                     AlertPresenter.showSuccess("Preferences saved", from: self!)
@@ -263,6 +332,8 @@ extension NotificationPreferencesViewController {
         guard let sectionType = Section(rawValue: section) else { return 0 }
         
         switch sectionType {
+        case .sendMe:
+            return SendMeRow.allCases.count
         case .dailySummary:
             return showingTimePicker ? 3 : DailySummaryRow.allCases.count
         case .activityNotifications:
@@ -279,6 +350,9 @@ extension NotificationPreferencesViewController {
     }
     
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        if Section(rawValue: section) == .sendMe, scopeChoice == .storesOnly {
+            return "The switches below are paused, except Stores You Follow. Choose All notifications or Let me choose to hear about friends too."
+        }
         return Section(rawValue: section)?.footer
     }
     
@@ -288,6 +362,19 @@ extension NotificationPreferencesViewController {
         }
         
         switch section {
+        case .sendMe:
+            let row = SendMeRow(rawValue: indexPath.row)!
+            let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
+            var config = UIListContentConfiguration.subtitleCell()
+            config.text = row.title
+            config.secondaryText = row.detail
+            config.secondaryTextProperties.color = .secondaryLabel
+            cell.contentConfiguration = config
+            let selected = pickedCustom && scopeChoice != .storesOnly ? row == .custom : row.choice == scopeChoice
+            cell.accessoryType = selected ? .checkmark : .none
+            cell.accessibilityTraits = selected ? [.button, .selected] : .button
+            return cell
+
         case .dailySummary:
             if showingTimePicker && indexPath.row == 2 {
                 let cell = UITableViewCell()
@@ -490,6 +577,9 @@ extension NotificationPreferencesViewController {
         guard let section = Section(rawValue: indexPath.section) else { return }
         
         switch section {
+        case .sendMe:
+            choose(SendMeRow(rawValue: indexPath.row)!)
+
         case .dailySummary:
             if indexPath.row == DailySummaryRow.time.rawValue && preferences.dailySummary {
                 showingTimePicker.toggle()

@@ -5,7 +5,7 @@ const { COLLECTIONS, createNotification, validateNotification } = require('../mo
 const emailService = require('./emailService');
 const sseService = require('./sseService');
 const { computeBadgeCount } = require('./badgeService');
-const { categoryFor, prefKeyFor, shouldBadge, recordsRow, isUrgent } = require('./notificationTypes');
+const { categoryFor, prefKeyFor, shouldBadge, recordsRow, isUrgent, isStoresOnly, reachesStoresOnly } = require('./notificationTypes');
 
 const db = getFirestore();
 const messaging = getMessaging();
@@ -218,6 +218,8 @@ class NotificationService {
 
   // Check if notification type is enabled
   isNotificationEnabled(type, preferences) {
+    // "Stores I follow only": everything else waits until they choose more
+    if (isStoresOnly(preferences) && !reachesStoresOnly(type)) return false;
     const defaultPreferences = {
       newMessages: true,
       newSuggestions: true,

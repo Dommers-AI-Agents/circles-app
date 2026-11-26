@@ -40,6 +40,11 @@ struct NotificationPreferences: Codable {
     /// Location-triggered "you're near <saved place>, check in?" banners
     /// (scheduled on-device; this is the account-level record of the toggle)
     var locationPrompts: Bool = true
+    /// "all" or "storesOnly" (Stores I follow only, 2026-11-26): an account
+    /// made by scanning a store hears only from its stores until it asks for more
+    var mode: String = "all"
+    /// Which "Get notified about friends too?" questions were already asked
+    var moreAsked: [String: Bool] = [:]
     
     // Quiet hours
     var quietHoursEnabled: Bool = false
@@ -57,6 +62,7 @@ struct NotificationPreferences: Codable {
         case dailySummary, summaryTime, timezone
         case socialActivity, discoveryPrompts, milestones, weekendRecommendations, reengagement, frequency, locationPrompts
         case storeAlerts
+        case mode, moreAsked
         case quietHoursEnabled, quietHoursStart, quietHoursEnd
     }
     
@@ -86,6 +92,8 @@ struct NotificationPreferences: Codable {
         reengagement = try container.decodeIfPresent(Bool.self, forKey: .reengagement) ?? true
         frequency = try container.decodeIfPresent(String.self, forKey: .frequency) ?? "normal"
         locationPrompts = try container.decodeIfPresent(Bool.self, forKey: .locationPrompts) ?? true
+        mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "all"
+        moreAsked = (try? container.decodeIfPresent([String: Bool].self, forKey: .moreAsked)) ?? [:]
         
         // Quiet hours
         quietHoursEnabled = try container.decodeIfPresent(Bool.self, forKey: .quietHoursEnabled) ?? false

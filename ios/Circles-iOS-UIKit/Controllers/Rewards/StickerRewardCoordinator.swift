@@ -174,13 +174,20 @@ final class StickerRewardCoordinator: NSObject {
                         DispatchQueue.main.async { self.startClipFirstSessionWithoutPage() }
                         return
                     }
-                    nav.pushViewController(PlaceDetailViewController(place: place), animated: true)
+                    let page = PlaceDetailViewController(place: place)
+                    nav.pushViewController(page, animated: true)
+                    let rewardsLive = !welcome.offers.isEmpty || (welcome.awardedPoints ?? 0) > 0
                     let celebrate = {
                         CelebrationBurst.show(line, over: tabBar.view)
-                        // A moment on the page, then their first run
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) {
-                            (tabBar.view.window?.windowScene?.delegate as? SceneDelegate)?
-                                .firstSession.startClipFirstSession(store: place)
+                        // A moment on the page, then a tour of the store
+                        // (Wes, 2026-11-26), then their first run
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { [weak page] in
+                            let firstRun: () -> Void = {
+                                (tabBar.view.window?.windowScene?.delegate as? SceneDelegate)?
+                                    .firstSession.startClipFirstSession(store: place)
+                            }
+                            guard let page, page.view.window != nil else { return firstRun() }
+                            page.runStoreWelcomeGuide(rewardsLive: rewardsLive, then: firstRun)
                         }
                     }
                     if let transition = nav.transitionCoordinator {

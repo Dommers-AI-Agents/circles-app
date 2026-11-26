@@ -236,6 +236,11 @@ class NetworkManager {
                         
                         self.connections = validConnections.filter { $0.status == .accepted }
                         self.pendingConnections = validConnections.filter { $0.status == .pending }
+                        // Someone asked to connect, and they only hear from
+                        // stores: ask once whether friends count too
+                        if let incoming = self.pendingConnections.first(where: { $0.connectedUserId == currentUserId }) {
+                            NotificationScopeStore.shared.consider(.friendRequest, name: incoming.connectedUser?.displayName)
+                        }
                         
                         Logger.debug("🔍 NetworkManager: Loaded connections - accepted: \(self.connections.count), pending: \(self.pendingConnections.count)")
                         

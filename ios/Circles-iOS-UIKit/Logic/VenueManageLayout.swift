@@ -84,6 +84,9 @@ enum VenueManageLayout {
         case addAnnouncement
         // Window sticker
         case showWindowSticker
+        /// What the App Clip shows after Open: welcome words, rows, points,
+        /// Wallet, the sign-in photo (2026-11-26)
+        case clipWelcome
         /// Write the window link onto NFC stickers, taps per sticker (2026-11-01)
         case nfcStickers
         case emailStickers
@@ -150,7 +153,7 @@ enum VenueManageLayout {
         announcements.append(.addAnnouncement)
 
         let codes: [Row] = physical
-            ? [.showRegisterCard, .showWindowSticker, .nfcStickers, .loyaltyCodes, .emailStickers, .replaceRegisterCard]
+            ? [.showRegisterCard, .showWindowSticker, .clipWelcome, .nfcStickers, .loyaltyCodes, .emailStickers, .replaceRegisterCard]
             : [.loyaltyCodes]
 
         var result: [(Section, [Row])] = []

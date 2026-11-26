@@ -133,7 +133,56 @@ function buildClipExperience({ venue, globalPlace, loyaltyLive, offers, earnRate
   };
 }
 
+const OVERRIDE_TEXT = { shortName: MAX_SHORT_NAME, welcomeLine: 160, doneLine: 160 };
+
+/**
+ * An owner's edits, checked: words trimmed to length, rows from the known
+ * kinds, switches as booleans, the sign-in photo one of the store's own
+ * public photos, the menu an http(s) link. `null` clears a field (back to
+ * the default). Returns { overrides, errors }; `current` is what's saved.
+ */
+function cleanOverrides(input, { current = {}, photoUrls = [] } = {}) {
+  const body = input && typeof input === 'object' ? input : {};
+  const next = { ...current };
+  const errors = [];
+  for (const [key, max] of Object.entries(OVERRIDE_TEXT)) {
+    if (!(key in body)) continue;
+    if (body[key] === null || body[key] === '') { delete next[key]; continue; }
+    if (typeof body[key] !== 'string') { errors.push(`${key} must be text`); continue; }
+    const text = body[key].trim();
+    if (text.length > max) errors.push(`${key} is ${text.length} characters; ${max} at most`);
+    else if (text) next[key] = text; else delete next[key];
+  }
+  if ('rows' in body) {
+    if (body.rows === null) delete next.rows;
+    else if (!Array.isArray(body.rows)) errors.push('rows must be a list');
+    else {
+      const unknown = body.rows.filter((kind) => !ROW_KINDS.includes(kind));
+      if (unknown.length) errors.push(`Unknown rows: ${unknown.join(', ')}`);
+      else next.rows = [...new Set(body.rows)];
+    }
+  }
+  for (const key of ['showRewards', 'showWallet']) {
+    if (!(key in body)) continue;
+    if (body[key] === null) delete next[key];
+    else if (typeof body[key] !== 'boolean') errors.push(`${key} must be true or false`);
+    else if (body[key]) delete next[key]; // on is the default
+    else next[key] = false;
+  }
+  if ('connectPhotoUrl' in body) {
+    if (!body.connectPhotoUrl) delete next.connectPhotoUrl;
+    else if (!photoUrls.includes(body.connectPhotoUrl)) errors.push('The sign-in photo must be one of the store\u2019s photos');
+    else next.connectPhotoUrl = body.connectPhotoUrl;
+  }
+  if ('menuUrl' in body) {
+    if (!body.menuUrl) delete next.menuUrl;
+    else if (!httpUrl(body.menuUrl)) errors.push('The menu link must start with http:// or https://');
+    else next.menuUrl = httpUrl(body.menuUrl);
+  }
+  return { overrides: next, errors };
+}
+
 /** Whether the preview carries the experience: off until Wes turns it on. */
 const clipExperienceEnabled = () => process.env.CLIP_STORE_WELCOME === '1';
 
-module.exports = { buildClipExperience, clipExperienceEnabled, ROW_KINDS };
+module.exports = { buildClipExperience, cleanOverrides, clipExperienceEnabled, ROW_KINDS };

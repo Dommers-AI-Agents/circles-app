@@ -81,12 +81,9 @@ exports.getVenuePreview = async (req, res) => {
     const earnRate = loyaltyLive ? rewardService.effectiveEarnRate(venue) : null;
     // The screens after Open (Welcome, sign-in, connected), 2026-11-26: a
     // window code only, behind CLIP_STORE_WELCOME until Wes turns it on
-    const { buildClipExperience, clipExperienceEnabled } = require('../services/clipExperience');
+    const { clipExperienceEnabled } = require('../services/clipExperience');
     const experience = clipExperienceEnabled() && !isRegister
-      ? buildClipExperience({
-        venue, globalPlace: gallery.globalPlace, loyaltyLive, offers, earnRate,
-        savePoints: scanPoints, coverUrl, photoUrls: gallery.photoUrls
-      })
+      ? (await require('../services/clipExperienceStore').experienceForVenue(venue, { gallery }).catch(() => null))?.experience || null
       : null;
     return res.json({
       success: true,

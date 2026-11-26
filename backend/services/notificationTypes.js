@@ -167,4 +167,24 @@ const isUrgent = (type) => row(type).urgent === true;
 /** A type the server knows (and so may store in the Notifications list). */
 const isKnownType = (type) => Object.prototype.hasOwnProperty.call(TYPES, type);
 
-module.exports = { TYPES, categoryFor, prefKeyFor, shouldBadge, recordsRow, isUrgent, isKnownType };
+/**
+ * "Stores I follow only" (Wes, 2026-11-26): someone who joined by scanning a
+ * store said yes to hearing from THAT store, not to everything FavCircles
+ * sends. In that mode only these reach them: their stores' alerts and nudges
+ * (pref storeAlerts), anything Time Sensitive (someone is waiting on it), and
+ * news about their own orders, lines, receipts, coins and stores.
+ * `notificationPreferences.mode`: 'storesOnly' | 'all' (absent = all).
+ */
+const STORES_ONLY_EXTRA = new Set([
+  'waitlist_update', 'receipt_new', 'receipt_result', 'store_feedback',
+  'store_claim', 'store_claim_approved', 'favcoin_claim_settled', 'admin_alert'
+]);
+const STORES_ONLY = 'storesOnly';
+const isStoresOnly = (preferences) => !!preferences && preferences.mode === STORES_ONLY;
+/** Whether a type still reaches someone in "Stores I follow only". */
+const reachesStoresOnly = (type) => prefKeyFor(type) === 'storeAlerts' || isUrgent(type) || STORES_ONLY_EXTRA.has(type);
+
+module.exports = {
+  TYPES, categoryFor, prefKeyFor, shouldBadge, recordsRow, isUrgent, isKnownType,
+  STORES_ONLY, isStoresOnly, reachesStoresOnly
+};

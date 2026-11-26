@@ -13,6 +13,14 @@ final class NotificationOnboardingViewController: BaseViewController {
 
     var onCompletion: (() -> Void)?
     private var finished = false
+    /// The store they joined at (App Clip): the page leads with it
+    var storeName: String?
+    /// "Stores I follow only" (2026-11-26): they choose just their stores
+    /// (selected) or everything, once
+    private lazy var asksScope = NotificationScopeStore.shared.shouldAsk(.tour)
+    private var wantsEverything = false
+    private let justStoresOption = UIButton(type: .system)
+    private let everythingOption = UIButton(type: .system)
 
     private let gradient = CAGradientLayer()
     private let bubbles = UIStackView()
@@ -58,7 +66,8 @@ final class NotificationOnboardingViewController: BaseViewController {
     private func setupUI() {
         bubbles.axis = .vertical
         bubbles.spacing = 10
-        for sample in Self.samples {
+        let samples = asksScope ? Self.storeSamples(storeName) : Self.samples
+        for sample in samples {
             let bubble = Self.bubble(symbol: sample.symbol, title: sample.title, body: sample.body)
             bubble.alpha = 0
             bubble.transform = CGAffineTransform(translationX: 0, y: -24).scaledBy(x: 0.96, y: 0.96)
@@ -68,7 +77,7 @@ final class NotificationOnboardingViewController: BaseViewController {
         bubbles.accessibilityElementsHidden = true
 
         let title = UILabel()
-        title.text = "Never miss a new favorite"
+        title.text = asksScope ? "Hear from \(storeName ?? "your stores")" : "Never miss a new favorite"
         title.font = Self.serif(34)
         title.adjustsFontForContentSizeCategory = true
         title.textColor = .white
@@ -76,7 +85,9 @@ final class NotificationOnboardingViewController: BaseViewController {
         title.textAlignment = .center
 
         let subtitle = UILabel()
-        subtitle.text = "Friends\u{2019} new spots, places sent to you, and your rewards."
+        subtitle.text = asksScope
+            ? "Their specials, events and news, at most one a day."
+            : "Friends\u{2019} new spots, places sent to you, and your rewards."
         subtitle.font = .preferredFont(forTextStyle: .body)
         subtitle.adjustsFontForContentSizeCategory = true
         subtitle.textColor = UIColor.white.withAlphaComponent(0.85)
@@ -92,7 +103,21 @@ final class NotificationOnboardingViewController: BaseViewController {
         skipButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
         skipButton.addTarget(self, action: #selector(skipTapped), for: .touchUpInside)
 
-        let words = UIStackView(arrangedSubviews: [title, subtitle])
+        var wordViews: [UIView] = [title, subtitle]
+        if asksScope {
+            configureOption(justStoresOption, title: "Just the stores I follow",
+                            detail: "\(storeName ?? "Your stores")\u{2019}s specials, events and news")
+            configureOption(everythingOption, title: "Everything",
+                            detail: "Also when friends save places, send you suggestions or follow you")
+            justStoresOption.addAction(UIAction { [weak self] _ in self?.pickEverything(false) }, for: .touchUpInside)
+            everythingOption.addAction(UIAction { [weak self] _ in self?.pickEverything(true) }, for: .touchUpInside)
+            let options = UIStackView(arrangedSubviews: [justStoresOption, everythingOption])
+            options.axis = .vertical
+            options.spacing = 8
+            wordViews.append(options)
+            pickEverything(false)
+        }
+        let words = UIStackView(arrangedSubviews: wordViews)
         words.axis = .vertical
         words.spacing = 10
         let buttons = UIStackView(arrangedSubviews: [allowButton, skipButton])
@@ -116,6 +141,41 @@ final class NotificationOnboardingViewController: BaseViewController {
             buttons.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -20),
             buttons.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -12)
         ])
+    }
+
+    /// What a store's alerts look like (illustrations only)
+    private static func storeSamples(_ name: String?) -> [(symbol: String, title: String, body: String)] {
+        let store = name ?? "Your favorite store"
+        return [
+            ("tag.fill", store, "New special just posted"),
+            ("calendar", store, "This Saturday: an event for regulars")
+        ]
+    }
+
+    private func configureOption(_ button: UIButton, title: String, detail: String) {
+        var config = UIButton.Configuration.filled()
+        config.baseBackgroundColor = UIColor.white.withAlphaComponent(0.12)
+        config.baseForegroundColor = .white
+        config.cornerStyle = .large
+        config.titleAlignment = .leading
+        config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14)
+        config.imagePlacement = .trailing
+        config.imagePadding = 10
+        config.attributedTitle = AttributedString(title, attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 17, weight: .semibold)]))
+        config.attributedSubtitle = AttributedString(detail, attributes: AttributeContainer([.font: UIFont.systemFont(ofSize: 14)]))
+        button.configuration = config
+        button.contentHorizontalAlignment = .fill
+    }
+
+    private func pickEverything(_ everything: Bool) {
+        wantsEverything = everything
+        for (button, selected) in [(justStoresOption, !everything), (everythingOption, everything)] {
+            button.configuration?.image = UIImage(systemName: selected ? "checkmark.circle.fill" : "circle")
+            button.configuration?.baseBackgroundColor = UIColor.white.withAlphaComponent(selected ? 0.24 : 0.1)
+            button.configuration?.background.strokeColor = selected ? .white : UIColor.white.withAlphaComponent(0.25)
+            button.configuration?.background.strokeWidth = selected ? 2 : 1
+            button.accessibilityTraits = selected ? [.button, .selected] : .button
+        }
     }
 
     /// A sample notification: app icon, a title, one line
@@ -190,6 +250,7 @@ final class NotificationOnboardingViewController: BaseViewController {
     func finish() {
         guard !finished else { return }
         finished = true
+        if asksScope { NotificationScopeStore.shared.recordTourAnswer(everything: wantsEverything) }
         UserDefaults.standard.set(true, forKey: "hasShownNotificationOnboarding")
         onCompletion?()
         if presentingViewController != nil {

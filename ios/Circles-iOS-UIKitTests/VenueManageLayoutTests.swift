@@ -78,7 +78,7 @@ struct VenueManageLayoutTests {
         #expect(L.isBusiness(.referrals))
         #expect(L.isBusiness(.coupons))
         #expect(rows(facts, .customers) == [.customers, .savers, .followers, .feedback])
-        #expect(rows(facts, .codes) == [.showRegisterCard, .showWindowSticker, .nfcStickers, .loyaltyCodes, .emailStickers, .replaceRegisterCard])
+        #expect(rows(facts, .codes) == [.showRegisterCard, .showWindowSticker, .clipWelcome, .nfcStickers, .loyaltyCodes, .emailStickers, .replaceRegisterCard])
         #expect(rows(facts, .announcements) == [.announcement(0), .addAnnouncement])
         #expect(rows(facts, .glance) == [.statTiles, .fullStats, .insights, .activity])
     }
@@ -90,7 +90,7 @@ struct VenueManageLayoutTests {
 
     @Test func freePlanKeepsTheBasics() {
         let free: [L.Row] = [.statTiles, .fullStats, .viewPage, .details, .hours, .photos, .storefrontButtons,
-                             .showWindowSticker, .nfcStickers, .emailStickers, .contactName, .contactEmail, .managers,
+                             .showWindowSticker, .clipWelcome, .nfcStickers, .emailStickers, .contactName, .contactEmail, .managers,
                              .plan, .ownerGuide, .brandStorefront, .addBusiness]
         free.forEach { #expect(!L.isBusiness($0), "\($0) should be free") }
     }

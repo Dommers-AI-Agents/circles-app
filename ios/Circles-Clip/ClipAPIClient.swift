@@ -197,6 +197,13 @@ final class ClipAPIClient {
         let _: ClipSimpleResponse = try await request(path: "places/\(globalPlaceId)/follow/alerts", method: "POST", bearerToken: bearer)
     }
 
+    /// "Stores I follow only" for an account the store scan just made: they
+    /// said yes to this store, not to everything (2026-11-26)
+    func setStoresOnlyNotifications(bearer: String) async throws {
+        let _: ClipSimpleResponse = try await request(path: "users/notification-preferences", method: "PUT",
+                                                      body: ["notificationPreferences": ["mode": "storesOnly"]], bearerToken: bearer)
+    }
+
     /// The signed .pkpass for the store's Wallet card
     func walletPass(venueId: String, bearer: String) async throws -> Data {
         var urlRequest = URLRequest(url: baseURL.appendingPathComponent("rewards/venues/\(venueId)/wallet-pass"))

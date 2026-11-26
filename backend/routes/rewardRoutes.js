@@ -181,6 +181,10 @@ router.post('/venues/:venueId/customers/:userId/restore', requireVenueOwner, req
 router.get('/venues/:venueId/feedback', requireVenueOwner, venueCustomers.listFeedback);
 // Cover photo is basic storefront presence — free owner tier
 router.put('/venues/:venueId/cover-photo', requireVenueOwner, setVenueCoverPhoto);
+// The App Clip's screens after Open: the owner's words, rows, points, Wallet, photo (2026-11-26)
+const clipWelcome = require('../controllers/venues/venueClipWelcomeController');
+router.get('/venues/:venueId/clip-welcome', requireVenueOwner, clipWelcome.getClipWelcome);
+router.put('/venues/:venueId/clip-welcome', requireVenueOwner, clipWelcome.updateClipWelcome);
 // Canonical place-record edit (name/description/category/phone/website) —
 // free owner tier, same as the in-app tap-to-edit surface
 router.patch('/venues/:venueId/place', requireVenueOwner, updateVenuePlace);

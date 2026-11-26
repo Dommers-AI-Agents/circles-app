@@ -347,6 +347,8 @@ final class FirstSessionCoordinator: SceneCoordinator {
         
         // Create notification onboarding view controller
         let notificationVC = NotificationOnboardingViewController()
+        // Joined at a store in the App Clip: the page leads with that store
+        if clipFirstSessionStarted { notificationVC.storeName = firstFavoriteName }
         
         // Configure completion callback
         notificationVC.onCompletion = { [weak self] in

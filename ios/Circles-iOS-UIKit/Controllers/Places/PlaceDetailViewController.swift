@@ -4182,3 +4182,41 @@ extension PlaceDetailViewController: ScanGuideHost {
         ], finish: ScreenGuideCopy.finish(.sharePlace), in: self, onBack: {})
     }
 }
+
+// MARK: - Guide: the store they joined at in the App Clip (2026-11-26)
+
+extension PlaceDetailViewController {
+    /// Their store's page, its bell, their rewards there (where live), then
+    /// `then` carries on into the first run. Skip also carries on.
+    func runStoreWelcomeGuide(rewardsLive: Bool, then: @escaping () -> Void) {
+        let copy = StoreWelcomeGuideCopy.stops(storeName: place.name, rewardsLive: rewardsLive)
+        let top = { [weak self] in
+            guard let self else { return }
+            self.scrollView.setContentOffset(CGPoint(x: 0, y: -self.scrollView.adjustedContentInset.top), animated: false)
+        }
+        let scrollTo = { [weak self] (view: UIView) in
+            guard let self else { return }
+            let rect = view.convert(view.bounds, to: self.scrollView).insetBy(dx: 0, dy: -120)
+            self.scrollView.scrollRectToVisible(rect, animated: false)
+        }
+        let visible = { (view: UIView) -> UIView? in view.isHidden || view.window == nil || view.bounds.height < 1 ? nil : view }
+        var stops = [
+            ScreenGuide.Stop(copy: copy[0], target: { nil }, prepare: top),
+            ScreenGuide.Stop(copy: copy[1], target: { [weak self] in self.flatMap { visible($0.alertsBellButton) } },
+                             prepare: { [weak self] in if let self { scrollTo(self.alertsBellButton) } })
+        ]
+        if copy.count > 2 {
+            stops.append(ScreenGuide.Stop(copy: copy[2], target: { [weak self] in self.flatMap { visible($0.venueRewardsView) } },
+                                          prepare: { [weak self] in if let self { scrollTo(self.venueRewardsView) } }))
+        }
+        var finished = false
+        let carryOn = {
+            guard !finished else { return }
+            finished = true
+            top()
+            then()
+        }
+        ScreenGuide.run(stops, finish: StoreWelcomeGuideCopy.finish, in: self, skipTitle: "Skip",
+                        onBack: carryOn, onSkip: carryOn)
+    }
+}

@@ -121,6 +121,11 @@ class ConversationsListViewController: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // Stores I follow only, and a friend has written: ask once about friends
+        if let me = AuthService.shared.currentUser?.id,
+           messagingManager.conversations.contains(where: { ($0.lastMessageSenderId ?? me) != me }) {
+            NotificationScopeStore.shared.consider(.message)
+        }
         Logger.debug("🔍 ConversationsListViewController: viewWillAppear called")
         Logger.debug("🔍 ConversationsListViewController: Auth token available: \(AuthService.shared.getToken() != nil)")
         Logger.debug("🔍 ConversationsListViewController: Initial load complete: \(isInitialLoadComplete)")

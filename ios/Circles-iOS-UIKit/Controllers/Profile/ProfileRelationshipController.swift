@@ -219,6 +219,8 @@ final class ProfileRelationshipController {
                 case .success(let response):
                     Logger.debug("✅ Successfully \(action)ed user: \(user.displayName)")
                     AuthService.shared.recordFollowChange(userId: user.id, isFollowing: action == "follow")
+                    // Stores I follow only: hear when they save new places?
+                    if action == "follow" { NotificationScopeStore.shared.consider(.follow, name: user.displayName) }
                     // First-ever follow earns a dime (nil on unfollow)
                     PiggyBankDepositView.play(credit: response.piggyBank)
 
@@ -305,6 +307,7 @@ final class ProfileRelationshipController {
                         delegate.connectionStatus = .accepted
                         delegate.updateButtonVisibility()
                         delegate.showAlert(title: "Success", message: "Connection request accepted!")
+                        NotificationScopeStore.shared.consider(.follow, name: user.displayName)
 
                         // Refresh connections
                         NetworkManager.shared.loadConnections()
@@ -333,6 +336,7 @@ final class ProfileRelationshipController {
                         )
                         delegate.updateButtonVisibility()
                         delegate.showAlert(title: "Success", message: "Connection request sent!")
+                        NotificationScopeStore.shared.consider(.follow, name: user.displayName)
 
                         // Refresh connections to get updated list
                         NetworkManager.shared.loadConnections()

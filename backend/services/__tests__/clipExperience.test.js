@@ -59,3 +59,31 @@ describe('buildClipExperience', () => {
     expect(ROW_KINDS).toContain('menu');
   });
 });
+
+describe('cleanOverrides', () => {
+  const { cleanOverrides } = require('../clipExperience');
+  const photoUrls = ['https://x/a.jpg', 'https://x/b.jpg'];
+
+  test('words are trimmed and capped; null or empty goes back to the default', () => {
+    const { overrides, errors } = cleanOverrides({ shortName: '  Caffeena ', welcomeLine: 'Coffee and cars.' }, { photoUrls });
+    expect(errors).toEqual([]);
+    expect(overrides).toEqual({ shortName: 'Caffeena', welcomeLine: 'Coffee and cars.' });
+    expect(cleanOverrides({ shortName: null }, { current: overrides }).overrides).toEqual({ welcomeLine: 'Coffee and cars.' });
+    expect(cleanOverrides({ shortName: 'x'.repeat(25) }).errors[0]).toMatch(/24 at most/);
+  });
+
+  test('rows only from the known kinds; switches only hide', () => {
+    expect(cleanOverrides({ rows: ['events', 'menu', 'events'] }).overrides.rows).toEqual(['events', 'menu']);
+    expect(cleanOverrides({ rows: ['tiktok'] }).errors[0]).toMatch(/Unknown rows/);
+    expect(cleanOverrides({ showRewards: false }).overrides).toEqual({ showRewards: false });
+    expect(cleanOverrides({ showRewards: true }, { current: { showRewards: false } }).overrides).toEqual({});
+    expect(cleanOverrides({ showWallet: 'no' }).errors[0]).toMatch(/true or false/);
+  });
+
+  test('the sign-in photo must be one of the store\'s; the menu must be a web link', () => {
+    expect(cleanOverrides({ connectPhotoUrl: 'https://x/b.jpg' }, { photoUrls }).overrides.connectPhotoUrl).toBe('https://x/b.jpg');
+    expect(cleanOverrides({ connectPhotoUrl: 'https://evil/x.jpg' }, { photoUrls }).errors[0]).toMatch(/store’s photos/);
+    expect(cleanOverrides({ menuUrl: 'javascript:alert(1)' }).errors[0]).toMatch(/http/);
+    expect(cleanOverrides({ menuUrl: 'https://caffeena.com/menu' }).overrides.menuUrl).toBe('https://caffeena.com/menu');
+  });
+});
