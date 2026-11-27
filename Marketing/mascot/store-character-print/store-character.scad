@@ -9,7 +9,7 @@
 // Lettering and faces are engraved (fill with a paint pen). Two colours (Wes, 2026-11-26: "I like two
 // colors"): the base is one filament and the figure another, split flat at z = K_H (12 mm), so the
 // printer swaps filament once. piece="base" and piece="figure" are the two halves of the same print.
-//   character="monkee"     Fresh Monkee: the monkey from their sign, pole and shake (window code JKI750)
+//   character="monkee"     Fresh Monkee: the monkey crouched over a smoothie     (window code JKI750)
 //   character="caffeena"   Caffeena Coffee House: a race car driven by a coffee cup   (FHVMPK)
 //   character="port"       Port Coffee: the ship riding in a cup                (4HOA4V)
 //   character="show"       preview of all three, in each store's colours
@@ -78,68 +78,100 @@ module front_cut(depth = K_CUT) {
 // figures are drawn standing on z = 0, centred on their own spot
 module on_base() { translate([0, K_CY, K_H - 0.01]) children(); }
 
-// ---------- Fresh Monkee: the monkey from their sign ----------
-// Standing, one hand up on the pole, both eyes shut in a grin, the tail holding up a shake
-// (Wes, 2026-11-27, with the logo and the storefront sign: "It doesn't look much like the logo. And
-// perhaps make it a little taller and bigger like the port coffee change").
-MK_S = 1.1;                     // drawn at 86 mm, printed 10% larger
-MK_HZ = 60;                     // head centre
-MK_POLE = [-30, -12];           // the pole stands in front of the ear, clear of it
-MK_CUP = [26.5, -9.5];              // so does the shake
-module mk_head() {
-  translate([0, 0, MK_HZ]) scale([1.05, 0.95, 1]) drop(20);
-  // ears: big and round, each carried up from the head at better than 45 degrees
-  for (s = [-1, 1]) hull() { translate([s * 22, 0, MK_HZ + 2]) scale([1, 0.45, 1]) sphere(8.5); translate([s * 12.5, 0, MK_HZ - 16]) sphere(1, $fn = 16); }
+// ---------- Fresh Monkee: the monkey crouched over a smoothie ----------
+// In profile across the back of the base, head turned to the customer, both hands round a smoothie
+// that grows out of the base (so it prints in the base's green; the monkey is the second colour),
+// the tail curling up and out past the base's edge (Wes, 2026-11-27: "get rid of the pole he's
+// holding. Have him turn sideways and a bit crouched with both hands holding the smoothie. This way
+// the smoothie is green and is built from the base. The monkey stays brown. His tail is curvy and can
+// hang off the base. make full use of the width of the rear of the base").
+// Colour here is by PART, not by height: every layer of the cup costs a filament change.
+MK_S = 1.12;
+MK_HX = -3; MK_HZ = 54;         // head centre
+MK_CUP = [21, 0];
+function mk_cup_r(z) = 8.5 + 3 * z / 26;
+// engrave from the +x side: children(0) the drawing (x = across, y = up), children(1) the solid
+module side_cut(depth = K_CUT) { rotate([0, 0, 90]) front_cut(depth) { children(0); rotate([0, 0, -90]) children(1); } }
+
+// --- the smoothie (green) ---
+module mk_cup_plain() {
+  translate([MK_CUP[0], MK_CUP[1], 0]) {
+    cylinder(r1 = mk_cup_r(0), r2 = mk_cup_r(26), h = 26.01, $fn = 128);
+    translate([0, 0, 26]) cylinder(r1 = 11.5, r2 = 12.3, h = 0.81, $fn = 128);                       // the lid's rim
+    translate([0, 0, 26.8]) cylinder(r = 12.3, h = 1.61, $fn = 128);
+    translate([0, 0, 28.4]) scale([1, 1, 5 / 11.3]) intersection() { sphere(11.3, $fn = 96); translate([-12, -12, 0]) cube(24); }   // the dome
+  }
 }
-// the face: a heart-shaped step, the way the monkey's lighter face sits in its fur
+module mk_leaf2d() {            // a leaf with its rib, on the cup's outer side
+  translate([0, 11]) rotate(-18) difference() {
+    intersection() { translate([-3.4, 0]) circle(7, $fn = 64); translate([3.4, 0]) circle(7, $fn = 64); }
+    square([1.3, 9], center = true);
+    for (y = [-2.5, 0.5, 3.5]) for (m = [0, 1]) mirror([m, 0]) translate([0, y]) rotate(-38) translate([0, -0.6]) square([3.4, 1.2]);
+  }
+}
+module mk_cup() {
+  difference() {
+    mk_cup_plain();
+    translate([MK_CUP[0], MK_CUP[1], 0]) for (z = [2.6, 19.4])               // the sleeve's two edges
+      translate([0, 0, z]) difference() { cylinder(r = 14, h = 1.3, $fn = 128); cylinder(r = mk_cup_r(z) - K_CUT, h = 1.3, $fn = 128); }
+    side_cut() { mk_leaf2d(); mk_cup_plain(); }
+  }
+}
+
+// --- the monkey (brown) ---
+module mk_head() {
+  translate([MK_HX, -1, MK_HZ]) scale([1.05, 0.95, 1]) drop(16);
+  for (s = [-1, 1]) hull() { translate([MK_HX + s * 17.6, -1, MK_HZ + 1.5]) scale([1, 0.45, 1]) sphere(7.4); translate([MK_HX + s * 10, -1, MK_HZ - 13]) sphere(1, $fn = 16); }
+  // a shallow muzzle, carried down to the chest by the jaw
+  hull() { translate([MK_HX, -12.6, MK_HZ - 5]) scale([10.5, 5.2, 7.2]) sphere(1, $fn = 64); translate([MK_HX, -7.5, MK_HZ - 17]) sphere(1.5, $fn = 24); }
+}
 module mk_mask2d() {
-  hull() for (s = [-1, 1]) translate([s * 7.5, MK_HZ + 5]) circle(9, $fn = 64);
-  translate([0, MK_HZ - 4.5]) scale([15, 10.5]) circle(1, $fn = 96);
-  for (s = [-1, 1]) translate([s * 25, MK_HZ + 2.5]) circle(4, $fn = 48);       // inner ears
+  hull() for (s = [-1, 1]) translate([MK_HX + s * 6.4, MK_HZ + 3.6]) circle(7.4, $fn = 64);
+  translate([MK_HX, MK_HZ - 5.6]) scale([12.6, 8.8]) circle(1, $fn = 96);
+  for (s = [-1, 1]) translate([MK_HX + s * 19.4, MK_HZ + 1.8]) circle(3.5, $fn = 48);              // inner ears
 }
 module mk_face2d() {
-  for (s = [-1, 1]) translate([s * 7.5, MK_HZ + 4.5]) arc2d(3.8, 15, 165, 1.9);   // eyes shut, smiling
-  for (s = [-1, 1]) translate([s * 2.1, MK_HZ + 0.4]) circle(1.05, $fn = 20);     // nostrils
-  intersection() { translate([0, MK_HZ - 2.2]) circle(8.6, $fn = 96); translate([-12, MK_HZ - 17.8]) square([24, 14.2]); }   // the open grin
+  for (s = [-1, 1]) translate([MK_HX + s * 6.4, MK_HZ + 4.2]) arc2d(3.3, 10, 170, 1.7);            // eyes shut, smiling
+  for (s = [-1, 1]) translate([MK_HX + s * 1.8, MK_HZ - 0.4]) circle(0.95, $fn = 20);              // nostrils
+  translate([MK_HX, MK_HZ + 1.2]) arc2d(7.6, 212, 328, 1.5);                                       // the smile, cheek to cheek
+  intersection() { translate([MK_HX, MK_HZ - 4.4]) circle(5, $fn = 64); translate([MK_HX - 8, MK_HZ - 18.2]) square([16, 12.6]); }   // open mouth
 }
-MK_TAIL = [[10, 5, 3], [17, 1, 12], [22.5, -4, 21], [MK_CUP[0], -7.5, 28], [MK_CUP[0], MK_CUP[1], 32]];
-module mk_tail() {              // out from the back, round to the front, always climbing
-  for (i = [0:len(MK_TAIL) - 2]) hull() for (p = [MK_TAIL[i], MK_TAIL[i + 1]]) translate(p) sphere(3.3, $fn = 32);
+// the tail: an S in plan, always climbing better than 45 degrees, out past the base's edge and curling back
+MK_TP = [[-18, 0], [-23, 3], [-28, 6], [-33, 6], [-37, 3], [-40, -1], [-41.5, -5], [-40.5, -9], [-37.5, -11], [-34.8, -9.4], [-34.6, -6.4]];
+function mk_tz(i) = i == 0 ? 5 : mk_tz(i - 1) + 1.15 * norm(MK_TP[i] - MK_TP[i - 1]);
+function mk_tr(i) = 3.7 - 1.3 * i / (len(MK_TP) - 1);
+module mk_tail() {
+  for (i = [0:len(MK_TP) - 2]) hull() for (j = [i, i + 1]) translate([MK_TP[j][0], MK_TP[j][1], mk_tz(j)]) sphere(mk_tr(j), $fn = 32);
 }
-module mk_shake() {             // the cup the tail holds up: lid, dome and straw
-  translate([MK_CUP[0], MK_CUP[1], 0]) {
-    translate([0, 0, 31.6]) cylinder(r1 = 3, r2 = 6.2, h = 3.41, $fn = 64);
-    translate([0, 0, 35]) cylinder(r1 = 6.2, r2 = 8, h = 17.01, $fn = 96);
-    translate([0, 0, 52]) cylinder(r1 = 8, r2 = 8.7, h = 0.81, $fn = 96);
-    translate([0, 0, 52.8]) cylinder(r = 8.7, h = 1.6, $fn = 96);
-    translate([0, 0, 54.39]) scale([1, 1, 0.55]) intersection() { sphere(8, $fn = 64); translate([-9, -9, 0]) cube(18); }
-    translate([0, 0, 54]) cylinder(r = 1.7, h = 13, $fn = 32);
-  }
+module mk_limbs(s) {            // one side: haunch, shin and foot, arm, hand and fingers
+  hull() { translate([-13, s * 8, 9]) sphere(9, $fn = 64); translate([9, s * 10, 14]) sphere(6.5, $fn = 64); translate([8, s * 10, 3]) sphere(4, $fn = 32); }
+  hull() { translate([8, s * 10, 2.6]) sphere(4.2, $fn = 32); translate([14.5, s * 10.8, 2]) scale([1, 1, 0.8]) sphere(3.8, $fn = 32); }
+  for (dy = [-2.9, 0, 2.9]) translate([17.6, s * 10.8 + dy, 1.5]) sphere(1.9, $fn = 24);           // toes
+  hull() { translate([-3, s * 11, 37]) sphere(5.5, $fn = 48); translate([7, s * 13.5, 23]) sphere(4.6, $fn = 48); }   // upper arm, elbow on the knee
+  hull() { translate([7, s * 13.5, 23]) sphere(4.6, $fn = 48); translate([20.5, s * 12, 21]) sphere(4.2, $fn = 48); }  // forearm
+  hull() { translate([20.5, s * 12, 21]) sphere(4.4, $fn = 48); translate([21, s * 9, 13.5]) sphere(1, $fn = 16); }    // the hand, grown from the cup's wall
+  // four fingers round the cup
+  for (k = [0:3]) let(z = 24.6 - 2.5 * k, r = mk_cup_r(z) + 0.5)
+    hull() for (a = [78, 44 + 3 * k]) translate([MK_CUP[0] + r * cos(a), s * r * sin(a), z]) sphere(1.45, $fn = 20);
+  hull() for (a = [100, 128]) let(r = mk_cup_r(23) + 0.5) translate([MK_CUP[0] + r * cos(a), s * r * sin(a), 23 + (a - 100) * 0.09]) sphere(1.6, $fn = 20);   // thumb
 }
-module mk_shake2d() {           // a band round the cup
-  translate([MK_CUP[0], 43.5]) square([20, 1.4], center = true);
-  translate([MK_CUP[0], 47]) square([20, 1.4], center = true);
-}
-module monkee() { scale(MK_S) monkee0(); }
-module monkee0() {
-  scale([1, 0.9, 1]) cylinder(r1 = 14, r2 = 11, h = 42, $fn = 128);                // body
-  difference() {                // the face is cut into the head alone: the pole and the shake stand in front of the ears
+module mk_body() {
+  hull() { translate([-13, 0, 10]) sphere(12, $fn = 96); translate([-5, 0, 32]) sphere(11, $fn = 96); }   // back and chest
+  difference() {                // the face is cut into the head alone
     mk_head();
     front_cut() { mk_mask2d(); mk_head(); }
-    front_cut(3 * K_CUT) { mk_face2d(); mk_head(); }      // eyes and grin: deep enough to read unpainted
+    front_cut(2.4 * K_CUT) { mk_face2d(); mk_head(); }
   }
-  for (s = [-1, 1]) translate([s * 7, -11, 4]) sphere(6.5, $fn = 64);              // feet
-  hull() { translate([10, -2, 36]) sphere(4.5, $fn = 48); translate([11, -4, 18]) sphere(4.5, $fn = 48); }   // the arm at its side
-  // the other arm, up to the pole
-  hull() { translate([-10, -3, 36]) sphere(4.6, $fn = 48); translate([MK_POLE[0], MK_POLE[1], 60]) sphere(4.6, $fn = 48); }
-  translate([MK_POLE[0], MK_POLE[1], 60]) sphere(5.6, $fn = 48);                  // the hand
-  translate([MK_POLE[0], MK_POLE[1], 0]) { cylinder(r = 3.6, h = 80, $fn = 64); translate([0, 0, 80]) sphere(3.6, $fn = 64); }
+  for (s = [-1, 1]) mk_limbs(s);
   mk_tail();
-  difference() { mk_shake(); front_cut() { mk_shake2d(); mk_shake(); } }
-  // the tuft
-  hull() { translate([0.5, 0, MK_HZ + 19]) sphere(3.5, $fn = 32); translate([4.5, 0, MK_HZ + 26.5]) sphere(1.6, $fn = 24); }
-  hull() { translate([-1, 0, MK_HZ + 19]) sphere(3, $fn = 32); translate([-4.5, 0, MK_HZ + 24]) sphere(1.5, $fn = 24); }
+  // the tuft: three spikes
+  for (t = [[0.8, 5.2, 9.4, 3.2], [-1.2, -4.6, 7.2, 2.8], [0, 0.6, 6.2, 2.6]])
+    hull() { translate([MK_HX + t[0], -1, MK_HZ + 15]) sphere(t[3], $fn = 32); translate([MK_HX + t[1], -1, MK_HZ + 15 + t[2]]) sphere(1.4, $fn = 24); }
+  // the straw, with its bend ring
+  translate([MK_CUP[0] + 3.5, MK_CUP[1], 30]) { cylinder(r = 2, h = 15, $fn = 40); translate([0, 0, 11]) cylinder(r1 = 2, r2 = 2.6, h = 0.61, $fn = 40); translate([0, 0, 11.6]) cylinder(r = 2.6, h = 1.2, $fn = 40); }
 }
+module mk_green() { scale(MK_S) mk_cup(); }
+module monkee() { difference() { scale(MK_S) mk_body(); scale(MK_S) mk_cup_plain(); } }
 
 // ---------- Caffeena: a race car, a coffee cup at the wheel ----------
 CAR_CUP_X = -3;
@@ -241,15 +273,23 @@ module port() {
 }
 
 // ---------- parts ----------
-module figure(c) { on_base() { if (c == "monkee") monkee(); else if (c == "caffeena") caffeena(); else port(); } }
+// base(c): everything in the first colour.  figure(c): everything in the second.
+// Caffeena and Port change colour at the top of the base; Fresh Monkee's smoothie is base-coloured too.
+module figure(c) {
+  intersection() {
+    on_base() { if (c == "monkee") monkee(); else if (c == "caffeena") caffeena(); else port(); }
+    translate([-150, -150, K_H]) cube([300, 300, 300]);
+  }
+}
 function store_name(c) = c == "monkee" ? "FRESH MONKEE" : c == "caffeena" ? "CAFFEENA" : "PORT COFFEE";
-module whole(c) { union() { kbase(store_name(c)); figure(c); } }
+module base(c) { union() { kbase(store_name(c)); if (c == "monkee") on_base() mk_green(); } }
+module whole(c) { union() { base(c); figure(c); } }
 
 if (character == "show") {
-  translate([-95, 0, 0]) { color("#39b54a") render() kbase(store_name("monkee")); color("#6b4226") render() figure("monkee"); k_label(); }
-  translate([0, 0, 0]) { color("#2b1707") render() kbase(store_name("caffeena")); color("#d49c60") render() figure("caffeena"); k_label(); }
-  translate([95, 0, 0]) { color("#272b4a") render() kbase(store_name("port")); color("#f4f1ea") render() figure("port"); k_label(); }
+  translate([-95, 0, 0]) { color("#39b54a") render() base("monkee"); color("#6b4226") render() figure("monkee"); k_label(); }
+  translate([0, 0, 0]) { color("#2b1707") render() base("caffeena"); color("#d49c60") render() figure("caffeena"); k_label(); }
+  translate([95, 0, 0]) { color("#272b4a") render() base("port"); color("#f4f1ea") render() figure("port"); k_label(); }
 }
-else if (piece == "base") intersection() { whole(character); translate([-100, -100, -1]) cube([200, 200, K_H + 1]); }
-else if (piece == "figure") intersection() { whole(character); translate([-100, -100, K_H]) cube([200, 200, 200]); }
+else if (piece == "base") base(character);
+else if (piece == "figure") figure(character);
 else whole(character);
