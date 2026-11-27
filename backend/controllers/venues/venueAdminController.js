@@ -327,15 +327,31 @@ exports.printCoasterStickers = async (req, res) => {
 // @desc    List sticker venues with their stats
 // @route   GET /api/rewards/admin/venues
 // @access  Admin
+const VENUE_LIST_CEILING = 2000;
+
 exports.listVenues = async (req, res) => {
   try {
+    // Every store, newest first. This was capped at the newest 200, so once
+    // there were 203 the oldest ones silently vanished from the admin list,
+    // the Join FavCircles code (Aug 2026) with them: Settings → Join
+    // FavCircles Code said "wasn't found" (Wes, 2026-11-27). The cap is now a
+    // safety ceiling well above the store count, and the response says when
+    // it bites instead of dropping stores quietly.
     const snapshot = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES)
       .orderBy('createdAt', 'desc')
-      .limit(200)
+      .limit(VENUE_LIST_CEILING + 1)
       .get();
 
-    const venues = snapshot.docs.map((doc) => ({ venueId: doc.id, ...doc.data() }));
-    res.json({ success: true, data: { venues, count: venues.length } });
+    const docs = snapshot.docs.slice(0, VENUE_LIST_CEILING);
+    const venues = docs.map((doc) => ({ venueId: doc.id, ...doc.data() }));
+    const truncated = snapshot.docs.length > VENUE_LIST_CEILING;
+    // The generic Join code is always in the list, whatever its age
+    if (truncated && !venues.some((v) => v.genericJoin === true)) {
+      const generic = await db.collection(STICKER_COLLECTIONS.STICKER_VENUES).where('genericJoin', '==', true).get();
+      generic.docs.forEach((doc) => venues.push({ venueId: doc.id, ...doc.data() }));
+    }
+    if (truncated) console.warn(`⚠️ Venue listing hit its ${VENUE_LIST_CEILING}-store ceiling: page it`);
+    res.json({ success: true, data: { venues, count: venues.length, truncated } });
   } catch (error) {
     console.error('❌ Venue listing failed:', error);
     res.status(500).json({ success: false, error: 'Failed to list venues' });
