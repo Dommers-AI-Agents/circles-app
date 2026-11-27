@@ -211,7 +211,17 @@ exports.getUser = async (req, res, next) => {
 // @access  Private
 exports.updateUser = async (req, res, next) => {
   try {
-    const { displayName, firstName, lastName, phoneNumber, bio, location, zipcode, profilePicture, preferences } = req.body;
+    const { displayName, firstName, lastName, phoneNumber, bio, location, profilePicture, preferences } = req.body;
+    let { zipcode } = req.body;
+    // The app's silent zipcode capture (from the phone's location) only fills a
+    // MISSING zipcode. It decides from its cached user, which can be stale or
+    // partial, so the server checks the stored one: a zipcode someone set is
+    // never replaced by wherever their phone happens to be (Wes, 2026-11-27:
+    // a passkey sign-in in Coolidge, AZ replaced his Charlotte 28203).
+    if (zipcode !== undefined && req.body.zipcodeIfMissing === true) {
+      const stored = (await db.collection(COLLECTIONS.USERS).doc(req.user.uid).get()).data() || {};
+      if (String(stored.zipcode || '').trim()) zipcode = undefined;
+    }
 
     const updateData = {
       updatedAt: new Date().toISOString()

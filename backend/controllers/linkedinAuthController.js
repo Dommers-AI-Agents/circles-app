@@ -303,6 +303,7 @@ exports.linkedinAuth = async (req, res, next) => {
         profilePicture: user.profilePicture || profilePicture || null,
         bio: user.bio || null,
         location: user.location || null,
+        zipcode: user.zipcode || null, // see firebaseAuthController: a sign-in without it overwrote zips
         friends: user.friends || [],
         friendRequests: user.friendRequests || [],
         createdAt: user.createdAt || new Date().toISOString()

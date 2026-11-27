@@ -130,6 +130,25 @@ class UserService {
         }
     }
     
+    /// The silent zipcode capture: saves `zipcode` only if the account has
+    /// none. The server checks the stored zipcode, so a stale or partial
+    /// cached user can never replace a zipcode someone set with wherever the
+    /// phone happens to be (2026-11-27). Answers with the account as stored.
+    func fillMissingZipcode(_ zipcode: String, completion: @escaping (Result<User, Error>) -> Void) {
+        api.request(
+            endpoint: "users/me",
+            method: .put,
+            body: ["zipcode": zipcode, "zipcodeIfMissing": true],
+            requiresAuth: true
+        ) { [weak self] (result: Result<UserResponse, APIError>) in
+            guard let self = self else { return }
+            switch result {
+            case .success(let response): completion(.success(response.user))
+            case .failure(let error): completion(.failure(self.mapAPIErrorToUserError(error)))
+            }
+        }
+    }
+
     private func performUpdateProfile(displayName: String?, firstName: String?, lastName: String?, phoneNumber: String?, bio: String?, location: String?, zipcode: String?, profilePictureUrl: String?, completion: @escaping (Result<User, Error>) -> Void) {
         
         var body: [String: Any] = [:]

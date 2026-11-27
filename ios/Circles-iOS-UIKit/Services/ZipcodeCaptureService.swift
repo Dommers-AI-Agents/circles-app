@@ -148,9 +148,16 @@ final class ZipcodeCaptureService: NSObject {
     private func save(_ zipcode: String, source: String) {
         guard isValid(zipcode) else { return }
 
-        UserService.shared.updateUserProfile(zipcode: zipcode) { result in
+        // Fill-only: the server keeps a zipcode the account already has
+        UserService.shared.fillMissingZipcode(zipcode) { result in
             switch result {
-            case .success:
+            case .success(let user):
+                // Only the zipcode and city: the save's reply is a partial user
+                DispatchQueue.main.async {
+                    if let me = AuthService.shared.currentUser {
+                        AuthService.shared.updateCurrentUser(me.copy(location: user.location, zipcode: user.zipcode))
+                    }
+                }
                 Logger.debug("✅ Zipcode captured via \(source)")
                 // Clear any standing deferral — the question is answered.
                 UserDefaults.standard.removeObject(forKey: "zipcodePromptDeferredUntil")

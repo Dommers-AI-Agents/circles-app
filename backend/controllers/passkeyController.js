@@ -277,6 +277,9 @@ exports.passkeyRegisterVerify = async (req, res) => {
         profilePicture: user.profilePicture || null,
         bio: user.bio || null,
         location: user.location || null,
+        // The app's copy of you starts from this: without it a sign-in looked
+        // like "no zipcode" and the phone's location replaced yours (2026-11-27)
+        zipcode: user.zipcode || null,
         friends: user.friends || [],
         friendRequests: user.friendRequests || [],
         followersCount: user.followersCount || 0,
@@ -416,6 +419,9 @@ exports.passkeyLoginVerify = async (req, res) => {
         profilePicture: user.profilePicture || null,
         bio: user.bio || null,
         location: user.location || null,
+        // The app's copy of you starts from this: without it a sign-in looked
+        // like "no zipcode" and the phone's location replaced yours (2026-11-27)
+        zipcode: user.zipcode || null,
         friends: user.friends || [],
         friendRequests: user.friendRequests || [],
         followersCount: user.followersCount || 0,

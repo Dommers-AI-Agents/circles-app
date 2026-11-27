@@ -581,6 +581,9 @@ exports.firebaseAuth = async (req, res, next) => {
         profilePicture: user.profilePicture || picture || null,
         bio: user.bio || null,
         location: user.location || null,
+        // The app's copy of you starts from this: without it a sign-in looked
+        // like "no zipcode" and the phone's location replaced yours (2026-11-27)
+        zipcode: user.zipcode || null,
         friends: user.friends || [],
         friendRequests: user.friendRequests || [],
         followersCount: user.followersCount || 0,
@@ -768,6 +771,9 @@ exports.register = async (req, res, next) => {
         profilePicture: user.profilePicture,
         bio: user.bio || null,
         location: user.location || null,
+        // The app's copy of you starts from this: without it a sign-in looked
+        // like "no zipcode" and the phone's location replaced yours (2026-11-27)
+        zipcode: user.zipcode || null,
         friends: user.friends || [],
         friendRequests: user.friendRequests || [],
         followersCount: user.followersCount || 0,
@@ -961,6 +967,9 @@ exports.login = async (req, res, next) => {
         profilePicture: user.profilePicture,
         bio: user.bio || null,
         location: user.location || null,
+        // The app's copy of you starts from this: without it a sign-in looked
+        // like "no zipcode" and the phone's location replaced yours (2026-11-27)
+        zipcode: user.zipcode || null,
         friends: user.friends || [],
         friendRequests: user.friendRequests || [],
         followersCount: user.followersCount || 0,
@@ -1005,6 +1014,9 @@ exports.getMe = async (req, res, next) => {
         profilePicture: user.profilePicture,
         bio: user.bio,
         location: user.location,
+        // The app's copy of you starts from this: without it a sign-in looked
+        // like "no zipcode" and the phone's location replaced yours (2026-11-27)
+        zipcode: user.zipcode || null,
         friends: user.friends,
         followersCount: user.followersCount || 0,
         followingCount: user.followingCount || 0,
