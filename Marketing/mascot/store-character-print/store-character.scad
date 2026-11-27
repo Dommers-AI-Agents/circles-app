@@ -211,10 +211,14 @@ module port_cup2d() {
   translate([0, 19]) text("PORT", size = 5.6, font = FONT, halign = "center", valign = "center", spacing = 1.1);
   for (i = [-2:2]) translate([i * 4.4, 9.4]) arc2d(2.2, 20, 160, 1.2);             // waves
 }
+// the cup, handle and ship are 35% larger than first drawn, the saucer is not (Wes, 2026-11-27: "make the
+// white part a little bigger? perhaps not the white circle base it sits on, but taller and bigger.
+// perhaps 35% larger"). Scaled from the cup's foot, so it still stands in the saucer.
+PORT_GROW = 1.35;
 module port() {
-  difference() {
+  cylinder(r = 21.5, h = 2, $fn = 160); translate([0, 0, 1.99]) cylinder(r1 = 21.5, r2 = 20, h = 1.5, $fn = 160);   // saucer
+  translate([0, 0, 3]) scale(PORT_GROW) translate([0, 0, -3]) difference() {
     union() {
-      cylinder(r = 21.5, h = 2, $fn = 160); translate([0, 0, 1.99]) cylinder(r1 = 21.5, r2 = 20, h = 1.5, $fn = 160);   // saucer
       difference() { port_cup(); translate([0, 0, PORT_SEA]) cylinder(r = 18.4, h = 5, $fn = 160); }
       port_handle();
       port_ship();
