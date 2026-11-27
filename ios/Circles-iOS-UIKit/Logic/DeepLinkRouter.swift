@@ -75,6 +75,9 @@ enum DeepLinkDestination: Equatable {
     /// `?daily=<id>` (a shared daily dog).
     case dogPost(id: String)
     case dailyDog(id: String)
+    /// Coach Mane's gym video, playing — `/app/widget/motivation?video=gym`
+    /// (the player's Share link, 2026-11-27).
+    case motivationVideo(id: String)
     /// A "watch my run" link — `/app/run/<token>`. Opens FavRun on it.
     case runJoin(token: String)
     /// A shared home tab — `/app/tab/<local|widgets>` or `circles://tab/<slug>`
@@ -297,6 +300,7 @@ struct DeepLinkRouter {
         case "dogs":
             if let postId = named("post") { return .dogPost(id: postId) }
             if let dailyId = named("daily") { return .dailyDog(id: dailyId) }
+        case "motivation": if let videoId = named("video") { return .motivationVideo(id: videoId) }
         default: break
         }
         return .widget(id: id)

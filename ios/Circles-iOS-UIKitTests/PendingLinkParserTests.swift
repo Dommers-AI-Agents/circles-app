@@ -24,6 +24,7 @@ struct PendingLinkParserTests {
         #expect(PendingLinkParser.parse("club-id:c1/p1") == .clubOpen(id: "c1", postId: "p1"))
         #expect(PendingLinkParser.parse("dog-post:p1") == .dogPost(id: "p1"))
         #expect(PendingLinkParser.parse("daily-dog:d1") == .dailyDog(id: "d1"))
+        #expect(PendingLinkParser.parse("motivation-video:gym") == .motivationVideo(id: "gym"))
         #expect(PendingLinkParser.parse("tab:widgets") == .homeTab(.widgets))
         #expect(PendingLinkParser.parse("me") == .openPath("me"))
         #expect(PendingLinkParser.parse("check-in") == .quickCheckIn)

@@ -246,6 +246,11 @@ struct EventInviteLinkTests {
         // The landing page's button opens the app scheme with the same query
         #expect(router.destination(for: URL(string: "circles://widget/dogs?post=p1")!) == .dogPost(id: "p1"))
         #expect(router.destination(for: URL(string: "circles:///widget/dogs?daily=dotd_2026-10-22")!) == .dailyDog(id: "dotd_2026-10-22"))
+        // Coach Mane's shared gym video (2026-11-27): the link and the page's button
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget/motivation?video=gym")!) == .motivationVideo(id: "gym"))
+        #expect(router.destination(for: URL(string: "circles://widget/motivation?video=gym")!) == .motivationVideo(id: "gym"))
+        #expect(router.destination(for: URL(string: "circles:///widget/motivation?video=gym")!) == .motivationVideo(id: "gym"))
+        #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/widget/motivation")!) == .widget(id: "motivation"))
         #expect(router.destination(for: URL(string: "https://api.favcircles.com/app/event")!) == nil)
     }
 }

@@ -176,7 +176,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
               runId: String? = nil, runToken: String? = nil, careAskId: String? = nil,
               fridgeMailCardId: String? = nil, clubToken: String? = nil,
               clubId: String? = nil, clubPostId: String? = nil,
-              dogPostId: String? = nil, dailyDogId: String? = nil) {
+              dogPostId: String? = nil, dailyDogId: String? = nil,
+              motivationVideoId: String? = nil) {
         guard ensureModel(), let model,
               let descriptor = model.descriptors.first(where: { $0.id == widgetId }),
               let widget = model.widget(for: descriptor) else { return }
@@ -225,6 +226,8 @@ final class HomeWidgetsViewController: BaseViewController, HomeContentTab {
             context.launchMotivationLineId = motivationLineId
             context.launchMotivationSend = motivationSend
         }
+        // Coach Mane's shared gym video: the page opens with it playing
+        if widgetId == "motivation", let motivationVideoId { context.launchMotivationVideoId = motivationVideoId }
         // A push or link with something to open: the page goes in without its
         // slide so the tap lands on the thing itself (Wes, 2026-11-05). Set on
         // every open: contexts are reused, and a list tap should still slide.

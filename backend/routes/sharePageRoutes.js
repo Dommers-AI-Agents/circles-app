@@ -317,6 +317,13 @@ router.get('/app/widget/:id', async (req, res) => {
       }
     }
   }
+  // Coach Mane's shared gym video (?video=gym, the player's Share, 2026-11-27):
+  // the app opens on the video playing
+  if (id === 'motivation' && req.query.video === 'gym') {
+    linkQuery.set('video', 'gym');
+    title = esc('▶ Go to the gym');
+    blurb = esc('Coach Mane sent you a video. Watch it in FavCircles — then go train.');
+  }
   const query = linkQuery.toString() ? `?${linkQuery.toString()}` : '';
 
   res.send(`<!DOCTYPE html>

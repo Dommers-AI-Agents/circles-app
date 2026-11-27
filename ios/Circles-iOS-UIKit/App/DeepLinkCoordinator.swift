@@ -240,6 +240,8 @@ final class DeepLinkCoordinator: SceneCoordinator {
             navigateToWidget(id: "dogs", dogPostId: id)
         case .dailyDog(let id):
             navigateToWidget(id: "dogs", dailyDogId: id)
+        case .motivationVideo(let id):
+            navigateToWidget(id: "motivation", motivationVideoId: id)
         case .runJoin(let token):
             navigateToWidget(id: "run", runToken: token)
         case .referral(let code):
@@ -489,6 +491,7 @@ final class DeepLinkCoordinator: SceneCoordinator {
             case .clubOpen(let id, let postId): self.navigateToWidget(id: "clubs", clubId: id, clubPostId: postId)
             case .dogPost(let id): self.navigateToWidget(id: "dogs", dogPostId: id)
             case .dailyDog(let id): self.navigateToWidget(id: "dogs", dailyDogId: id)
+            case .motivationVideo(let id): self.navigateToWidget(id: "motivation", motivationVideoId: id)
             case .runOpen(let id): self.navigateToWidget(id: "run", runId: id)
             case .runJoin(let token): self.navigateToWidget(id: "run", runToken: token)
             case .careAnswer(let askId): self.navigateToWidget(id: "howareyou", careAskId: askId)
@@ -706,10 +709,12 @@ final class DeepLinkCoordinator: SceneCoordinator {
                                   runId: String? = nil, runToken: String? = nil, careAskId: String? = nil,
                                   fridgeMailCardId: String? = nil, clubToken: String? = nil,
                                   clubId: String? = nil, clubPostId: String? = nil,
-                                  dogPostId: String? = nil, dailyDogId: String? = nil) {
+                                  dogPostId: String? = nil, dailyDogId: String? = nil,
+                                  motivationVideoId: String? = nil) {
         guard AuthService.shared.isLoggedIn,
               let tabBar = window?.rootViewController as? CirclesTabBarController else {
-            let motivation: String? = motivationSend ? motivationLineId.map { "motivation-send:\($0)" } : nil
+            let motivationLine: String? = motivationSend ? motivationLineId.map { "motivation-send:\($0)" } : nil
+            let motivation: String? = motivationLine ?? motivationVideoId.map { "motivation-video:\($0)" }
             let share: String? = postcardShareToken.map { "postcard-share:\($0)" }
             // Split up: one long ?? chain is too much for the type checker
             var club: String? = clubToken.map { "club-token:\($0)" }
@@ -747,7 +752,7 @@ final class DeepLinkCoordinator: SceneCoordinator {
                             postcardShareToken: postcardShareToken, eventToken: eventToken, eventId: eventId,
                             runId: runId, runToken: runToken, careAskId: careAskId, fridgeMailCardId: fridgeMailCardId,
                             clubToken: clubToken, clubId: clubId, clubPostId: clubPostId,
-                            dogPostId: dogPostId, dailyDogId: dailyDogId)
+                            dogPostId: dogPostId, dailyDogId: dailyDogId, motivationVideoId: motivationVideoId)
     }
 
     /// A shared tab link: Home → that segment. Stashed like a widget link
