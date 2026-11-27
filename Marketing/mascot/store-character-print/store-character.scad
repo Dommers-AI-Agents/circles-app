@@ -113,7 +113,7 @@ module mk_cup() {
   difference() {
     mk_cup_plain();
     translate([MK_CUP[0], MK_CUP[1], 0]) for (z = [2.6, 19.4])               // the sleeve's two edges
-      translate([0, 0, z]) difference() { cylinder(r = 14, h = 1.3, $fn = 128); cylinder(r = mk_cup_r(z) - K_CUT, h = 1.3, $fn = 128); }
+      translate([0, 0, z]) difference() { cylinder(r = 14, h = 1.3, $fn = 128); translate([0, 0, -0.01]) cylinder(r1 = mk_cup_r(z) - K_CUT, r2 = mk_cup_r(z) - K_CUT + 1.32, h = 1.32, $fn = 128); }   // roofed at 45 degrees
     side_cut() { mk_leaf2d(); mk_cup_plain(); }
   }
 }
@@ -121,7 +121,7 @@ module mk_cup() {
 // --- the monkey (brown) ---
 module mk_head() {
   translate([MK_HX, -1, MK_HZ]) scale([1.05, 0.95, 1]) drop(16);
-  for (s = [-1, 1]) hull() { translate([MK_HX + s * 17.6, -1, MK_HZ + 1.5]) scale([1, 0.45, 1]) sphere(7.4); translate([MK_HX + s * 10, -1, MK_HZ - 13]) sphere(1, $fn = 16); }
+  for (s = [-1, 1]) hull() { translate([MK_HX + s * 17.6, -1, MK_HZ + 1.5]) scale([1, 0.45, 1]) sphere(7.4); translate([MK_HX + s * 7.5, -1, MK_HZ - 13]) sphere(1, $fn = 16); }
   // a shallow muzzle, carried down to the chest by the jaw
   hull() { translate([MK_HX, -12.6, MK_HZ - 5]) scale([10.5, 5.2, 7.2]) sphere(1, $fn = 64); translate([MK_HX, -7.5, MK_HZ - 17]) sphere(1.5, $fn = 24); }
 }
@@ -143,20 +143,29 @@ function mk_tr(i) = 3.7 - 1.3 * i / (len(MK_TP) - 1);
 module mk_tail() {
   for (i = [0:len(MK_TP) - 2]) hull() for (j = [i, i + 1]) translate([MK_TP[j][0], MK_TP[j][1], mk_tz(j)]) sphere(mk_tr(j), $fn = 32);
 }
+// a finger joint lying on the cup's wall (cup-local, out along +x): it grows out of the wall at 45 degrees,
+// so no layer of it starts in mid-air
+module mk_knuckle(r, d) { hull() { translate([r, 0, 0]) sphere(d, $fn = 20); translate([r - 1.2, 0, -d * 2.2]) sphere(0.4, $fn = 12); } }
 module mk_limbs(s) {            // one side: haunch, shin and foot, arm, hand and fingers
   hull() { translate([-13, s * 8, 9]) sphere(9, $fn = 64); translate([9, s * 10, 14]) sphere(6.5, $fn = 64); translate([8, s * 10, 3]) sphere(4, $fn = 32); }
-  hull() { translate([8, s * 10, 2.6]) sphere(4.2, $fn = 32); translate([14.5, s * 10.8, 2]) scale([1, 1, 0.8]) sphere(3.8, $fn = 32); }
-  for (dy = [-2.9, 0, 2.9]) translate([17.6, s * 10.8 + dy, 1.5]) sphere(1.9, $fn = 24);           // toes
-  hull() { translate([-3, s * 11, 37]) sphere(5.5, $fn = 48); translate([7, s * 13.5, 23]) sphere(4.6, $fn = 48); }   // upper arm, elbow on the knee
-  hull() { translate([7, s * 13.5, 23]) sphere(4.6, $fn = 48); translate([20.5, s * 12, 21]) sphere(4.2, $fn = 48); }  // forearm
-  hull() { translate([20.5, s * 12, 21]) sphere(4.4, $fn = 48); translate([21, s * 9, 13.5]) sphere(1, $fn = 16); }    // the hand, grown from the cup's wall
+  hull() { translate([8, s * 10, 2.6]) sphere(4.2, $fn = 32); translate([13.5, s * 12.5, 2]) scale([1, 1, 0.8]) sphere(3.8, $fn = 32); }
+  for (dy = [-2.9, 0, 2.9]) translate([16.4, s * 12.5 + dy, 1.5]) sphere(1.9, $fn = 24);           // toes
+  hull() { translate([-3, s * 11, 37]) sphere(5.5, $fn = 48); translate([7, s * 13.5, 21.5]) sphere(4.6, $fn = 48); }   // upper arm, elbow on the knee
+  // forearm: it climbs from the knee to the cup, with a web down into the knee so its underside never starts in mid-air
+  hull() { translate([7, s * 13.5, 21.5]) sphere(4.6, $fn = 48); translate([20.5, s * 12, 23]) sphere(4.2, $fn = 48); translate([12.5, s * 11.5, 15]) sphere(1, $fn = 16); }
+  hull() { translate([20.5, s * 12, 23]) sphere(4.4, $fn = 48); translate([21, s * 8, 14.5]) sphere(1, $fn = 16); }    // the hand, grown from the cup's wall
   // four fingers round the cup
   for (k = [0:3]) let(z = 24.6 - 2.5 * k, r = mk_cup_r(z) + 0.5)
-    hull() for (a = [78, 44 + 3 * k]) translate([MK_CUP[0] + r * cos(a), s * r * sin(a), z]) sphere(1.45, $fn = 20);
-  hull() for (a = [100, 128]) let(r = mk_cup_r(23) + 0.5) translate([MK_CUP[0] + r * cos(a), s * r * sin(a), 23 + (a - 100) * 0.09]) sphere(1.6, $fn = 20);   // thumb
+    hull() for (a = [78, 44 + 3 * k]) translate([MK_CUP[0], 0, z]) rotate(s * a) mk_knuckle(r, 1.45);
+  hull() for (a = [100, 128]) translate([MK_CUP[0], 0, 23 + (a - 100) * 0.09]) rotate(s * a) mk_knuckle(mk_cup_r(23) + 0.5, 1.6);   // thumb
 }
+module mk_torso() { hull() { translate([-13, 0, 10]) sphere(12, $fn = 96); translate([-5, 0, 32]) sphere(11, $fn = 96); } }   // back and chest
+module mk_pin2d() { translate([-13.5, 26.5]) difference() { mini_pin2d(10.5); translate([0, 2.05]) circle(1.35, $fn = 32); } }
 module mk_body() {
-  hull() { translate([-13, 0, 10]) sphere(12, $fn = 96); translate([-5, 0, 32]) sphere(11, $fn = 96); }   // back and chest
+  difference() {                // a map pin on the flank, behind the arm (Wes, 2026-11-27: "a small engraving near the back of the monkey of a map pin")
+    mk_torso();
+    front_cut(2 * K_CUT) { mk_pin2d(); mk_torso(); }
+  }
   difference() {                // the face is cut into the head alone
     mk_head();
     front_cut() { mk_mask2d(); mk_head(); }
