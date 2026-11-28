@@ -169,8 +169,56 @@ struct ScanResponse: Decodable {
 }
 
 struct ClipOffer: Codable {
+    /// Needed to redeem it in the clip (2026-11-28); nil from older handoffs
+    var offerId: String? = nil
     let title: String
     let pointsCost: Int
+}
+
+/// A reward ticket: shown at the counter for 15 minutes, staff tap Given
+/// (the same ticket the app shows; points come back if it runs out unused)
+struct ClipVoucher: Decodable {
+    let voucherId: String?
+    let voucherCode: String
+    let offerTitle: String
+    let pointsCost: Int
+    let venueId: String?
+    let venueName: String
+    let expiresAt: String
+    var status: String?
+    var givenAt: String?
+    /// A flyer coupon's ticket, not a points reward
+    var couponId: String? = nil
+
+    var expiryDate: Date? { ClipVoucher.date(expiresAt) }
+    var isOpen: Bool { (status ?? "issued") == "issued" && (expiryDate ?? .distantPast) > Date() }
+
+    static func date(_ iso: String?) -> Date? {
+        guard let iso else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+    }
+}
+
+struct ClipRedeemResponse: Decodable {
+    let success: Bool
+    let data: Payload
+    struct Payload: Decodable {
+        let voucher: ClipVoucher
+        let venueBalance: Int?
+    }
+}
+
+struct ClipVoucherResponse: Decodable {
+    let success: Bool
+    let data: ClipVoucher
+}
+
+struct ClipTicketsResponse: Decodable {
+    let success: Bool
+    let data: Payload
+    struct Payload: Decodable { let active: [ClipVoucher] }
 }
 
 struct ScanResult: Decodable {

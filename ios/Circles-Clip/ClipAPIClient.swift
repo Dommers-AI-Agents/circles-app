@@ -217,6 +217,35 @@ final class ClipAPIClient {
 
     // MARK: - Core
 
+    // MARK: - Rewards (2026-11-28: the clip alone works as the punch card)
+
+    /// Spends the points: a 15-minute ticket to show at the counter.
+    /// `ClipAPIError.coded("share_required", …)` the first time at a store.
+    func redeemOffer(venueId: String, offerId: String, bearer: String) async throws -> ClipRedeemResponse.Payload {
+        let response: ClipRedeemResponse = try await request(path: "rewards/redeem-offer", method: "POST",
+                                                             body: ["venueId": venueId, "offerId": offerId, "canShare": true],
+                                                             bearerToken: bearer)
+        return response.data
+    }
+
+    /// Once per store: lets it see the name, photo and email on the account
+    func shareWithStore(venueId: String, bearer: String) async throws {
+        let _: ClipSimpleResponse = try await request(path: "rewards/venues/\(venueId)/share", method: "POST", body: [:], bearerToken: bearer)
+    }
+
+    /// Their tickets still open (closing the clip doesn't lose one)
+    func openTickets(bearer: String) async throws -> [ClipVoucher] {
+        let response: ClipTicketsResponse = try await request(path: "rewards/vouchers", method: "GET", bearerToken: bearer)
+        return response.data.active
+    }
+
+    /// Staff tap Given on the customer's phone
+    func markGiven(voucherId: String, bearer: String) async throws -> ClipVoucher {
+        let response: ClipVoucherResponse = try await request(path: "rewards/vouchers/\(voucherId)/given", method: "POST",
+                                                              body: [:], bearerToken: bearer)
+        return response.data
+    }
+
     private func request<T: Decodable>(path: String,
                                        method: String,
                                        query: [URLQueryItem]? = nil,

@@ -45,6 +45,11 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
     private let partyControl = UISegmentedControl(items: (1...6).map { "\($0)" })
     private lazy var joinLineButton = ClipTheme.primaryButton("Join the line")
     private var waitlistVenueId: String?
+    /// The rewards panel's last state, so a redeem or an open ticket redraws it
+    private var panelState: (balance: Int, earnRate: Int?, nextLine: String?)?
+    /// A ticket still open at this store (closing the clip doesn't lose it)
+    private var openTicket: ClipVoucher?
+    private var checkedTickets = false
 
     init(session: ClipSession, isNewSignIn: Bool, isNewAccount: Bool = false, invocation: ClipInvocation, code: String, preview: VenuePreview) {
         self.session = session
@@ -425,7 +430,14 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
 
     /// How to keep earning, and what the points buy here
     private func fillRewardsPanel(balance: Int, earnRate: Int?, nextLine: String?) {
+        panelState = (balance, earnRate, nextLine)
         panelStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        if let ticket = openTicket, ticket.isOpen {
+            let resume = ClipTheme.primaryButton("Show your ticket: \(ticket.offerTitle)")
+            resume.addAction(UIAction { [weak self] _ in self?.presentTicket(ticket) }, for: .touchUpInside)
+            panelStack.addArrangedSubview(resume)
+            panelStack.setCustomSpacing(16, after: resume)
+        }
         let heading = ClipTheme.label(.systemFont(ofSize: 13, weight: .bold), color: ClipTheme.gold)
         heading.text = "KEEP EARNING"
         panelStack.addArrangedSubview(heading)
@@ -450,6 +462,104 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
             panelStack.addArrangedSubview(next)
         }
         panel.isHidden = false
+        checkOpenTicket()
+    }
+
+    // MARK: - Redeem a reward (2026-11-28: no app needed)
+
+    private var rewardsVenueId: String? { scanResult?.venue?.venueId }
+
+    /// Once per screen: a ticket they opened and closed shows again here
+    private func checkOpenTicket() {
+        guard !checkedTickets, let venueId = rewardsVenueId else { return }
+        checkedTickets = true
+        Task { @MainActor in
+            guard let tickets = try? await ClipAPIClient.shared.openTickets(bearer: session.token),
+                  let ticket = tickets.first(where: { $0.venueId == venueId && $0.isOpen && $0.couponId == nil }),
+                  let state = panelState else { return }
+            openTicket = ticket
+            fillRewardsPanel(balance: state.balance, earnRate: state.earnRate, nextLine: state.nextLine)
+        }
+    }
+
+    private func confirmRedeem(_ offer: ClipOffer) {
+        let name = preview.venueName
+        let alert = UIAlertController(
+            title: "Redeem \(offer.title)?",
+            message: "This uses \(offer.pointsCost) of your points at \(name) and opens a 15-minute ticket to show at the counter. If it isn't used in time, your points come back.",
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Redeem", style: .default) { [weak self] _ in self?.redeemOffer(offer) })
+        present(alert, animated: true)
+    }
+
+    private func redeemOffer(_ offer: ClipOffer) {
+        guard let venueId = rewardsVenueId, let offerId = offer.offerId else { return }
+        Task { @MainActor in
+            do {
+                let redeemed = try await ClipAPIClient.shared.redeemOffer(venueId: venueId, offerId: offerId, bearer: session.token)
+                openTicket = redeemed.voucher
+                if let state = panelState {
+                    fillRewardsPanel(balance: redeemed.venueBalance ?? max(0, state.balance - offer.pointsCost),
+                                     earnRate: state.earnRate, nextLine: nil)
+                }
+                presentTicket(redeemed.voucher)
+            } catch ClipAPIError.coded("share_required", _) {
+                askToShare(then: offer, venueId: venueId)
+            } catch ClipAPIError.unauthorized {
+                ClipSession.clear()
+                navigationController?.setViewControllers([ClipOfferViewController(invocation: invocation)], animated: true)
+            } catch {
+                showAlert("Couldn't redeem it", error.localizedDescription)
+            }
+        }
+    }
+
+    /// Once per store: rewards are claimed by name (Wes, 2026-11-02), same
+    /// words as the app's ShareWithStoreViewController
+    private func askToShare(then offer: ClipOffer, venueId: String) {
+        let name = preview.venueName
+        let alert = UIAlertController(
+            title: "Claim rewards by name",
+            message: "Rewards at \(name) are claimed by name, so the counter knows whose reward it is. You only do this once here.\n\nI agree to share my FavCircles name, photo and email with \(name).",
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Not now", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Agree and claim", style: .default) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                do {
+                    try await ClipAPIClient.shared.shareWithStore(venueId: venueId, bearer: self.session.token)
+                    self.redeemOffer(offer)
+                } catch {
+                    self.showAlert("Couldn't share with \(name)", error.localizedDescription)
+                }
+            }
+        })
+        present(alert, animated: true)
+    }
+
+    private func presentTicket(_ ticket: ClipVoucher) {
+        let screen = ClipRewardTicketViewController(voucher: ticket, session: session)
+        screen.onClose = { [weak self] ended in
+            guard let self else { return }
+            // Given or run out: the panel goes back to the rewards
+            openTicket = ended.isOpen ? ended : nil
+            if let state = panelState {
+                // Ran out unused: the server gave the points back
+                let refunded = !ended.isOpen && ended.status != "given" && ended.couponId == nil ? ended.pointsCost : 0
+                fillRewardsPanel(balance: state.balance + refunded, earnRate: state.earnRate, nextLine: state.nextLine)
+            }
+            // The ticket hid the App Store banner; bring it back
+            overlayPresented = false
+            presentInstallOverlay(afterDelay: 0.6)
+        }
+        present(screen, animated: true)
+    }
+
+    private func showAlert(_ title: String, _ message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 
     /// "Free croissant · 100 points" with a bar showing how close they are
@@ -461,8 +571,26 @@ final class ClipSuccessViewController: UIViewController, SKOverlayDelegate {
         cost.text = ready ? "Ready ✓" : "\(offer.pointsCost) pts"
         cost.textColor = ready ? ClipTheme.gold : UIColor.white.withAlphaComponent(0.8)
         cost.setContentHuggingPriority(.required, for: .horizontal)
-        let line = UIStackView(arrangedSubviews: [title, cost])
+        var parts: [UIView] = [title, cost]
+        // Enough points: redeem it right here, no app needed (2026-11-28)
+        if ready, offer.offerId != nil, rewardsVenueId != nil, openTicket?.isOpen != true {
+            var config = UIButton.Configuration.filled()
+            config.title = "Redeem"
+            config.baseBackgroundColor = ClipTheme.gold
+            config.baseForegroundColor = ClipTheme.ink
+            config.cornerStyle = .capsule
+            config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
+            let redeem = UIButton(configuration: config)
+            redeem.titleLabel?.font = .systemFont(ofSize: 15, weight: .bold)
+            redeem.setContentHuggingPriority(.required, for: .horizontal)
+            redeem.accessibilityLabel = "Redeem \(offer.title)"
+            redeem.addAction(UIAction { [weak self] _ in self?.confirmRedeem(offer) }, for: .touchUpInside)
+            cost.isHidden = true
+            parts.append(redeem)
+        }
+        let line = UIStackView(arrangedSubviews: parts)
         line.spacing = 8
+        line.alignment = .center
 
         let bar = UIProgressView(progressViewStyle: .bar)
         bar.progressTintColor = ClipTheme.gold
@@ -644,8 +772,32 @@ extension ClipSuccessViewController {
     func autopilotKeepGoing() {
         // So a simulator run's test account can be deleted afterwards (DELETE /users/me)
         print("📎 autopilot session user=\(session.userId) token=\(session.token)")
+        if ProcessInfo.processInfo.environment["CLIP_AUTOPILOT_REDEEM"] == "1" { autopilotRedeem(); return }
         guard isNewAccount else { return }
         getAppTapped()
+    }
+
+    /// CLIP_AUTOPILOT_REDEEM=1: Redeem → confirm → share by name → ticket → Given,
+    /// pausing on each so a run can screenshot it
+    private func autopilotRedeem() {
+        guard let offer = (preview.offers ?? []).first(where: { $0.offerId != nil }) else { return }
+        let pause = 4.0
+        confirmRedeem(offer)
+        DispatchQueue.main.asyncAfter(deadline: .now() + pause) { [weak self] in
+            guard let self else { return }
+            self.presentedViewController?.dismiss(animated: true) {
+                self.redeemOffer(offer)   // the store asks to share once
+                DispatchQueue.main.asyncAfter(deadline: .now() + pause) {
+                    self.presentedViewController?.dismiss(animated: true) {
+                        Task { @MainActor in
+                            guard let venueId = self.rewardsVenueId else { return }
+                            try? await ClipAPIClient.shared.shareWithStore(venueId: venueId, bearer: self.session.token)
+                            self.redeemOffer(offer)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 #endif

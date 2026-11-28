@@ -10,6 +10,8 @@ import Foundation
 //                                   the store's photos (file:// URLs in it)
 //   CLIP_STORE_DEMO_REWARDS=1       the store's rewards are live (points, Wallet)
 //   CLIP_STORE_DEMO_NAME=<name>     the store's full name (default Caffeena Coffee House)
+//   CLIP_STORE_DEMO_BALANCE=<n>     points already there (default 0): 100+ makes
+//                                   the latte redeemable, to walk redeem → ticket → Given
 //
 // Launch with _XCAppClipURL=https://api.favcircles.com/s/STOREDEMO. Nothing
 // reaches the network: sign-in, the save, the follow and the bell answer here.
@@ -20,6 +22,19 @@ enum ClipStoreDemo {
     static var isActive: Bool { folder != nil }
     static var rewardsLive: Bool { env["CLIP_STORE_DEMO_REWARDS"] == "1" }
     static var storeName: String { env["CLIP_STORE_DEMO_NAME"] ?? "Caffeena Coffee House" }
+    static var startingBalance: Int { Int(env["CLIP_STORE_DEMO_BALANCE"] ?? "") ?? 0 }
+    static let latte: [String: Any] = ["offerId": "demo-latte", "title": "Free latte", "pointsCost": 100]
+    /// The demo store asks to share once, like a real one
+    nonisolated(unsafe) static var shared = false
+    nonisolated(unsafe) static var ticket: [String: Any]?
+
+    static func voucher(status: String = "issued") -> [String: Any] {
+        let f = ISO8601DateFormatter()
+        return ["voucherId": "demo-ticket", "voucherCode": "7KQ2", "offerTitle": "Free latte", "pointsCost": 100,
+                "venueId": "store-demo-venue", "venueName": storeName,
+                "expiresAt": f.string(from: Date().addingTimeInterval(15 * 60)), "status": status,
+                "givenAt": status == "given" ? f.string(from: Date()) : NSNull()]
+    }
 
     static func install() {
         guard isActive else { return }
@@ -43,7 +58,7 @@ enum ClipStoreDemo {
             "category": "cafe", "kind": "window",
             "signupBonusPoints": rewardsLive ? 25 : 0, "scanPoints": rewardsLive ? 25 : 0, "scanPointsKind": "save",
             "loyaltyLive": rewardsLive, "earnRate": rewardsLive ? 25 : NSNull(),
-            "offers": rewardsLive ? [["title": "Free latte", "pointsCost": 100]] : [],
+            "offers": rewardsLive ? [latte] : [],
             "coverUrl": coverUrl,
             "location": ["lat": 35.200618, "lng": -80.872306],
             "experience": experience
@@ -62,12 +77,12 @@ enum ClipStoreDemo {
                       "placeAddress": "3101 Griffith St, Charlotte, NC", "category": "cafe",
                       "globalPlaceId": "store-demo-place", "location": ["lat": 35.200618, "lng": -80.872306]],
             "saved": true, "savedPlace": ["placeId": "store-demo-save", "circleId": "store-demo-circle"],
-            "loyaltyLive": rewardsLive, "offers": rewardsLive ? [["title": "Free latte", "pointsCost": 100]] : []
+            "loyaltyLive": rewardsLive, "offers": rewardsLive ? [latte] : []
         ]
         if rewardsLive {
             data["awarded"] = ["type": "save", "points": 25]
-            data["balance"] = 25
-            data["venueBalance"] = 25
+            data["balance"] = 25 + startingBalance
+            data["venueBalance"] = 25 + startingBalance
             data["earnRate"] = 25
             data["nextRewardLine"] = "75 more points for a Free latte \u{00b7} about 3 more visits"
         }
@@ -98,6 +113,23 @@ final class ClipStoreDemoStub: URLProtocol {
             json(ClipStoreDemo.auth(email: sent?["email"] as? String ?? "guest@example.com"))
         } else if path.hasSuffix("/rewards/scan") {
             json(ClipStoreDemo.scan)
+        } else if path.hasSuffix("/rewards/redeem-offer") {
+            if ClipStoreDemo.shared {
+                ClipStoreDemo.ticket = ClipStoreDemo.voucher()
+                json(["success": true, "data": ["voucher": ClipStoreDemo.ticket!, "venueBalance": 25 + ClipStoreDemo.startingBalance - 100]])
+            } else {
+                status = 400
+                json(["success": false, "code": "share_required",
+                      "error": "Rewards at \(ClipStoreDemo.storeName) are claimed by name."])
+            }
+        } else if path.hasSuffix("/share") && path.contains("/rewards/venues/") {
+            ClipStoreDemo.shared = true
+            json(["success": true, "data": ["shared": true]])
+        } else if path.hasSuffix("/rewards/vouchers") {
+            json(["success": true, "data": ["active": ClipStoreDemo.ticket.map { [$0] } ?? [], "recent": []]])
+        } else if path.hasSuffix("/given") {
+            ClipStoreDemo.ticket = nil
+            json(["success": true, "data": ClipStoreDemo.voucher(status: "given")])
         } else if path.hasSuffix("/clip/device") || path.contains("/places/") {
             json(["success": true])
         } else {
